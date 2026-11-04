@@ -61,7 +61,7 @@ const read = async (path: string) => {
   return new Uint8Array(file.buffer, file.byteOffset, file.byteLength)
 }
 
-for (const name of ['li_elite', 'li_elite_turned'])
+for (const name of ['li_elite', 'li_elite_turned', 'ku_dragon'])
   test(
     `${name} matches retail's screenshot, outside its menu and canopy`,
     { skip: skipFor(name) },
@@ -82,7 +82,7 @@ for (const name of ['li_elite', 'li_elite_turned'])
 
       assert.equal(value.error, 0)
       assert.deepEqual(value.unsupported, [])
-      assert.equal(value.draws, 22)
+      assert.equal(value.draws, name === 'ku_dragon' ? 12 : 22)
 
       const shot = screenshotOf(name)!
       const stride = (WIDTH * 3 + 3) & ~3
@@ -95,7 +95,8 @@ for (const name of ['li_elite', 'li_elite_turned'])
       let theirsOnly = 0
       for (let y = 0; y < HEIGHT; y++)
         for (let x = 0; x < WIDTH; x++) {
-          if (MENU.some((box) => inside(x, y, box)) || inside(x, y, CANOPY[name]!)) continue
+          const canopy = CANOPY[name]
+          if (MENU.some((box) => inside(x, y, box)) || (canopy && inside(x, y, canopy))) continue
           const from = 54 + (HEIGHT - 1 - y) * stride + x * 3
           const at = (y * WIDTH + x) * 4
           const theirs = [shot[from + 2]!, shot[from + 1]!, shot[from]!]

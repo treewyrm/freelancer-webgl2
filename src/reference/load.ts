@@ -22,6 +22,11 @@ const ASSETS: Record<string, { model: string; libraries: string[]; environment: 
     libraries: ['SHIPS/LIBERTY/li_playerships.mat', 'FX/envmapbasic.mat', 'FX/envmapglass.txm'],
     environment: 'envmapbasic',
   },
+  ku_dragon: {
+    model: 'SHIPS/KUSARI/KU_BLOOD_DRAGON/ku_dragon.cmp',
+    libraries: ['SHIPS/KUSARI/ku_blood_dragon.mat', 'FX/envmapbasic.mat', 'FX/envmapglass.txm'],
+    environment: 'envmapbasic',
+  },
 }
 
 const scaled = ([x, y, z]: readonly [number, number, number]) => ({

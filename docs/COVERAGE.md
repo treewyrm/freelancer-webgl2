@@ -16,11 +16,11 @@ it. Sphere materials aren't counted there. The nine `DcDt` rows hold 21,153 of t
 
 | Type | Draws | Read | Built | State | Picture |
 | ---- | ----: | ---- | ----- | ----- | ------- |
-| `DcDt` | 15,016 | Yes | Yes | `li_elite`, `li_elite_turned` | `li_elite`, `li_elite_turned` |
+| `DcDt` | 15,016 | Yes | Yes | `li_elite`, `li_elite_turned`, `ku_dragon` | `li_elite`, `li_elite_turned`, `ku_dragon` |
 | `DcDtEc` | 3,200 | Yes | Yes | | |
 | `DcDtEt` | 1,334 | | | | |
 | `DcDtTwo` | 522 | Yes | Yes | `li_elite`, `li_elite_turned` | |
-| `DcDtOcOt` | 484 | Yes | Yes | | |
+| `DcDtOcOt` | 484 | Yes | Yes | `ku_dragon`, blended | `ku_dragon` |
 | `DcDtEcOcOtTwo` | 318 | Yes | Yes | | |
 | `DcDtEcOcOt` | 179 | Yes | Yes | | |
 | `DcDtOcOtTwo` | 78 | Yes | Yes | | |

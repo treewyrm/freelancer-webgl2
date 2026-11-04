@@ -7,11 +7,12 @@ import {
   type Material,
   type TextureReference,
 } from '@treewyrm/freelancer/material'
-import type { Matrix4, Vector3 } from '@treewyrm/freelancer/math'
+import { Matrix4, type Vector3 } from '@treewyrm/freelancer/math'
 import type { RigidPart } from '@treewyrm/freelancer/rigid'
 import type { CubeTexture, Texture, TextureEntry } from '@treewyrm/freelancer/texture'
 import {
   getMeshDraw,
+  vertexByteLength,
   VertexFormat,
   type VMeshData,
   type VMeshRef,
@@ -200,7 +201,20 @@ const withEnvironment = (
 ): Pick<Pass, 'normalizeNormals' | 'environment'> =>
   name ? { normalizeNormals: true, environment: name } : NO_ENVIRONMENT
 
-const passesOf = (kind: MaterialClass, material: Material, model: SceneModel): Pass[] => {
+/**
+ * `[BatchedMaterials] Type = .*OcOt`. A batched material takes bin 1 if it blends and bin 0 if not
+ * (`0x6eb4133`). Bin 1 waits for the flush, past the end of the environment override, so it has neither
+ * its stage nor its normalized normals (`ku_dragon`). Bin 0 submits at once (`0x6ec9589`) and binds
+ * again over the stage. No environment-mapped ship has that, so it stands as read, and uncaptured.
+ */
+const BATCHED = /.*OcOt/
+
+const passesOf = (
+  kind: MaterialClass,
+  type: string,
+  material: Material,
+  model: SceneModel,
+): Pass[] => {
   const opacity = material.opacity ?? 1
 
   if (kind === 'glass') {
@@ -220,13 +234,16 @@ const passesOf = (kind: MaterialClass, material: Material, model: SceneModel): P
 
   const entry = material.diffuseTexture && model.texture(material.diffuseTexture.name)
   const bits = alphaBits(entry)
+  const blend = opacity < 1 || bits > 1
   const front: Pass = {
     cull: 'back',
     negateNormals: false,
-    blend: opacity < 1 || bits > 1,
+    blend,
     // An `Oc` below 1 leaves before the format is read, so it isn't cut (`0x6eb6d63`).
     alphaReference: opacity >= 1 && bits === 1 ? CUT_ALPHA_REFERENCE : DEVICE_ALPHA_REFERENCE,
-    ...withEnvironment(model.environment),
+    ...(!BATCHED.test(type)
+      ? withEnvironment(model.environment)
+      : { normalizeNormals: !blend && model.environment !== undefined }),
   }
   if (kind === 'single') return [front]
 
@@ -274,10 +291,42 @@ const entryOf = (
   return undefined
 }
 
+interface Queued {
+  depth: number
+  draws: Draw[]
+}
+
+/**
+ * `ComputeBatchDepth`: the mean of a reference's vertices along the view's Z. It is negative ahead of
+ * the camera, so ascending is back to front, `Bin1SortOrder`'s default of 2. Only one queued draw has
+ * been captured, so the sort is read and not measured.
+ */
+const batchDepth = (
+  mesh: VMeshData,
+  reference: VMeshRef,
+  world: Matrix4,
+  view: Matrix4,
+): number => {
+  const { x, y, z, w } = Matrix4.multiply(view, world)
+  const stride = vertexByteLength(mesh.format)
+  const bytes = new DataView(mesh.vertices.buffer, mesh.vertices.byteOffset)
+  let sum = 0
+  for (let at = 0; at < reference.vertexCount; at++) {
+    const offset = (reference.vertexStart + at) * stride
+    const px = bytes.getFloat32(offset, true)
+    const py = bytes.getFloat32(offset + 4, true)
+    const pz = bytes.getFloat32(offset + 8, true)
+    sum += x.z * px + y.z * py + z.z * pz + w.z
+  }
+  return sum / reference.vertexCount
+}
+
 /** Lists a model's draws, its parts in the order given and each part's groups in order. */
 const collectModel = (
   model: SceneModel,
+  view: Matrix4,
   draws: Draw[],
+  queued: Queued[],
   unsupported: Set<string>,
   unregistered: Set<string>,
 ): void => {
@@ -311,9 +360,16 @@ const collectModel = (
       const slot = material.diffuseTexture
       const entry = slot && entryOf(slot.name, model, unsupported)
 
-      for (const { alpha, ...pass } of passesOf(kind, material, model)) {
+      // A queued material's passes stay together, being one submission (`ProcessQueuedBin`).
+      const passes = passesOf(kind, type, material, model)
+      const target: Draw[] = []
+      const queuedHere = BATCHED.test(type) && passes[0]!.blend
+      if (queuedHere)
+        queued.push({ depth: batchDepth(mesh, reference, world, view), draws: target })
+
+      for (const { alpha, ...pass } of passes) {
         const cube = pass.environment ? entryOf(pass.environment, model, unsupported) : undefined
-        draws.push({
+        ;(queuedHere ? target : draws).push({
           mesh,
           reference,
           byteOffset: (startIndex - reference.indexStart) * Uint16Array.BYTES_PER_ELEMENT,
@@ -321,7 +377,8 @@ const collectModel = (
           world,
           materialName: material.name,
           diffuse: [x, y, z, alpha ?? material.opacity ?? 1],
-          ambient: material.ambient ?? { x, y, z },
+          // Setting `Dc` overwrites `Ac` (`0x6eb2439`), and both start white. 37 retail materials differ.
+          ambient: material.diffuse ?? material.ambient ?? WHITE,
           emissive: material.emission ?? BLACK,
           colorVertex: (mesh.format & VertexFormat.Diffuse) !== 0,
           // A slot with no texture draws as an empty stage, which reads as white.
@@ -356,11 +413,17 @@ export const collectFrame = ({
   const draws: Draw[] = []
   const unsupported = new Set<string>()
   const unregistered = new Set<string>()
-  for (const model of models) collectModel(model, draws, unsupported, unregistered)
+  const view = viewMatrix(camera)
+  const queued: Queued[] = []
+  for (const model of models) collectModel(model, view, draws, queued, unsupported, unregistered)
+  // A room flushes its queue once, after all its objects (`RoomBatcherEnd`). Space does so per object,
+  // which M7 will need. Stable, where retail's qsort leaves equal keys in no set order.
+  queued.sort((a, b) => a.depth - b.depth)
+  for (const queue of queued) draws.push(...queue.draws)
   return {
     background: background ?? BLACK_BACKGROUND,
     hooks: hooksOf(draws),
-    view: viewMatrix(camera),
+    view,
     projection: projectionMatrix(camera, aspect),
     ambient,
     lights,

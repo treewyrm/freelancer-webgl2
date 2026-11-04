@@ -17,6 +17,7 @@ import { planReference, vertexLayout } from '#/mesh/plan.js'
 import { projectionMatrix, viewMatrix, type Camera } from '#/scene/camera.js'
 import { collectFrame, placeParts } from '#/scene/frame.js'
 import { partTransforms } from '#/scene/hierarchy.js'
+import { assertFrameMatches } from './compare.js'
 import { scenes } from './scenes.js'
 
 const data = process.env['FREELANCER_DATA'] ?? join(homedir(), 'Downloads/Freelancer/DATA')
@@ -377,51 +378,10 @@ test('the collected frame is retail draw for draw, in retail order', { skip }, (
   assert.deepEqual(frame.unsupported, [])
   assert.equal(frame.draws.length, 22)
 
+  assertFrameMatches(frame, draws, index)
+
   const close = (a: number, b: number, what: string) =>
     assert.ok(Math.abs(a - b) < 1e-5, `${what}: ${a} against ${b}`)
-
-  frame.draws.forEach((ours, n) => {
-    const retail = draws[n]!
-    const what = `draw ${n}, ${ours.materialName}`
-
-    assert.equal(ours.count, retail.indices, what)
-    // Retail's Two copies its second pass's vertices elsewhere, so only first passes compare.
-    if (!ours.negateNormals)
-      assert.equal(ours.reference.indexStart + ours.byteOffset / 2, retail.startIndex, what)
-
-    assert.equal(retail.states['CULLMODE'], ours.cull === 'back' ? 2 : 3, what)
-    assert.equal(retail.states['ALPHABLENDENABLE'], ours.blend ? 1 : 0, what)
-    assert.equal(retail.states['ALPHAREF'], ours.alphaReference, what)
-    assert.equal(retail.states['NORMALIZENORMALS'], ours.normalizeNormals ? 1 : 0, what)
-    assert.equal(retail.states['ZWRITEENABLE'], 1, what)
-
-    ours.diffuse.forEach((value, c) =>
-      close(value, retail.material!.diffuse[c]!, `${what} diffuse`),
-    )
-    const ambient = [ours.ambient.x, ours.ambient.y, ours.ambient.z]
-    ambient.forEach((value, c) => close(value, retail.material!.ambient[c]!, `${what} ambient`))
-    assert.deepEqual(retail.material!.emissive.slice(0, 3), [
-      ours.emissive.x,
-      ours.emissive.y,
-      ours.emissive.z,
-    ])
-
-    const stageNames = (stage: number) =>
-      namesOf(index, retail.stages[stage]!.texture!).map(({ name }) => name.toLowerCase())
-    if (ours.texture) assert.ok(stageNames(0).includes(ours.texture.name.toLowerCase()), what)
-    else assert.equal(retail.stages[0]!.texture, undefined, what)
-
-    // Stage 1 is on and reflecting exactly when ours is. Draw 12 leaves a stale cube bound, off.
-    const reflects = retail.stages[1]!.states['COLOROP'] === 5
-    assert.equal(reflects, ours.environment !== undefined, what)
-    if (ours.environment) {
-      assert.ok(stageNames(1).includes(ours.environment), what)
-      assert.equal(retail.stages[1]!.states['TEXCOORDINDEX'], 0x30000, what)
-    }
-
-    assert.equal(retail.stages[0]!.states['ADDRESSU'], 1, what)
-    assert.equal(ours.texture?.sampler.wrapU ?? 'repeat', 'repeat', what)
-  })
 
   // Retail's lights are in flipped view space, and this camera is identity.
   const [light] = draws[0]!.lights

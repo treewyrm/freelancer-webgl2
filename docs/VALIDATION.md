@@ -46,6 +46,7 @@ Models chosen because the earlier projects already found them useful for these f
 | --------- | ----- | --------- |
 | M1 | `li_elite` | Lit hull |
 | M3 | `li_elite` from a closer angle | Glass, environment map |
+| M3 | `ku_dragon` | A batched `DcDtOcOt` on an environment-mapped ship |
 | M3 | Rheinland fighter cockpit | Batching, translucency |
 | M3 | Nomad fighter | Nomad material |
 | M3 | Dyson platform | Detail map |

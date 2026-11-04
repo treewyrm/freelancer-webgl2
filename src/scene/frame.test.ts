@@ -96,13 +96,6 @@ test('opacity under 1 blends, whatever the texture', () => {
   assert.equal(draw!.diffuse[3], 0.5)
 })
 
-test('ambient follows diffuse unless a material names its own', () => {
-  const diffuse = { x: 0.5, y: 0.25, z: 0.125 }
-  assert.deepEqual(collectFrame(scene(skinned({ diffuse }))).draws[0]!.ambient, diffuse)
-  const ambient = { x: 1, y: 0, z: 0 }
-  assert.deepEqual(collectFrame(scene(skinned({ diffuse, ambient }))).draws[0]!.ambient, ambient)
-})
-
 test('Two draws again reversed, with normals negated and no alpha cut', () => {
   const draws = collectFrame(scene(skinned({ type: 'DcDtTwo' }))).draws
   assert.deepEqual(
@@ -232,4 +225,85 @@ test('a mesh with vertex colours says so on its draws', () => {
   const coloured = { ...mesh, format: mesh.format | VertexFormat.Diffuse }
   const [draw] = collectFrame(scene(skinned({}), { mesh: () => coloured })).draws
   assert.equal(draw!.colorVertex, true)
+})
+
+test('setting a diffuse overwrites the ambient, and neither set is white', () => {
+  const colour = { x: 0.5, y: 0.25, z: 1 }
+  const other = { x: 0.1, y: 0.2, z: 0.3 }
+  const ambientOf = (fields: Partial<Material>) =>
+    collectFrame(scene(skinned(fields))).draws[0]!.ambient
+  assert.deepEqual(ambientOf({ diffuse: colour, ambient: other }), colour)
+  assert.deepEqual(ambientOf({ ambient: other }), other)
+  assert.deepEqual(ambientOf({}), { x: 1, y: 1, z: 1 })
+})
+
+test('a blended batched type loses the environment stage and normalized normals', () => {
+  const environment = { environment: 'cube', texture: () => texture('rgb24_888') }
+  const [plain] = collectFrame(scene(skinned({}), environment)).draws
+  assert.deepEqual([plain!.environment, plain!.normalizeNormals], ['cube', true])
+
+  for (const type of ['DcDtOcOt', 'DcDtEcOcOt', 'DcDtOcOtTwo', 'DcDtEcOcOtTwo'])
+    for (const draw of collectFrame(scene(skinned({ type, opacity: 0.5 }), environment)).draws)
+      assert.deepEqual([type, draw.environment, draw.normalizeNormals], [type, undefined, false])
+})
+
+test('an opaque batched type submits at once, losing only the stage', () => {
+  const environment = { environment: 'cube', texture: () => texture('rgb24_888') }
+  const [draw] = collectFrame(scene(skinned({ type: 'DcDtOcOt' }), environment)).draws
+  assert.deepEqual([draw!.environment, draw!.normalizeNormals], [undefined, true])
+})
+
+const placedAt = (z: number) => ({
+  reference,
+  world: Matrix4.translation({ x: 0, y: 0, z }),
+})
+
+test('blended batched draws wait for the end, far before near, keeping their passes together', () => {
+  const frame = collectFrame({
+    ...scene(skinned({})),
+    models: [
+      {
+        parts: [placedAt(-5), placedAt(-50), placedAt(-20)],
+        mesh: () => mesh,
+        material: () => skinned({ name: 'glass', type: 'DcDtOcOtTwo', opacity: 0.5 }),
+        texture: () => texture('rgb24_888'),
+      },
+      {
+        parts: [placedAt(-10)],
+        mesh: () => mesh,
+        material: () => skinned({ name: 'hull', type: 'DcDt' }),
+        texture: () => texture('rgb24_888'),
+      },
+    ],
+  })
+  assert.deepEqual(
+    frame.draws.map(({ materialName, world, cull }) => [materialName, world.w.z, cull]),
+    [
+      ['hull', -10, 'back'],
+      ['glass', -50, 'back'],
+      ['glass', -50, 'front'],
+      ['glass', -20, 'back'],
+      ['glass', -20, 'front'],
+      ['glass', -5, 'back'],
+      ['glass', -5, 'front'],
+    ],
+  )
+})
+
+test('a blended type that is not batched keeps its place', () => {
+  const frame = collectFrame({
+    ...scene(skinned({})),
+    models: [
+      {
+        parts: [placedAt(-5), placedAt(-50)],
+        mesh: () => mesh,
+        material: () => skinned({ type: 'DcDt', opacity: 0.5 }),
+        texture: () => texture('rgb24_888'),
+      },
+    ],
+  })
+  assert.deepEqual(
+    frame.draws.map(({ world }) => world.w.z),
+    [-5, -50],
+  )
 })

@@ -42,5 +42,19 @@ export const scenes: ReadonlyMap<string, ReferenceScene> = new Map(
       ambient: [40, 40, 40],
       lights: [{ color: [255, 255, 255], direction: [0.5, -0.5, -1] }],
     } satisfies ReferenceScene,
+    {
+      // M3: `D_glass` is a blended `DcDtOcOt` on an environment-mapped ship, so whether batching drops
+      // the reflection, and whether it keeps submit order.
+      name: 'ku_dragon',
+      model: {
+        archetype: 'ku_dragon',
+        category: 'Spaceship',
+        position: [0, 0, -40],
+        orientation: rotation(150, 20),
+      },
+      camera: CAMERA,
+      ambient: [40, 40, 40],
+      lights: [{ color: [255, 255, 255], direction: [0.5, -0.5, -1] }],
+    } satisfies ReferenceScene,
   ].map((scene) => [scene.name, scene]),
 )

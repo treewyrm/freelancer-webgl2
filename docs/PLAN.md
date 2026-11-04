@@ -129,7 +129,11 @@ closing and losing the context all work. Then revise the API with what was learn
 - [x] All `DcDt` classes, blending by value, the alpha test, two-sided variants, vertex colour. Pinned
       by reading and hand-worked pixels. Needs a reference scene to reach "state matched": what D3D8
       reads for ambient on a vertex-coloured mesh, from a `COLOR2` no mesh has, is uncaptured.
-- [ ] Transparency order and `MaterialBatcher`.
+- [x] Transparency order and `MaterialBatcher`. A blended `OcOt` waits for the flush, far before near,
+      with no environment stage or normalized normals; an opaque one submits at once. `ku_dragon` matches
+      in state and picture, one queued draw only, so **the sort itself is read and not measured**. A room
+      flushes once, and space per object, which M7 will need. Order between models belongs to each frame.
+- [x] **You:** run `ku_dragon` and press F9.
 - [ ] `DcDtEt`, `BtDetailMapMaterial`, glass, environment maps.
 - [ ] **`NomadMaterial` in shaders**, as the worked example of not transcribing.
 - [ ] Engine overrides: colorize, cloak, wire, engine glow.
