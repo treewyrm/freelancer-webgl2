@@ -6,13 +6,16 @@ import { join } from 'node:path'
 import { test } from 'node:test'
 import type { CompoundNode } from '@treewyrm/freelancer/compound'
 import { Matrix3, Matrix4, type Vector3 } from '@treewyrm/freelancer/math'
+import { getMaterial, readMaterialLibrary } from '@treewyrm/freelancer/material'
 import { readRigidModel, type RigidPart } from '@treewyrm/freelancer/rigid'
+import { readTextureLibrary } from '@treewyrm/freelancer/texture'
 import { Directory } from '@treewyrm/freelancer/utf'
 import { getMesh, getMeshDraw, readVMeshLibrary, type VMeshPart } from '@treewyrm/freelancer/vmesh'
 import { readCapture, type CaptureDraw } from '#/capture/capture.js'
 import { indexTextures, namesOf } from '#/capture/texture-names.js'
 import { planReference, vertexLayout } from '#/mesh/plan.js'
 import { projectionMatrix, viewMatrix, type Camera } from '#/scene/camera.js'
+import { collectFrame } from '#/scene/frame.js'
 import { partTransforms } from '#/scene/hierarchy.js'
 import { scenes } from './scenes.js'
 
@@ -333,4 +336,94 @@ test('each part stands where retail drew it', { skip }, () => {
     }
   }
   assert.equal(compared, 19)
+})
+
+test('the collected frame is retail draw for draw, in retail order', { skip }, () => {
+  const draws = lastFrame().slice(0, 22)
+  const file = readFileSync(join(data, 'SHIPS/LIBERTY/LI_ELITE/li_elite.cmp'))
+  const root = Directory.read(new Uint8Array(file.buffer, file.byteOffset, file.byteLength))
+  const meshes = readVMeshLibrary(root)
+  const library = (path: string) => {
+    const bytes = readFileSync(join(data, path))
+    return Directory.read(new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.byteLength))
+  }
+  const ships = library('SHIPS/LIBERTY/li_playerships.mat')
+  const materials = readMaterialLibrary(ships)
+  const textures = [...readTextureLibrary(ships), ...readTextureLibrary(root)]
+  const index = indexTextures(data)
+
+  const frame = collectFrame({
+    camera: CAMERA,
+    aspect: 1024 / 768,
+    ambient: { x: 40 / 255, y: 40 / 255, z: 40 / 255 },
+    lights: [{ color: { x: 1, y: 1, z: 1 }, direction: { x: 0.5, y: -0.5, z: -1 } }],
+    models: [
+      {
+        root: readRigidModel(root) as CompoundNode<RigidPart>,
+        transform: sceneModel(),
+        mesh: (id) => getMesh(meshes, id),
+        material: (id) => getMaterial(materials, id),
+        texture: (name) =>
+          textures.find((entry) => entry.name.toLowerCase() === name.toLowerCase()),
+        environment: 'envmapbasic',
+      },
+    ],
+  })
+
+  assert.deepEqual(frame.unsupported, [])
+  assert.equal(frame.draws.length, 22)
+
+  const close = (a: number, b: number, what: string) =>
+    assert.ok(Math.abs(a - b) < 1e-5, `${what}: ${a} against ${b}`)
+
+  frame.draws.forEach((ours, n) => {
+    const retail = draws[n]!
+    const what = `draw ${n}, ${ours.materialName}`
+
+    assert.equal(ours.count, retail.indices, what)
+    // Retail's Two copies its second pass's vertices elsewhere, so only first passes compare.
+    if (!ours.negateNormals)
+      assert.equal(ours.reference.indexStart + ours.byteOffset / 2, retail.startIndex, what)
+
+    assert.equal(retail.states['CULLMODE'], ours.cull === 'back' ? 2 : 3, what)
+    assert.equal(retail.states['ALPHABLENDENABLE'], ours.blend ? 1 : 0, what)
+    assert.equal(retail.states['ALPHAREF'], ours.alphaReference, what)
+    assert.equal(retail.states['NORMALIZENORMALS'], ours.normalizeNormals ? 1 : 0, what)
+    assert.equal(retail.states['ZWRITEENABLE'], 1, what)
+
+    ours.diffuse.forEach((value, c) =>
+      close(value, retail.material!.diffuse[c]!, `${what} diffuse`),
+    )
+    const ambient = [ours.ambient.x, ours.ambient.y, ours.ambient.z]
+    ambient.forEach((value, c) => close(value, retail.material!.ambient[c]!, `${what} ambient`))
+    assert.deepEqual(retail.material!.emissive.slice(0, 3), [
+      ours.emissive.x,
+      ours.emissive.y,
+      ours.emissive.z,
+    ])
+
+    const stageNames = (stage: number) =>
+      namesOf(index, retail.stages[stage]!.texture!).map(({ name }) => name.toLowerCase())
+    if (ours.texture) assert.ok(stageNames(0).includes(ours.texture.name.toLowerCase()), what)
+    else assert.equal(retail.stages[0]!.texture, undefined, what)
+
+    // Stage 1 is on and reflecting exactly when ours is. Draw 12 leaves a stale cube bound, off.
+    const reflects = retail.stages[1]!.states['COLOROP'] === 5
+    assert.equal(reflects, ours.environment !== undefined, what)
+    if (ours.environment) {
+      assert.ok(stageNames(1).includes(ours.environment), what)
+      assert.equal(retail.stages[1]!.states['TEXCOORDINDEX'], 0x30000, what)
+    }
+
+    assert.equal(retail.stages[0]!.states['ADDRESSU'], 1, what)
+    assert.equal(ours.texture?.sampler.wrapU ?? 'repeat', 'repeat', what)
+  })
+
+  // Retail's lights are in flipped view space, and this camera is identity.
+  const [light] = draws[0]!.lights
+  const length = Math.hypot(0.5, 0.5, 1)
+  close(light!.direction[0]!, 0.5 / length, 'light x')
+  close(light!.direction[1]!, -0.5 / length, 'light y')
+  close(light!.direction[2]!, 1 / length, 'light z')
+  assert.equal(draws[0]!.states['AMBIENT'], 0xff282828)
 })

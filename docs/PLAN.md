@@ -77,7 +77,10 @@ end: its texture by name, stage setup, material, lights and matrices. Pinned by
       in `li_elite`, whose camera is identity: **a turned camera is unmeasured**, and rests on the source.
 - [x] Static `Cmpnd` hierarchy to world transforms (§5). All 19 hull groups stand where retail drew
       them in `li_elite`, the wings' turned rest orientations included.
-- [ ] Frame as data: a pure function from scene to ordered draw list ([ARCHITECTURE.md](ARCHITECTURE.md)).
+- [x] Frame as data: a pure function from scene to ordered draw list ([ARCHITECTURE.md](ARCHITECTURE.md)).
+      `li_elite`'s 22 hull draws match in order, cull, blend, alpha reference, colours and textures.
+      Covers `DcDt`, `DcDtEc`, their `Two`s and the high glass names; the rest is reported, undrawn.
+      **Beyond this capture:** ordering between models, and no-reflection and blended `DcDt` states.
 - [ ] Fixed-function vertex lighting, from `SetLight` and `SetMaterial` semantics, in a vertex shader.
 - [ ] `DcDt` as the first material program. **Not plain `DcDt`:** the captured hull draws add the
       `envmapbasic` cube on the next stage, `MODULATE2X` with camera space reflection
