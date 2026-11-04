@@ -51,9 +51,8 @@ Details are in [VALIDATION.md](VALIDATION.md).
 - [x] Capture reader in `src/capture/`, typed and test-only, with tests over a hand-written sample
       shaped by the first real capture.
 - [x] Texture name index: from a capture's hash to a library texture, for the "by name" check below.
-      Run 1 names 13 of 35 textures, every DXT among them. The rest are unexplained: some 256x256
-      R5G6B5, and small single-level ones that may be generated at runtime. In `li_elite`, every
-      hull texture and both environment cubes resolve; the unnamed ones there are menu art.
+      Every texture from a file now resolves at every level. Only the menu's text (format 25) and its
+      1024x1024 logo have no library entry, and they may be built at runtime.
 - [x] Reference scene generator: writes a `.thn` with `@treewyrm/freelancer/thn/text` from a small
       description of model, camera and lights. Leads: `freelancer-testing/tests/thn.ts` and its
       `npm run mount`.
@@ -66,8 +65,10 @@ end: its texture by name, stage setup, material, lights and matrices. Pinned by
 
 ## M1: First picture
 
-- [ ] Texture upload: DXT and Targa, mip chains, vertical origin, addressing and filtering. Retail
-      uploads Targa rows as stored and 24-bit as R5G6B5 by truncation (matched by hash, run 1).
+- [x] Texture upload: DXT and Targa, mip chains, vertical origin, addressing and filtering. Texels
+      hash the same as both captures. Retail narrows 24-bit to R5G6B5 by rounding, and D3DX gives a
+      cube's generated levels a rounded 2x2 box. **Not yet captured:** top-left Targas (the source
+      and the library agree on reversing them), DXT3, 16-bit Targas, the two 24-bit surfaces.
 - [ ] VMesh buffers, including the base-vertex scheme (library `RENDERER.md` §3).
 - [ ] Camera: THN `cameraprops` to matrices, with the mirrored projection and `CCW` (`RENDERER.md` §2).
 - [ ] Static `Cmpnd` hierarchy to world transforms (§5).

@@ -2,13 +2,9 @@
 import { readdirSync, readFileSync } from 'node:fs'
 import { join, relative } from 'node:path'
 import { crc32 } from 'node:zlib'
-import {
-  readTextureLibrary,
-  type CubeFaces,
-  type Texture,
-  type TextureEntry,
-} from '@treewyrm/freelancer/texture'
+import { readTextureLibrary, type TextureEntry } from '@treewyrm/freelancer/texture'
 import { Directory, isUTF } from '@treewyrm/freelancer/utf'
+import { planUpload, type TextureUpload } from '#/texture/upload.js'
 import type { CaptureTexture } from './capture.js'
 
 export interface TextureName {
@@ -34,68 +30,49 @@ const fnv1a = (bytes: Uint8Array): number => {
 /** The proxy's texture hash: CRC-32 then FNV-1a. See `tools/d3d8log/src/capture.cpp`. */
 export const contentHash = (bytes: Uint8Array): string => hex(crc32(bytes)) + hex(fnv1a(bytes))
 
-/** Blue, green, red bytes to `D3DFMT_R5G6B5`. */
-const toR5G6B5 = (level: Uint8Array): Uint8Array => {
-  const output = new Uint8Array((level.length / 3) * 2)
-  for (let from = 0, to = 0; from < level.length; from += 3, to += 2) {
-    const pixel =
-      ((level[from + 2]! >> 3) << 11) | ((level[from + 1]! >> 2) << 5) | (level[from]! >> 3)
-    output[to] = pixel & 0xff
-    output[to + 1] = pixel >> 8
+/** Retail's memory order: D3D's A8R8G8B8 and A1R5G5B5 are not GL's. */
+const asDevice = ({ layout }: TextureUpload, pixels: Uint8Array | Uint16Array): Uint8Array => {
+  if (layout === 'rgb5a1') {
+    const output = (pixels as Uint16Array).map((pixel) => (pixel >> 1) | ((pixel & 1) << 15))
+    return new Uint8Array(output.buffer)
+  }
+  if (layout === 'rgba8') {
+    const output = (pixels as Uint8Array).slice()
+    for (let at = 0; at < output.length; at += 4) {
+      output[at] = pixels[at + 2]!
+      output[at + 2] = pixels[at]!
+    }
+    return output
+  }
+  return new Uint8Array(pixels.buffer, pixels.byteOffset, pixels.byteLength)
+}
+
+/** The proxy hashes a cube's level as its six faces in a row, +X first. */
+const inARow = (levels: Uint8Array[]): Uint8Array => {
+  const output = new Uint8Array(levels.reduce((total, level) => total + level.length, 0))
+  let offset = 0
+  for (const level of levels) {
+    output.set(level, offset)
+    offset += level.length
   }
   return output
 }
 
-/**
- * A level as RP8 uploads it. Measured against the stock menu capture: Targa rows arrive exactly as
- * stored, unflipped whatever the file's origin says, and 24-bit becomes R5G6B5 by truncation.
- */
-const uploaded = (entry: Texture, level: Uint8Array): Uint8Array =>
-  entry.storage === 'targa' && entry.format === 'rgb24_888' ? toR5G6B5(level) : level
-
-/** The proxy hashes a cube's level as its six faces in a row, +X first. */
-const cubeLevels = (faces: CubeFaces): Uint8Array[] =>
-  faces[0].map((_, at) => {
-    const levels = faces.map((face) => face[at] ?? new Uint8Array())
-    const output = new Uint8Array(levels.reduce((total, level) => total + level.length, 0))
-    let offset = 0
-    for (const level of levels) {
-      output.set(level, offset)
-      offset += level.length
-    }
-    return output
-  })
-
-const addEntry = (
-  index: TextureIndex,
-  source: string,
-  name: string,
-  width: number,
-  levels: Uint8Array[],
-): void =>
-  levels.forEach((level, at) => {
-    const hash = contentHash(level)
-    index.set(hash, [...(index.get(hash) ?? []), { source, name, width: Math.max(1, width >> at) }])
-  })
-
-/** Adds every usable level of a library to the index. */
+/** Adds every usable level of a library to the index, as retail's device holds it. */
 export const addLibrary = (
   index: TextureIndex,
   source: string,
   library: Iterable<TextureEntry>,
 ): void => {
   for (const entry of library) {
-    if (entry.type === 'cube') {
-      addEntry(index, source, entry.name, entry.width, cubeLevels(entry.faces))
-      continue
-    }
-    if (entry.type !== 'image') continue
-    entry.levels.forEach((level, at) => {
-      const width = Math.max(1, entry.width >> at)
-      const height = Math.max(1, entry.height >> at)
+    if (entry.type === 'animated') continue
+    const upload = planUpload(entry)
+    upload.faces[0]!.forEach((_, at) => {
+      const width = Math.max(1, upload.width >> at)
+      const height = Math.max(1, upload.height >> at)
       if (width < SMALLEST_LEVEL || height < SMALLEST_LEVEL) return
 
-      const hash = contentHash(uploaded(entry, level))
+      const hash = contentHash(inARow(upload.faces.map((face) => asDevice(upload, face[at]!))))
       const names = index.get(hash) ?? []
       names.push({ source, name: entry.name, width })
       index.set(hash, names)
@@ -109,15 +86,23 @@ const filesUnder = (directory: string): string[] =>
     return entry.isDirectory() ? filesUnder(path) : [path]
   })
 
-/** Indexes every texture library under a `DATA` directory. */
-export const indexTextures = (root: string): TextureIndex => {
-  const index: TextureIndex = new Map()
+/** Calls back with every texture library under a `DATA` directory. */
+export const forEachLibrary = (
+  root: string,
+  visit: (source: string, library: Iterable<TextureEntry>) => void,
+): void => {
   for (const path of filesUnder(root)) {
     const file = readFileSync(path)
     const bytes = new Uint8Array(file.buffer, file.byteOffset, file.byteLength)
     if (bytes.byteLength < 4 || !isUTF(bytes)) continue
-    addLibrary(index, relative(root, path), readTextureLibrary(Directory.read(bytes)))
+    visit(relative(root, path), readTextureLibrary(Directory.read(bytes)))
   }
+}
+
+/** Indexes every texture library under a `DATA` directory. */
+export const indexTextures = (root: string): TextureIndex => {
+  const index: TextureIndex = new Map()
+  forEachLibrary(root, (source, library) => addLibrary(index, source, library))
   return index
 }
 

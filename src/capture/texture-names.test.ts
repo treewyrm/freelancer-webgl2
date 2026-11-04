@@ -67,10 +67,10 @@ test('levels too small to identify anything are left out', () => {
   assert.equal(index.size, 0)
 })
 
-test('a 24-bit Targa is compared as uploaded: rows as stored, and as R5G6B5', () => {
-  // Two rows of 16 BGR pixels, in file order: pure red, then white.
+test('a Targa is compared as uploaded: rows as stored without the top-left bit, in BGR order', () => {
+  // The library reads RGB. One row of pure red, one of white, as a device's R5G6B5.
   const level = new Uint8Array(16 * 2 * 3)
-  for (let at = 0; at < 48; at += 3) level[at + 2] = 0xff
+  for (let at = 0; at < 48; at += 3) level[at] = 0xff
   level.fill(0xff, 48)
 
   const index: TextureIndex = new Map()
@@ -86,11 +86,15 @@ test('a 24-bit Targa is compared as uploaded: rows as stored, and as R5G6B5', ()
   ])
 })
 
-test('a 32-bit Targa is compared as stored', () => {
-  const level = new Uint8Array(16 * 16 * 4).fill(7)
+test('a 32-bit Targa is compared in BGRA order', () => {
+  const level = new Uint8Array(16 * 16 * 4)
+  for (let at = 0; at < level.length; at += 4) level.set([1, 2, 3, 4], at)
+  const device = new Uint8Array(level.length)
+  for (let at = 0; at < level.length; at += 4) device.set([3, 2, 1, 4], at)
+
   const index: TextureIndex = new Map()
   addLibrary(index, 'a.txm', [image({ storage: 'targa', format: 'rgba32_8888', levels: [level] })])
-  assert.equal(namesOf(index, captured([contentHash(level)])).length, 1)
+  assert.equal(namesOf(index, captured([contentHash(device)])).length, 1)
 })
 
 test('a cube is matched by its six faces in a row', () => {
