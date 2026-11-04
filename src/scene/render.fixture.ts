@@ -10,7 +10,8 @@ import {
 } from '@treewyrm/freelancer/vmesh'
 import { createProgram } from '#/gl/program.js'
 import type { Fixture } from '#/harness.js'
-import { collectFrame, type Frame, type Scene, type SceneModel } from './frame.js'
+import { DIFFUSE_UNIT, ENVIRONMENT_UNIT } from '#/material/dcdt.js'
+import { collectFrame, placeParts, type Frame, type Scene, type SceneModel } from './frame.js'
 import { createRenderer, type FrameHooks } from './render.js'
 
 export interface RenderReport {
@@ -18,6 +19,8 @@ export interface RenderReport {
   emptyHooksMatch: boolean
   trashingHooksMatch: boolean
   hookOrder: string[]
+  samplersInHook: boolean[]
+  samplersAfter: boolean[]
   opaqueHookSeesDepth: number[]
   endHookDraws: number[]
   sharedBuffers: { vertexBuffers: number; arrays: number }
@@ -76,8 +79,7 @@ const OPAQUE: Material = { name: 'o', type: 'DcDt', diffuse: { x: 1, y: 0, z: 0 
 const BLENDED: Material = { name: 'b', type: 'DcDt', diffuse: { x: 0, y: 1, z: 0 }, opacity: 0.5 }
 
 const modelOf = (mesh: VMeshData, material: Material): SceneModel => ({
-  root: part(referenceOf()),
-  transform: Matrix4.translation({ x: 0, y: 0, z: 0 }),
+  parts: placeParts(part(referenceOf()), Matrix4.translation({ x: 0, y: 0, z: 0 })),
   mesh: () => mesh,
   material: () => material,
   texture: () => undefined,
@@ -195,6 +197,19 @@ export default (async (gl) => {
     opaque: () => hookOrder.push('opaque'),
     end: () => hookOrder.push('end'),
   })
+
+  const samplers = () =>
+    [DIFFUSE_UNIT, ENVIRONMENT_UNIT].map((unit) => {
+      gl.activeTexture(gl.TEXTURE0 + unit)
+      return gl.getParameter(gl.SAMPLER_BINDING) !== null
+    })
+  let samplersInHook: boolean[] = []
+  renderer.render(frame, {
+    end: () => {
+      samplersInHook = samplers()
+    },
+  })
+  const samplersAfter = samplers()
 
   // The host's own full-screen triangle, at clip depth `z`.
   const host = createProgram(
@@ -322,6 +337,8 @@ void main() { color = vec4(0.0, 0.0, 1.0, 1.0); }`,
     emptyHooksMatch,
     trashingHooksMatch,
     hookOrder,
+    samplersInHook,
+    samplersAfter,
     opaqueHookSeesDepth,
     endHookDraws,
     sharedBuffers,

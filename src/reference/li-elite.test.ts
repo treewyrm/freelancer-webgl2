@@ -15,7 +15,7 @@ import { readCapture, type CaptureDraw } from '#/capture/capture.js'
 import { indexTextures, namesOf } from '#/capture/texture-names.js'
 import { planReference, vertexLayout } from '#/mesh/plan.js'
 import { projectionMatrix, viewMatrix, type Camera } from '#/scene/camera.js'
-import { collectFrame } from '#/scene/frame.js'
+import { collectFrame, placeParts } from '#/scene/frame.js'
 import { partTransforms } from '#/scene/hierarchy.js'
 import { scenes } from './scenes.js'
 
@@ -364,8 +364,7 @@ test('the collected frame is retail draw for draw, in retail order', { skip }, (
     lights: [{ color: { x: 1, y: 1, z: 1 }, direction: { x: 0.5, y: -0.5, z: -1 } }],
     models: [
       {
-        root: readRigidModel(root) as CompoundNode<RigidPart>,
-        transform: sceneModel(),
+        parts: placeParts(readRigidModel(root) as CompoundNode<RigidPart>, sceneModel()),
         mesh: (id) => getMesh(meshes, id),
         material: (id) => getMaterial(materials, id),
         texture: (name) =>

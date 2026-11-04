@@ -22,8 +22,8 @@ An earlier attempt, `freelancer-render`, failed the other way, by transcribing t
 | --------- | -------- | ------ |
 | [M0](#m0-retail-evidence) | Captures and screenshots from retail, on demand | Done |
 | [M1](#m1-first-picture) | One static ship, matched against retail | Done, canopy deferred |
-| [M2](#m2-in-the-model-viewer) | That ship in the real model viewer, with editor overlays | **Next** |
-| [M3](#m3-every-rigid-model) | All materials on rigid models, with animation and LOD | |
+| [M2](#m2-in-the-model-viewer) | That ship in the real model viewer, with editor overlays | Done |
+| [M3](#m3-every-rigid-model) | All materials on rigid models, with animation and LOD | **Next** |
 | [M4](#m4-spheres-and-the-sky) | Planets, atmospheres, starspheres | |
 | [M5](#m5-characters) | Skinned characters | |
 | [M6](#m6-effects) | Alchemy effects | |
@@ -104,15 +104,19 @@ matches within a stated tolerance.
 Early on purpose: it tests the API and the injection design while they are cheap to change.
 
 - [x] Renderer API, first version: `collectFrame`, `createRenderer`, and what overlays need, from
-      `src/index.ts`. Shaped by reading `src/webview/model/`, so expect revision once it's in use.
+      `src/index.ts`. Using it moved a model's input to posed parts, since a host holds them already
+      (`placeParts` builds them from a compound), and released sampler objects around hooks.
 - [x] Hook points in the frame, with the empty-hook pixel test: `begin`, `opaque` and `end`. Between
       layers comes with M8, which has them.
 - [x] Resource ownership: explicit disposal, sharing between instances, context-loss recovery, and
       invalidating an edited asset.
 - [x] Unsupported materials are reported to the host; none disappears silently. So is a mesh or
       texture that isn't found.
-- [ ] In `freelancer-vscode`, as its own change: a setting that switches the model viewer to this
-      renderer, with at least hardpoints and wireframe drawn through hooks.
+- [x] In `freelancer-vscode`, as its own change: a setting that switches the model viewer to this
+      renderer, with at least hardpoints and wireframe drawn through hooks. Built on its
+      `webgl2-model-viewer` branch as `freelancer.model.webgl2`, and its real viewport passes in
+      headless Chromium: overlays, resizing, context loss and closing.
+- [x] **You:** open `li_elite` in VS Code with the setting on. It displays in the model editor.
 
 **Done when** `li_elite` opens in the extension behind the switch, overlays included, and resizing,
 closing and losing the context all work. Then revise the API with what was learned.

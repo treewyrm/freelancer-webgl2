@@ -11,7 +11,7 @@ import {
   type VMeshData,
   type VMeshRef,
 } from '@treewyrm/freelancer/vmesh'
-import { collectFrame, type Scene, type SceneModel } from './frame.js'
+import { collectFrame, placeParts, type Scene, type SceneModel } from './frame.js'
 
 const reference: VMeshRef = {
   meshId: 1,
@@ -68,8 +68,7 @@ const scene = (material: Material, model: Partial<SceneModel> = {}): Scene => ({
   lights: [],
   models: [
     {
-      root,
-      transform: Matrix4.translation({ x: 0, y: 0, z: 0 }),
+      parts: placeParts(root, Matrix4.translation({ x: 0, y: 0, z: 0 })),
       mesh: () => mesh,
       material: () => material,
       texture: () => texture('dxt1'),
@@ -149,4 +148,38 @@ test('what M3 has yet to cover is reported, and draws nothing', () => {
   const frame = collectFrame(scene({ name: 'detailmap_rock', type: 'DcDt' }))
   assert.deepEqual(frame.draws, [])
   assert.deepEqual(frame.unsupported, ['detailmap_rock'])
+})
+
+test('placing a compound model takes the level asked for, clamped, and leaves out hidden parts', () => {
+  const near = { ...reference, meshId: 1 }
+  const far = { ...reference, meshId: 2 }
+  const levelled = (
+    name: string,
+    children: CompoundNode<RigidPart>[],
+  ): CompoundNode<RigidPart> => ({
+    ...root,
+    name,
+    children,
+    part: {
+      type: 'rigid',
+      hardpoints: [],
+      part: {
+        type: 'multilevel',
+        levels: [
+          { type: 'vmeshpart', reference: near },
+          { type: 'vmeshpart', reference: far },
+        ],
+      },
+    } as RigidPart,
+  })
+  const tree = levelled('parent', [levelled('child', [])])
+  const origin = Matrix4.translation({ x: 0, y: 0, z: 0 })
+
+  const ids = (options: Parameters<typeof placeParts>[2]) =>
+    placeParts(tree, origin, options).map(({ reference }) => reference.meshId)
+
+  assert.deepEqual(ids({}), [1, 1])
+  assert.deepEqual(ids({ level: 9 }), [2, 2])
+  // A hidden parent's child still draws.
+  assert.deepEqual(ids({ visible: ({ name }) => name !== 'parent' }), [1])
 })

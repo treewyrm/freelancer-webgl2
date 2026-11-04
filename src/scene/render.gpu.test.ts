@@ -37,6 +37,11 @@ test('hooks run in frame order, and a host draws with the game path depth', () =
   assert.deepEqual(report.endHookDraws, [0, 0, 255, 255])
 })
 
+test('a hook, and the host after a frame, find no sampler object overriding their textures', () => {
+  assert.deepEqual(report.samplersInHook, [false, false])
+  assert.deepEqual(report.samplersAfter, [false, false])
+})
+
 test('models on one mesh share its vertex buffer', () => {
   // One vertex buffer and two index buffers, one array per reference.
   assert.deepEqual(report.sharedBuffers, { vertexBuffers: 3, arrays: 2 })

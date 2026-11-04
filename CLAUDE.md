@@ -4,7 +4,7 @@
 `@treewyrm/freelancer-webgl2`. Its first consumer is [freelancer-vscode](../freelancer-vscode),
 whose webviews will move onto it.
 
-**Status: M1 done, M2 next.** One static ship renders and matches retail. Its canopy glass is deferred; see [VALIDATION.md](docs/VALIDATION.md#open-questions).
+**Status: M2 done, M3 next.** One static ship renders, matches retail, and opens in the extension's model viewer behind a setting. Its canopy glass is deferred; see [VALIDATION.md](docs/VALIDATION.md#open-questions).
 
 | Doc | Covers |
 | --- | ------ |

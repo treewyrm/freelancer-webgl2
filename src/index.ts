@@ -4,11 +4,14 @@ export { createProgram, type Program } from '#/gl/program.js'
 export { createRenderer, type FrameHooks, type HookContext, type Renderer } from '#/scene/render.js'
 export {
   collectFrame,
+  placeParts,
   type Draw,
   type DrawTexture,
   type Frame,
   type FrameHook,
   type HookName,
+  type PlacedPart,
+  type PlaceOptions,
   type Scene,
   type SceneLight,
   type SceneModel,

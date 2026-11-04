@@ -21,15 +21,23 @@ export interface SceneLight {
   direction: Vector3
 }
 
+/** One piece of geometry where the host has posed it, at the detail level it chose. */
+export interface PlacedPart {
+  reference: VMeshRef
+  world: Matrix4
+}
+
 export interface SceneModel {
-  root: CompoundNode<RigidPart>
-  transform: Matrix4
+  parts: PlacedPart[]
   mesh: (id: number) => VMeshData | undefined
   material: (id: number) => Material | undefined
   texture: (name: string) => TextureEntry | undefined
   /** The archetype's `envmap_material`: the model does not say. Absent means no reflection. */
   environment?: string
-  /** Which detail level to draw, clamped to what a part has. The top one when absent. */
+}
+
+export interface PlaceOptions {
+  /** Which detail level to take, clamped to what a part has. The top one when absent. */
   level?: number
   /** A part left out draws nothing, and its children still do. */
   visible?: (part: CompoundNode<RigidPart>) => boolean
@@ -219,9 +227,26 @@ const passesOf = (kind: MaterialClass, material: Material, model: SceneModel): P
 const referenceOf = (part: RigidPart, level: number): VMeshRef | undefined => {
   if (part.type !== 'rigid' || !part.part) return undefined
   if (part.part.type !== 'multilevel') return part.part.reference
-  // The game's own LOD selection comes with M3. The top level is what `li_elite` draws at its distance.
   const { levels } = part.part
   return levels[Math.min(level, levels.length - 1)]?.reference
+}
+
+/**
+ * A compound model's parts, depth first (`li_elite`), for a host that doesn't pose its own. The game's
+ * own LOD selection comes with M3; the top level is what `li_elite` draws at its distance.
+ */
+export const placeParts = (
+  root: CompoundNode<RigidPart>,
+  transform: Matrix4,
+  { level = 0, visible, jointState }: PlaceOptions = {},
+): PlacedPart[] => {
+  const parts: PlacedPart[] = []
+  for (const [node, world] of partTransforms(root, transform, jointState)) {
+    if (visible && !visible(node)) continue
+    const reference = referenceOf(node.part, level)
+    if (reference) parts.push({ reference, world })
+  }
+  return parts
 }
 
 /** A slot's texture, reporting what the library doesn't hold or M3 has yet to animate. */
@@ -236,12 +261,9 @@ const entryOf = (
   return undefined
 }
 
-/** Lists a model's draws, parts depth first and each part's groups in order (`li_elite`). */
+/** Lists a model's draws, its parts in the order given and each part's groups in order. */
 const collectModel = (model: SceneModel, draws: Draw[], unsupported: Set<string>): void => {
-  for (const [node, world] of partTransforms(model.root, model.transform, model.jointState)) {
-    if (model.visible && !model.visible(node)) continue
-    const reference = referenceOf(node.part, model.level ?? 0)
-    if (!reference) continue
+  for (const { reference, world } of model.parts) {
     const mesh = model.mesh(reference.meshId)
     if (!mesh) {
       unsupported.add(`mesh ${reference.meshId}`)

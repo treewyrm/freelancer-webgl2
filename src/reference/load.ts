@@ -6,7 +6,7 @@ import { Directory } from '@treewyrm/freelancer/utf'
 import { getMesh, readVMeshLibrary } from '@treewyrm/freelancer/vmesh'
 import type { CompoundNode } from '@treewyrm/freelancer/compound'
 import type { RigidPart } from '@treewyrm/freelancer/rigid'
-import type { Scene } from '#/scene/frame.js'
+import { placeParts, type Scene } from '#/scene/frame.js'
 import { cameraOf, modelMatrixOf, type ReferenceScene } from './scene.js'
 
 export type ReadAsset = (path: string) => Promise<Uint8Array>
@@ -59,8 +59,7 @@ export const loadScene = async (
       })),
       models: [
         {
-          root: model as CompoundNode<RigidPart>,
-          transform: modelMatrixOf(definition),
+          parts: placeParts(model as CompoundNode<RigidPart>, modelMatrixOf(definition)),
           mesh: (id) => getMesh(meshes, id),
           material: (id) => getMaterial(materials, id),
           texture,

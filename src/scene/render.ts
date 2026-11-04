@@ -29,8 +29,9 @@ export interface HookContext {
 }
 
 /**
- * The host's own drawing. It finds the depth buffer the game path left, and may change any GL state:
- * the renderer sets its own again after each hook, so nothing leaks into the game path.
+ * The host's own drawing. It finds the depth buffer the game path left, with no vertex array or
+ * sampler object bound, and may change any GL state: the renderer sets its own again after each hook,
+ * so nothing leaks into the game path.
  */
 export type FrameHooks = Partial<Record<HookName, (context: HookContext) => void>>
 
@@ -154,11 +155,18 @@ export const createRenderer = (gl: WebGL2RenderingContext): Renderer => {
       gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ZERO, gl.ONE)
     }
 
+    // A sampler object outranks a texture's own parameters, so one left bound would change a host's.
+    const release = () => {
+      gl.bindVertexArray(null)
+      gl.bindSampler(DIFFUSE_UNIT, null)
+      gl.bindSampler(ENVIRONMENT_UNIT, null)
+    }
+
     const runHooks = (before: number) => {
       for (const hook of frame.hooks) {
         const run = hook.before === before ? hooks[hook.name] : undefined
         if (!run) continue
-        gl.bindVertexArray(null)
+        release()
         run({ gl, frame, viewProjection })
         applyState()
       }
@@ -193,7 +201,7 @@ export const createRenderer = (gl: WebGL2RenderingContext): Renderer => {
     })
 
     runHooks(frame.draws.length)
-    gl.bindVertexArray(null)
+    release()
     return true
   }
 
