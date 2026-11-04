@@ -22,7 +22,7 @@ import {
 import { homedir } from 'node:os'
 import { dirname, join, relative } from 'node:path'
 import { readCapture } from '#/capture/capture.js'
-import { BAND_ANIMATIONS, BAND_LIBRARIES, BANDS } from './bands.js'
+import { BAND_LIBRARIES } from './bands.js'
 import { generateBands } from './generate.js'
 import { sceneScript } from './scene.js'
 import { Document } from '@treewyrm/freelancer/ini'
@@ -80,7 +80,7 @@ const mount = (name: string): void => {
   const solars = `${SOLAR_ARCH}.retail`
   if (existsSync(solars)) renameSync(solars, SOLAR_ARCH)
   if (scene.generated) {
-    const { model, library } = generateBands(BANDS, BAND_ANIMATIONS)
+    const { model, library } = generateBands(scene.generated)
     writeFileSync(join(SCRIPTS, 'bands.3db'), model)
     writeFileSync(join(SCRIPTS, 'bands.mat'), library)
     copyFileSync(SOLAR_ARCH, solars)
@@ -95,7 +95,7 @@ const mount = (name: string): void => {
       'DA_archetype = scripts\\reference\\bands.3db',
       ...libraries.map((path) => `material_library = ${path}`),
       'material_library = scripts\\reference\\bands.mat',
-      'envmap_material = envmapbasic',
+      ...(scene.generated.noEnvironment ? [] : ['envmap_material = envmapbasic']),
       'LODranges = 0, 2000',
       'mass = 1000',
       'solar_radius = 10',

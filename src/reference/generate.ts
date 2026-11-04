@@ -19,12 +19,27 @@ import {
 const SECTORS = 24
 const RADIUS = 10
 const MESH = 'bands.vms'
-// Position, normal and two UV sets.
-const FORMAT = 0x212 as VertexFormat
-const STRIDE = 40
+
+/** What a generated sphere is made of. */
+export interface Generated {
+  materials: readonly Material[]
+  animations?: readonly MaterialAnim[]
+  /** Leaves `envmap_material` off the archetype, which a sphere of override types was tested with. */
+  noEnvironment?: true
+  /** How many UV sets its mesh has. Two when absent. */
+  uvSets?: 1 | 2
+}
+
+// Position and normal, then the UV sets.
+const formatOf = (uvSets: number) => (uvSets === 1 ? 0x112 : 0x212) as VertexFormat
+const strideOf = (uvSets: number) => 24 + uvSets * 8
 
 /** One latitude band per material, top to bottom, each with its own vertices. */
-const bandsMesh = (materials: readonly Material[]): { mesh: VMeshData; reference: VMeshRef } => {
+const bandsMesh = ({
+  materials,
+  uvSets = 2,
+}: Generated): { mesh: VMeshData; reference: VMeshRef } => {
+  const STRIDE = strideOf(uvSets)
   const perBand = (SECTORS + 1) * 2
   const count = perBand * materials.length
   const bytes = new DataView(new ArrayBuffer(count * STRIDE))
@@ -45,9 +60,13 @@ const bandsMesh = (materials: readonly Material[]): { mesh: VMeshData; reference
         const at = (base + side * (SECTORS + 1) + s) * STRIDE
         const u = s / 6
         const v = row / 2
-        ;[...normal.map((c) => c * RADIUS), ...normal, u, v, u * 3, v * 3].forEach((value, c) =>
-          bytes.setFloat32(at + c * 4, value, true),
-        )
+        ;[
+          ...normal.map((c) => c * RADIUS),
+          ...normal,
+          u,
+          v,
+          ...(uvSets === 2 ? [u * 3, v * 3] : []),
+        ].forEach((value, c) => bytes.setFloat32(at + c * 4, value, true))
       }
     })
     for (let s = 0; s < SECTORS; s++) {
@@ -62,7 +81,7 @@ const bandsMesh = (materials: readonly Material[]): { mesh: VMeshData; reference
     name: MESH,
     version: 1,
     primitive: Primitive.TriangleList,
-    format: FORMAT,
+    format: formatOf(uvSets),
     groups: materials.map((material, band) => ({
       materialId: getResourceId(material.name),
       vertexStart: band * perBand,
@@ -97,21 +116,18 @@ export interface GeneratedFiles {
   library: Uint8Array
 }
 
-export const bandsModel = (materials: readonly Material[]): RigidModel => ({
+export const bandsModel = (generated: Generated): RigidModel => ({
   type: 'rigid',
   hardpoints: [],
-  part: { type: 'vmeshpart', reference: bandsMesh(materials).reference },
+  part: { type: 'vmeshpart', reference: bandsMesh(generated).reference },
 })
 
-export const bandsMeshData = (materials: readonly Material[]): VMeshData =>
-  bandsMesh(materials).mesh
+export const bandsMeshData = (generated: Generated): VMeshData => bandsMesh(generated).mesh
 
-export const generateBands = (
-  materials: readonly Material[],
-  animations: readonly MaterialAnim[] = [],
-): GeneratedFiles => {
-  const model = writeRigidModel(bandsModel(materials))
-  model.children.push(writeVMeshLibrary([bandsMeshData(materials)]))
+export const generateBands = (generated: Generated): GeneratedFiles => {
+  const { materials, animations = [] } = generated
+  const model = writeRigidModel(bandsModel(generated))
+  model.children.push(writeVMeshLibrary([bandsMeshData(generated)]))
   const library = new Directory('\\\\', [
     writeMaterialLibrary(materials),
     ...(animations.length ? [writeMaterialAnimLibrary(animations)] : []),

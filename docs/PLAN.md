@@ -150,9 +150,11 @@ closing and losing the context all work. Then revise the API with what was learn
 - [x] What retail barely uses and mods can name, on the generated `bands` sphere, where every band
       scores 99.4 to 100% against the screenshot: `EcEt`, `EcEtTwo`, `LightMap`, `EngineGlowMaterial`,
       `Nebula`, `NebulaTwo`, `BtDetailMapTwoMaterial`, `GlassMaterial`, `GFGlassMaterial`, and `DcDt` kin.
-- [ ] Still to try on a sphere: the override types as a material's `Type` (`ColorizeMaterial`,
-      `CloakMaterial`, `WireMaterial`, `WireMaterial2`, `ShadowMaterial` and the rest), the planet
-      types, and a `Bt` asking for a UV set the mesh hasn't got.
+- [x] A stage asking for a UV set the mesh hasn't got reads (0, 0): `bands_one_uv`.
+- [ ] The override types as a material's `Type`. `VisibleCounterMaterial` and `ShadowMaterial` each crash
+      the game alone, beside a plain band that doesn't. `ColorizeMaterial`, `CloakMaterial`,
+      `BackdropMaterial`, `StarsphereMaterial`, `EnvMapMaterial`, `WireMaterial` and `WireMaterial2` are
+      untested alone: they're reported as unsupported, and draw nothing.
 - [x] LOD selection: `placeParts` with a camera and the archetype's lists, or `levelAt` for a host
       posing its own. `ku_dragon_pair`'s far ship matches at its lower level, in state and picture.
 - [x] Material UV animation, from the host's clock on `Scene.time`. Live in retail (`0x41b2e0` passes the
@@ -180,7 +182,8 @@ renderer**, so the two don't diverge.
 ## M4: Spheres and the sky
 
 - [ ] Sphere patch tessellation and the `M0..M5` face order.
-- [ ] The four planet surface types and `AtmosphereMaterial`.
+- [ ] The four planet surface types and `AtmosphereMaterial`. `references/bands_planet` already has
+      their state from a generated sphere: each pass's alpha test, depth and stage 1 tile matrix.
 - [ ] `Nebula` materials; starsphere and backdrop overrides, with the game's draw order for the layers.
 - [ ] **You:** reference scenes for a planet and a starsphere.
 

@@ -3,6 +3,7 @@ import { Matrix4, type Vector3 } from '@treewyrm/freelancer/math'
 import { value } from '@treewyrm/freelancer/thn'
 import { write } from '@treewyrm/freelancer/thn/text'
 import type { Camera } from '#/scene/camera.js'
+import type { Generated } from './generate.js'
 
 type Vector = readonly [number, number, number]
 type Rows = readonly [Vector, Vector, Vector]
@@ -28,7 +29,7 @@ export interface ReferenceScene {
     far: number
   }
   /** A generated model of this scene's bands, given a lab-only archetype, in place of a retail one. */
-  generated?: true
+  generated?: Generated
   /**
    * Libraries for the lab install to load at startup, through `FX/effect_shapes.ini`: what the game
    * would have loaded by the time it needs them, where a menu scene alone hasn't.

@@ -128,9 +128,7 @@ test('the archetype decides the reflection, and it normalizes normals', () => {
 
 test('the flags choose wrap and UV set', () => {
   const material = skinned({ diffuseTexture: { name: 'skin', flags: 0x5a } })
-  const twoSets = { ...mesh, format: 0x212 as VertexFormat }
-  const { sampler, uvSet } = collectFrame(scene(material, { mesh: () => twoSets })).draws[0]!
-    .texture!
+  const { sampler, uvSet } = collectFrame(scene(material)).draws[0]!.texture!
   assert.deepEqual([sampler.wrapU, sampler.wrapV, uvSet], ['clamp', 'clamp', 1])
 })
 
@@ -350,12 +348,9 @@ test('BtDetailMapMaterial keeps Ec and Oc, and takes the stage even without a Bt
   assert.deepEqual(draw!.second, { operation: 'modulate2x' })
 })
 
-test('a UV set the mesh has not got falls back to UV0', () => {
+test('a UV set the mesh has not got is kept, as retail keeps its coordinate index', () => {
   const material = skinned({ type: 'DcDtEt', emissionTexture: named('glow', 0x5a) })
-  assert.equal(collectFrame(scene(material)).draws[0]!.second?.texture?.uvSet, 0)
-  const twoSets = { ...mesh, format: 0x212 as VertexFormat }
-  const [draw] = collectFrame(scene(material, { mesh: () => twoSets })).draws
-  assert.equal(draw!.second?.texture?.uvSet, 1)
+  assert.equal(collectFrame(scene(material)).draws[0]!.second?.texture?.uvSet, 1)
 })
 
 test('the other glass names are glass', () => {
@@ -572,4 +567,16 @@ describe('the classes with fixed tables', () => {
 test('a nomad surface vanishes on an environment-mapped object', () => {
   const [draw] = collectFrame(scene(skinned({ name: 'nomad_hull' }), { environment: 'cube' })).draws
   assert.equal(draw!.diffuse[3], 0)
+})
+
+test('an override type named by a material is reported, and draws nothing', () => {
+  for (const type of [
+    'VisibleCounterMaterial',
+    'ShadowMaterial',
+    'CloakMaterial',
+    'WireMaterial',
+  ]) {
+    const { draws, unsupported } = collectFrame(scene(skinned({ type })))
+    assert.deepEqual([type, draws, unsupported], [type, [], ['hull']])
+  }
 })

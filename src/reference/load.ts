@@ -9,7 +9,7 @@ import { readTextureLibrary, type TextureEntry } from '@treewyrm/freelancer/text
 import { Directory } from '@treewyrm/freelancer/utf'
 import { getMesh, readVMeshLibrary } from '@treewyrm/freelancer/vmesh'
 import { placeParts, type Scene } from '#/scene/frame.js'
-import { BAND_ANIMATIONS, BAND_LIBRARIES, BANDS } from './bands.js'
+import { BAND_LIBRARIES } from './bands.js'
 import { generateBands } from './generate.js'
 import { cameraOf, modelMatrixOf, type ReferenceScene } from './scene.js'
 
@@ -86,14 +86,14 @@ export const loadScene = async (
   if (!assets) throw new Error(`No assets listed for ${definition.model.archetype}`)
 
   const root = definition.generated
-    ? Directory.read(generateBands(BANDS, BAND_ANIMATIONS).model)
+    ? Directory.read(generateBands(definition.generated).model)
     : Directory.read(await read(assets.model))
   const libraries = await Promise.all(
     assets.libraries.map(async (path) => Directory.read(await read(path))),
   )
   const meshes = readVMeshLibrary(root)
   const materials = [
-    ...(definition.generated ? BANDS : []),
+    ...(definition.generated?.materials ?? []),
     ...[root, ...libraries].flatMap((library) => [...readMaterialLibrary(library)]),
   ]
   const textures = [root, ...libraries].flatMap((library) => [...readTextureLibrary(library)])
@@ -101,7 +101,7 @@ export const loadScene = async (
     textures.find((entry) => entry.name.toLowerCase() === name.toLowerCase())
 
   const materialAnimations = [
-    ...(definition.generated ? BAND_ANIMATIONS : []),
+    ...(definition.generated?.animations ?? []),
     ...[root, ...libraries].flatMap((library) => [...readMaterialAnimLibrary(library)]),
   ]
 
@@ -125,7 +125,9 @@ export const loadScene = async (
         material: (id) => getMaterial(materials, id),
         texture,
         materialAnimations,
-        ...(assets.environment ? { environment: assets.environment } : {}),
+        ...(assets.environment && !definition.generated?.noEnvironment
+          ? { environment: assets.environment }
+          : {}),
       })),
     },
   }

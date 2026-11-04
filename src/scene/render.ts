@@ -12,7 +12,7 @@ import {
   type DcDtProgram,
 } from '#/material/dcdt.js'
 import { createReferenceArray, createVertexBuffer, type ReferenceArray } from '#/mesh/mesh.js'
-import { drawMode, planReference } from '#/mesh/plan.js'
+import { ATTRIBUTE_LOCATIONS, drawMode, planReference } from '#/mesh/plan.js'
 import {
   createSampler,
   createTexture,
@@ -150,6 +150,9 @@ export const createRenderer = (gl: WebGL2RenderingContext): Renderer => {
       gl.depthMask(true)
       gl.depthRange(0, 1)
       gl.colorMask(true, true, true, true)
+      // What a UV set the mesh hasn't got reads (`bands_one_uv`), whatever a hook left here.
+      gl.vertexAttrib2f(ATTRIBUTE_LOCATIONS.uv0, 0, 0)
+      gl.vertexAttrib2f(ATTRIBUTE_LOCATIONS.uv1, 0, 0)
       gl.enable(gl.CULL_FACE)
       gl.frontFace(gl.CCW)
       gl.blendEquation(gl.FUNC_ADD)

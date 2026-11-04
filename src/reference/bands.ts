@@ -68,6 +68,42 @@ export const BAND_ANIMATIONS: readonly MaterialAnim[] = [
   scroll('sea_anim_bands'),
 ]
 
+/** A `Bt`, an `Et` and a `Dt` asking for a UV set the mesh hasn't got: what 52 retail draws do. */
+export const ONE_UV_BANDS: readonly Material[] = [
+  band('uv0_plain', 'DcDt'),
+  named('detailmap_bands_uv0', 'DcDt', { detailTexture: slot('lair_dtl01.tga', 64) }),
+  named('detailmap_bands_uv1', 'DcDt', { detailTexture: DETAIL }),
+  band('et_uv0', 'DcDtEt', { emissionTexture: GLOW }),
+  band('et_uv1', 'DcDtEt', { emissionTexture: slot('lair_rock_dtl01.tga', 80) }),
+  band('dt_uv1', 'DcDt', { diffuseTexture: slot('lair_rock01.tga', 80) }),
+]
+
+/** The planet classes, which retail only has on spheres. What their mask slots read is the point. */
+export const PLANET_BANDS: readonly Material[] = [
+  band('plain', 'DcDt'),
+  band('detail_map', 'DetailMapMaterial', { maskTexture: DETAIL, tileRate: 4 }),
+  band('msk2pass', 'DetailMap2Dm1Msk2PassMaterial', {
+    diffuseTexture: ALPHA,
+    maskTexture1: DETAIL,
+    tileRate1: 4,
+  }),
+  band('illum', 'IllumDetailMapMaterial', {
+    diffuseTexture: ALPHA,
+    maskTexture0: DETAIL,
+    maskTexture1: GLOW,
+    tileRate0: 4,
+    tileRate1: 2,
+  }),
+  band('masked2', 'Masked2DetailMapMaterial', {
+    diffuseTexture: ALPHA,
+    maskTexture0: DETAIL,
+    maskTexture1: GLOW,
+    tileRate0: 4,
+    tileRate1: 2,
+  }),
+  band('atmosphere', 'AtmosphereMaterial', { alpha: 0.5, fade: 1, scale: 1 }),
+]
+
 /** Archetype lines: textures first, as a material resolves when its own library loads. */
 export const BAND_LIBRARIES = [
   'SOLAR/nomad_lair.mat',

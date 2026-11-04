@@ -17,7 +17,6 @@ import {
 } from '@treewyrm/freelancer/rigid'
 import type { CubeTexture, Texture, TextureEntry } from '@treewyrm/freelancer/texture'
 import {
-  getMapCount,
   getMeshDraw,
   vertexByteLength,
   VertexFormat,
@@ -238,7 +237,6 @@ const wrapOf = (address: TextureAddress): TextureWrap => {
 const drawTexture = (
   { name, flags }: TextureReference,
   entry: Texture | CubeTexture,
-  mesh: VMeshData,
 ): DrawTexture => ({
   name,
   entry,
@@ -247,9 +245,8 @@ const drawTexture = (
     wrapU: wrapOf(getAddress(flags, 'u')),
     wrapV: wrapOf(getAddress(flags, 'v')),
   },
-  // 52 retail draws name a set their mesh hasn't got. What D3D8 reads then is unmeasured: UV0 here is
-  // what Librelancer and the extension do, and neither is evidence.
-  uvSet: Math.min(getMapIndex(flags), Math.max(0, getMapCount(mesh.format) - 1)),
+  // Kept even for a set the mesh hasn't got, as 52 retail draws ask: that reads (0, 0) (`bands_one_uv`).
+  uvSet: getMapIndex(flags),
 })
 
 /** One alpha bit is cut, more is blended (`FMaterial` after `PixelFormatAlphaBits`). */
@@ -529,7 +526,7 @@ const secondStage = (
     const slot = nomadTexture ?? NOMAD_RAMP
     const entry = entryOf(slot.name, model, unsupported)
     if (!entry) return undefined
-    return { operation: 'add', texture: { ...drawTexture(slot, entry, mesh), uvSet: 1 } }
+    return { operation: 'add', texture: { ...drawTexture(slot, entry), uvSet: 1 } }
   }
   // Without an `Et`, `DcDtEt` disables the stage. `BtDetailMapMaterial` applies it regardless, and so
   // doubles without a `Bt`: two retail materials, uncaptured.
@@ -541,7 +538,7 @@ const secondStage = (
   const entry = entryOf(slot.name, model, unsupported)
   // Not in the host's libraries: retail always has them, and a white `add` would hide the model.
   if (!entry) return undefined
-  return { operation, texture: drawTexture(slot, entry, mesh) }
+  return { operation, texture: drawTexture(slot, entry) }
 }
 
 interface Queued {
@@ -683,7 +680,7 @@ const collectModel = (
           // `SubmitExclusionGeometry` draws with `D3DRS_AMBIENT` white, so `Ac` arrives unscaled.
           ...(kind === 'exclusion' ? { sceneAmbient: WHITE } : {}),
           // A slot with no texture draws as an empty stage, which reads as white.
-          ...(slot && entry ? { texture: drawTexture(slot, entry, mesh) } : {}),
+          ...(slot && entry ? { texture: drawTexture(slot, entry) } : {}),
           ...(second ? { second } : {}),
           ...(animated ? { uvTransform: animated } : {}),
           ...pass,

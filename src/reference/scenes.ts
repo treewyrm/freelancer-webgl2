@@ -1,3 +1,4 @@
+import { BAND_ANIMATIONS, BANDS, ONE_UV_BANDS, PLANET_BANDS } from './bands.js'
 import { IDENTITY, rotation, type ReferenceScene } from './scene.js'
 
 /** Identity orientation looks down -Z, as in the lab rig's `freelancer-testing/tests/mount.ts`. */
@@ -144,7 +145,35 @@ export const scenes: ReadonlyMap<string, ReferenceScene> = new Map(
       // M3: every band its own material, for what retail barely uses and mods can name. Reflecting,
       // so the capture also shows which classes leave stage 1 free.
       name: 'bands',
-      generated: true,
+      generated: { materials: BANDS, animations: BAND_ANIMATIONS },
+      model: {
+        archetype: 'reference_bands',
+        category: 'Solar',
+        position: [0, 0, -40],
+        orientation: rotation(30, 20),
+      },
+      camera: CAMERA,
+      ambient: [40, 40, 40],
+      lights: [{ color: [255, 255, 255], direction: [0.5, -0.5, -1] }],
+    } satisfies ReferenceScene,
+    {
+      // M3: a stage asking for a second UV set the mesh has not got.
+      name: 'bands_one_uv',
+      generated: { materials: ONE_UV_BANDS, uvSets: 1 },
+      model: {
+        archetype: 'reference_bands',
+        category: 'Solar',
+        position: [0, 0, -40],
+        orientation: rotation(30, 20),
+      },
+      camera: CAMERA,
+      ambient: [40, 40, 40],
+      lights: [{ color: [255, 255, 255], direction: [0.5, -0.5, -1] }],
+    } satisfies ReferenceScene,
+    {
+      // M3 and M4: the planet classes, which retail only has on spheres.
+      name: 'bands_planet',
+      generated: { materials: PLANET_BANDS },
       model: {
         archetype: 'reference_bands',
         category: 'Solar',

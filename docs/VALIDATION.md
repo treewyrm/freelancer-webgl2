@@ -60,6 +60,8 @@ Models chosen because the earlier projects already found them useful for these f
 | M3 | `no_fighter` | A nomad surface with its ramp, preloaded on the lab install |
 | M3 | `lair` | A material UV animation, on the one archetype in retail with any |
 | M3 | `bands` | A generated sphere, a band per material: what retail barely uses, and mods can name |
+| M3 | `bands_one_uv` | A stage asking for a second UV set on a mesh with one |
+| M3, M4 | `bands_planet` | The planet classes on a generated sphere, as evidence for M4 |
 | M3 | `lair_core` | A queued `DcDtOcOtTwo`, and `DcDtEt` and `BtDetailMapMaterial` with no environment map |
 | M3 | Rheinland fighter cockpit | Batching, translucency |
 | M3 | Nomad fighter | Nomad material |
@@ -164,6 +166,18 @@ double (`bands`, exactly half of what doubling gives). So the renderer draws it 
 measurement there is. Glass with an empty stage 0 ignoring a bound stage 1 would follow if the rig's
 translator stopped at the first empty stage, which is a lead for the canopy above and not a finding. A
 real D3D8 driver may read an empty stage as white, in which case all of these change together.
+
+**What does a UV set the mesh hasn't got read?** `TEXCOORDINDEX` stays 1 on a one-set format, and the
+rig's picture is of a constant (0, 0): flat, from a texture's first texel (`bands_one_uv`). So the 52 retail
+draws asking for that show flat detail here, not UV0 as the extension and Librelancer read them. A real
+driver may differ, as with an empty stage.
+
+**What crashes the game?** A generated sphere with a band typed `VisibleCounterMaterial`, or one typed
+`ShadowMaterial`, brings the game down, each alone beside a plain band; two plain bands on the same scene
+don't. So does a sphere holding all nine override types, with or without an environment map. Why isn't
+known: the decomp's counter only adds to three numbers as it draws, which doesn't explain a crash, so
+creating one as a material may be what fails, and the other seven may do the same. When in the run it
+fails wasn't observed.
 
 **A nomad surface on an environment-mapped object is invisible.** Its fade and the override's cube name
 share one per-object slot, so the pointer is read as a float (`bands`: vertices written `0x00ffffff`, and

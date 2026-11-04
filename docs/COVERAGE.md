@@ -52,11 +52,11 @@ No file names these; the engine applies them.
 | `ColorizeMaterial` | M10 | | | | |
 | `CloakMaterial` | M3 | Yes | Yes | | |
 | `WireMaterial` | M10 | | | | |
-| `WireMaterial2` | M3, a mod can name it | | | | |
+| `WireMaterial2` | M3, untested as a `Type` | | | | |
 | `EngineGlowMaterial` | M3, a mod can name it | Yes | Yes | `bands` | `bands` |
 | `StarsphereMaterial`, `BackdropMaterial` | M4 | | | | |
-| `ShadowMaterial` | M8 | | | | |
-| `VisibleCounterMaterial` | M7 | | | | |
+| `ShadowMaterial` | M8; crashes as a `Type` | | | | |
+| `VisibleCounterMaterial` | M7; crashes as a `Type` | | | | |
 
 ## Spheres and sky (M4)
 

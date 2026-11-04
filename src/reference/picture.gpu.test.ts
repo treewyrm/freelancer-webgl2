@@ -92,6 +92,7 @@ for (const [name, draws] of [
   ['ku_dragon_pair', 25],
   ['lair', 13],
   ['bands', 28],
+  ['bands_one_uv', 6],
 ] as const)
   test(
     `${name} matches retail's screenshot, outside its menu and canopy`,
