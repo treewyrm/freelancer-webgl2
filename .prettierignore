@@ -1,0 +1,5 @@
+# Prettier is for code. Markdown is hand-wrapped and hand-tabled.
+*.md
+/dist
+/artifacts
+package-lock.json

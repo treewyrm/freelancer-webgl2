@@ -1,0 +1,7 @@
+/node_modules
+/dist
+/artifacts
+/references
+/tools/d3d8log/build
+/.claude
+.DS_Store

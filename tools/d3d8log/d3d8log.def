@@ -1,0 +1,8 @@
+; Exported undecorated, because that is how the real d3d8.dll exports them and how the game's
+; import table asks for them. The names on the right are what a 32-bit __stdcall build produces.
+LIBRARY d3d8
+EXPORTS
+    Direct3DCreate8 = Direct3DCreate8@4
+    DebugSetMute = DebugSetMute@4
+    ValidatePixelShader = ValidatePixelShader@16
+    ValidateVertexShader = ValidateVertexShader@16
