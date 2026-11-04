@@ -183,7 +183,12 @@ export const createRenderer = (gl: WebGL2RenderingContext): Renderer => {
     frame.draws.forEach((draw, at) => {
       runHooks(at)
       setDrawUniforms(gl, active, draw)
-      gl.cullFace(draw.cull === 'back' ? gl.BACK : gl.FRONT)
+      if (draw.cull === 'none') gl.disable(gl.CULL_FACE)
+      else {
+        gl.enable(gl.CULL_FACE)
+        gl.cullFace(draw.cull === 'back' ? gl.BACK : gl.FRONT)
+      }
+      gl.depthMask(draw.depthWrite)
       if (draw.blend) gl.enable(gl.BLEND)
       else gl.disable(gl.BLEND)
 

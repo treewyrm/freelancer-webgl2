@@ -33,6 +33,7 @@ uniform vec3 lightColor[${MAX_LIGHTS}];
 uniform vec3 lightDirection[${MAX_LIGHTS}];
 
 uniform bool colorVertex;
+uniform bool nomad;
 uniform float normalSign;
 uniform bool normalizeNormals;
 uniform bool reflecting;
@@ -50,6 +51,18 @@ void main() {
   gl_Position = projection * eyePosition;
   uv = uvSet == 1 ? uv1 : uv0;
   secondUv = secondUvSet == 1 ? uv1 : uv0;
+
+  // What \`NomadWriteVert\` writes to locked memory each frame: white at the draw's alpha, and a ramp
+  // coordinate from one camera axis per draw, carried into object space by the transpose alone.
+  if (nomad) {
+    lit = vec4(1.0, 1.0, 1.0, materialDiffuse.a);
+    vec3 axis = transpose(mat3(modelView)) * vec3(0.0, 0.0, -1.0);
+    // \`SubmitNomadGeometry\` has \`1 - fmod(clock, 5) / 5\`, but every caller of the material's update
+    // passes a delta of 0 (\`Freelancer.exe\`, \`0x41af28\` and on), so the clock stays at 0 and this at 1.
+    secondUv = vec2((dot(axis, normal) + 1.0) * 0.5, 1.0);
+    reflection = vec3(0.0);
+    return;
+  }
 
   // A normal goes through the inverse transpose, and keeps its length unless asked otherwise.
   vec3 eyeNormal = transpose(inverse(mat3(modelView))) * (normal * normalSign);
@@ -127,6 +140,7 @@ const UNIFORMS = [
   'lightColor',
   'lightDirection',
   'colorVertex',
+  'nomad',
   'normalSign',
   'normalizeNormals',
   'reflecting',
@@ -186,6 +200,7 @@ export const setDrawUniforms = (
     | 'ambient'
     | 'emissive'
     | 'colorVertex'
+    | 'nomad'
     | 'negateNormals'
     | 'normalizeNormals'
     | 'alphaReference'
@@ -199,6 +214,7 @@ export const setDrawUniforms = (
   gl.uniform3f(uniforms.materialAmbient, draw.ambient.x, draw.ambient.y, draw.ambient.z)
   gl.uniform3f(uniforms.materialEmissive, draw.emissive.x, draw.emissive.y, draw.emissive.z)
   gl.uniform1i(uniforms.colorVertex, draw.colorVertex ? 1 : 0)
+  gl.uniform1i(uniforms.nomad, draw.nomad ? 1 : 0)
   gl.uniform1f(uniforms.normalSign, draw.negateNormals ? -1 : 1)
   gl.uniform1i(uniforms.normalizeNormals, draw.normalizeNormals ? 1 : 0)
   gl.uniform1f(uniforms.alphaReference, draw.alphaReference)

@@ -99,5 +99,33 @@ export const scenes: ReadonlyMap<string, ReferenceScene> = new Map(
       ambient: [40, 40, 40],
       lights: [{ color: [255, 255, 255], direction: [0.5, -0.5, -1] }],
     } satisfies ReferenceScene,
+    {
+      // M3: a nomad surface, alone on a `.3db`. Its radius is 703.
+      name: 'dyson_door_shield',
+      model: {
+        archetype: 'dyson_door_shield',
+        category: 'Solar',
+        position: [0, 0, -1800],
+        orientation: rotation(150, 20),
+      },
+      camera: { ...CAMERA, far: 20000 },
+      ambient: [40, 40, 40],
+      lights: [{ color: [255, 255, 255], direction: [0.5, -0.5, -1] }],
+    } satisfies ReferenceScene,
+    {
+      // M3: a nomad surface with its ramp, preloaded. Without that, this menu scene binds no ramp: its
+      // materials resolve when the model loads, before the archetype's `nomad_fx.txm`.
+      name: 'no_fighter',
+      model: {
+        archetype: 'no_fighter',
+        category: 'Spaceship',
+        position: [0, 0, -40],
+        orientation: rotation(150, 20),
+      },
+      preload: [{ file: 'ships\\nomad\\nomad_fx.txm', texture: 'NomadRGB1_NomadAlpha1' }],
+      camera: CAMERA,
+      ambient: [40, 40, 40],
+      lights: [{ color: [255, 255, 255], direction: [0.5, -0.5, -1] }],
+    } satisfies ReferenceScene,
   ].map((scene) => [scene.name, scene]),
 )

@@ -138,7 +138,12 @@ closing and losing the context all work. Then revise the API with what was learn
       **Unmeasured:** a `Bt` UV set the mesh hasn't got (52 draws, UV0 here), a `BtDetailMapMaterial`
       without a `Bt` (two materials), and the planet glass, whose class is `li_elite`'s glass.
 - [x] **You:** run `prison` and press F9.
-- [ ] **`NomadMaterial` in shaders**, as the worked example of not transcribing.
+- [x] **`NomadMaterial` in shaders**, as the worked example of not transcribing. What retail writes to
+      locked memory per vertex is computed in the vertex shader, and every written vertex of
+      `no_fighter` and `dyson_door_shield` matches it. There's no animation to do: the ramp's `v` is
+      fixed at 1, as every caller of the update passes 0. **Picture within a wider tolerance**: see
+      [VALIDATION.md](VALIDATION.md#open-questions).
+- [x] **You:** run `dyson_door_shield` and `no_fighter`, and press F9.
 - [ ] Engine overrides: colorize, cloak, wire, engine glow.
 - [ ] LOD selection, joint animation, material UV animation, texture animation.
 - [ ] Corpus suite: every retail model plans a frame without an unexplained material.

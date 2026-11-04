@@ -362,3 +362,49 @@ test('the other glass names are glass', () => {
   for (const name of ['planet_glass', 'planet_dome_glass'])
     assert.equal(collectFrame(scene(skinned({ name, type: 'DcDt' }))).draws.length, 2)
 })
+
+test('a nomad surface draws once, blended, both sides, writing no depth, with its ramp', () => {
+  const material = skinned({
+    name: 'nomad_hull',
+    type: 'DcDtBtOcOtTwo',
+    diffuse: { x: 1, y: 0, z: 0 },
+  })
+  const ramp = texture('rgb24_888')
+  const frame = collectFrame(
+    scene(material, {
+      environment: 'cube',
+      texture: (name) => (name === 'NomadRGB1_NomadAlpha1' ? ramp : texture('dxt1')),
+    }),
+  )
+  assert.equal(frame.draws.length, 1)
+  const [draw] = frame.draws
+  assert.deepEqual(
+    [draw!.cull, draw!.depthWrite, draw!.blend, draw!.nomad, draw!.alphaReference],
+    ['none', false, true, true, 0],
+  )
+  assert.deepEqual(draw!.diffuse, [1, 1, 1, 1])
+  assert.equal(draw!.environment, undefined)
+  assert.equal(draw!.second?.operation, 'add')
+  assert.equal(draw!.second?.texture?.entry, ramp)
+  assert.equal(draw!.second?.texture?.uvSet, 1)
+})
+
+test('fade reaches a nomad surface through a smoothstep, truncated to a byte', () => {
+  const alphaAt = (fade: number) =>
+    collectFrame(scene(skinned({ name: 'nomad_hull' }), { fade })).draws[0]!.diffuse[3]
+  assert.equal(alphaAt(1), 1)
+  assert.equal(alphaAt(0), 0)
+  // 1 - (3 - 1) * 0.25 = 0.5, and int(127.5) is 127.
+  assert.equal(alphaAt(0.5), 127 / 255)
+})
+
+test('other draws write depth', () => {
+  assert.equal(collectFrame(scene(skinned({}))).draws[0]!.depthWrite, true)
+})
+
+test('a .3db is placed as one part, at the transform', () => {
+  const single = root.part
+  const placed = placeParts(single, Matrix4.translation({ x: 1, y: 2, z: 3 }))
+  assert.equal(placed.length, 1)
+  assert.equal(placed[0]!.world.w.x, 1)
+})

@@ -30,8 +30,8 @@ it. Sphere materials aren't counted there. The nine `DcDt` rows hold 21,153 of t
 | `HUDIconMaterial` | 195 | | | | |
 | `HighGlassMaterial` | 113 | Yes | Yes | `li_elite`, `li_elite_turned` | Open: [VALIDATION.md](VALIDATION.md#open-questions) |
 | `GlassMaterial`, `GFGlassMaterial` |  | Yes | Yes | | |
-| `NomadMaterialNoBendy` | 30 | | | | |
-| `NomadMaterial` | | | | | |
+| `NomadMaterialNoBendy` | 30 | Yes | Yes | `no_fighter`, `dyson_door_shield` | `no_fighter`, wider tolerance; `dyson_door_shield`, no ramp |
+| `NomadMaterial` |  | Yes | Yes | | |
 | `HUDAnimMaterial` | 26 | | | | |
 | `ExclusionZoneMaterial` | 20 | | | | |
 | `PlanetWaterMaterial` | 4 | | | | |

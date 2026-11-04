@@ -84,3 +84,12 @@ test('stage 1 adds or doubles, saturating, and an empty one reads as white', () 
   rgb('modulate2x', [128, 128, 128])
   rgb('modulate2xEmpty', [255, 255, 255])
 })
+
+test('a nomad surface reads the ramp by the camera axis, at its fixed v, unlit', () => {
+  // The fixture's stage 0 is black, so the pixel is the ramp: u * 60 in red, v * 60 in green. v is 1,
+  // which this sampler clamps to the top row.
+  rgb('nomadFacing', [0, 180, 0])
+  rgb('nomadAway', [180, 180, 0])
+  rgb('nomadSide', [120, 180, 0])
+  rgb('nomadLightsIgnored', [0, 180, 0])
+})

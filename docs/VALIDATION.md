@@ -49,6 +49,8 @@ Models chosen because the earlier projects already found them useful for these f
 | M3 | `ku_dragon` | A batched `DcDtOcOt` on an environment-mapped ship |
 | M3 | `ku_dragon_pair` | Two objects' queued glass: sort, and a room's single flush |
 | M3 | `prison` | `DcDtEt`, `DcDtEc`, `BtDetailMapMaterial` on one environment-mapped solar |
+| M3 | `dyson_door_shield` | A nomad surface whose ramp didn't resolve |
+| M3 | `no_fighter` | A nomad surface with its ramp, preloaded on the lab install |
 | M3 | `lair_core` | A queued `DcDtOcOtTwo`, and `DcDtEt` and `BtDetailMapMaterial` with no environment map |
 | M3 | Rheinland fighter cockpit | Batching, translucency |
 | M3 | Nomad fighter | Nomad material |
@@ -125,6 +127,32 @@ compare the canopy with the rig's screenshot:
   against the new screenshot.
 - **It doesn't:** an empty stage 0 turns the reflection off. Make that the rule, in
   `src/material/dcdt.ts` (`reflecting && textured`), and drop the canopy from the test's mask.
+
+**Why does nomad's picture miss by more than the rest?** `no_fighter` reaches 97.1% within 2 and a mean
+of 0.58, against 99.9% and 0.2 elsewhere, in scattered pixels up to about 20 of 255. The state matches,
+every written vertex matches, the ramp's pixels hash the same as retail's, and a LOD bias of 0.25 either
+way is far worse (mean 2.9 and 3.3). The suspicion is where each GPU places a nearest-mip transition,
+which a surface sweeping the ramp's alpha would show most, but that isn't measured. The test holds it to
+a limit of its own until a real-GPU screenshot can say.
+
+**What does a nomad surface need in a real game?** In a menu scene its ramp binds only if `nomad_fx.txm`
+was loaded before the material verified. The door shield's archetype lists it after its `.mat`, and
+`no_fighter`'s materials load with the model, so neither binds it unless `FX/effect_shapes.ini` preloads
+it on the lab install, and then it renders as expected. Taking the load order as the cause is
+an inference: no preload, no ramp; preload, ramp. The code loading `material_library` hasn't been read.
+
+**Nomad surfaces don't scroll.** `flmaterials.dll` has a five-second scroll in `v` (`0x6704060`), but its
+clock only moves by the delta given to `ResolveTextures`, and the call sites of the library's update in
+the lab's unencrypted `Freelancer.exe` pass 0 (`0x41af28`, `0x41b014`, `0x41c8b0`, `0x5b42ed`, `0x5b4954`;
+`0x41acc1` passes `ebx`, which the decomp reads as 0). `no_fighter`'s capture has `v` at exactly 1 on every
+vertex at frame 633. `rendcomp`, `flmaterials`, `dalib` and `engbase` have no float call through that slot.
+The owner's memory of retail agrees. The corpus copy of `Freelancer.exe` is encrypted, so this reads the
+lab's, a later build. A flight capture would be the last word.
+
+**What does an empty stage do?** On the rig, `ADD` with no texture on stage 1 leaves the picture as stage
+0 made it (`dyson_door_shield`), and glass with no stage 0 shows its colour and no reflection from a
+bound stage 1. Both would follow if the rig's translator stopped at the first empty stage, which is a
+lead for the canopy question above and not a finding. A real D3D8 driver may differ.
 
 ## Checking a reading in the retail binary
 

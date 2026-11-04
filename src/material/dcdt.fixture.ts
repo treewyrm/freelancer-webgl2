@@ -25,6 +25,7 @@ type Parameters = Pick<
   | 'ambient'
   | 'emissive'
   | 'colorVertex'
+  | 'nomad'
   | 'negateNormals'
   | 'normalizeNormals'
   | 'alphaReference'
@@ -42,6 +43,7 @@ const base: Parameters = {
   ambient: BLACK,
   emissive: BLACK,
   colorVertex: false,
+  nomad: false,
   negateNormals: false,
   normalizeNormals: false,
   alphaReference: 0,
@@ -243,6 +245,39 @@ export default ((gl) => {
     second: { operation: 'modulate2x', texture: stageTexture },
   })
   report['modulate2xEmpty'] = read({ ...half, second: { operation: 'modulate2x' } })
+
+  // Nomad: unlit white plus the ramp, whose coordinate comes from the normal against the view axis.
+  const ramp = gl.createTexture()
+  gl.activeTexture(gl.TEXTURE0 + SECOND_UNIT)
+  gl.bindTexture(gl.TEXTURE_2D, ramp)
+  // Four columns of u by four rows of v, in red and green.
+  const texels = new Uint8Array(16 * 4)
+  for (let v = 0; v < 4; v++)
+    for (let u = 0; u < 4; u++) texels.set([u * 60, v * 60, 0, 255], (v * 4 + u) * 4)
+  gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1)
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 4, 4, 0, gl.RGBA, gl.UNSIGNED_BYTE, texels)
+  gl.bindSampler(SECOND_UNIT, nearest)
+  gl.samplerParameteri(nearest, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE)
+  gl.samplerParameteri(nearest, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
+  gl.activeTexture(gl.TEXTURE0 + DIFFUSE_UNIT)
+  gl.bindTexture(gl.TEXTURE_2D, createTexture(gl, planUpload(solid(0))))
+  const shell = {
+    nomad: true,
+    texture: stageTexture,
+    second: { operation: 'add', texture: { ...stageTexture, uvSet: 1 } },
+    diffuse: [1, 1, 1, 1] as Draw['diffuse'],
+  } as const
+  // Facing the camera, dot(axis, normal) is -1 so u is 0. Facing away, it is 1, so u is at the end.
+  report['nomadFacing'] = read(shell, {}, { x: 0, y: 0, z: 1 })
+  report['nomadAway'] = read(shell, {}, { x: 0, y: 0, z: -1 })
+  report['nomadSide'] = read(shell, {}, { x: 1, y: 0, z: 0 })
+  report['nomadLightsIgnored'] = read(
+    { ...shell, emissive: { x: 1, y: 1, z: 1 } },
+    { ambient: { x: 1, y: 1, z: 1 }, lights: [LIGHT_DOWN_Z] },
+    { x: 0, y: 0, z: 1 },
+  )
+  gl.activeTexture(gl.TEXTURE0 + DIFFUSE_UNIT)
+  gl.bindTexture(gl.TEXTURE_2D, createTexture(gl, planUpload(solid(128))))
 
   // D3DCOLOR's bytes, B G R A.
   gl.vertexAttrib4f(ATTRIBUTE_LOCATIONS.diffuse, 0.25, 0.5, 1, 0.5)

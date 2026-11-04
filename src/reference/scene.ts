@@ -27,6 +27,11 @@ export interface ReferenceScene {
     near: number
     far: number
   }
+  /**
+   * Libraries for the lab install to load at startup, through `FX/effect_shapes.ini`: what the game
+   * would have loaded by the time it needs them, where a menu scene alone hasn't.
+   */
+  preload?: { file: string; texture: string }[]
   /** 0 to 255, given to the model through `LIT_AMBIENT`. */
   ambient: Vector
   lights: { color: Vector; direction: Vector }[]

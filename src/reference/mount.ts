@@ -17,11 +17,13 @@ import {
   renameSync,
   rmSync,
   writeFileSync,
+  readdirSync,
 } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join, relative } from 'node:path'
 import { readCapture } from '#/capture/capture.js'
 import { sceneScript } from './scene.js'
+import { Document } from '@treewyrm/freelancer/ini'
 import { scenes } from './scenes.js'
 
 const GUEST = '/Volumes/[C] Windows 11'
@@ -35,6 +37,7 @@ const ROOMS = ['intro1_cityscape', 'intro2_volcano', 'intro3_planetchunks'].map(
   join(game, 'UNIVERSE/SYSTEMS/INTRO/BASES/ROOMS', `${name}.ini`),
 )
 const SCRIPTS = join(game, 'SCRIPTS/REFERENCE')
+const EFFECT_SHAPES = join(game, 'FX/effect_shapes.ini')
 
 /** The corpus is measured by other suites. A stray file there reads as their readers drifting. */
 const assertNotCorpus = (): void => {
@@ -58,12 +61,25 @@ const mount = (name: string): void => {
     if (!existsSync(backup)) copyFileSync(room, backup)
     writeFileSync(room, `[Room_Info]\nscene = ambient, Scripts\\Reference\\${name}.thn\n`)
   }
-  console.log(`menu now plays ${name}`)
+
+  // Written as text, which the game reads as readily as BINI. A scene without any puts retail's back.
+  const backup = `${EFFECT_SHAPES}.retail`
+  if (existsSync(backup)) renameSync(backup, EFFECT_SHAPES)
+  if (scene.preload?.length) {
+    copyFileSync(EFFECT_SHAPES, backup)
+    const text = Buffer.from(Document.read(readFileSync(backup)).write('text')).toString('latin1')
+    const added = scene.preload.map(
+      ({ file, texture }) => `\r\n[Texture]\r\nfile = ${file}\r\ntex_shape = ${texture}\r\n`,
+    )
+    writeFileSync(EFFECT_SHAPES, text + added.join(''), 'latin1')
+  }
+  console.log(`menu now plays ${name}${scene.preload?.length ? ', with preloads' : ''}`)
 }
 
 const restore = (): void => {
   assertNotCorpus()
-  for (const room of ROOMS) if (existsSync(`${room}.retail`)) renameSync(`${room}.retail`, room)
+  for (const file of [...ROOMS, EFFECT_SHAPES])
+    if (existsSync(`${file}.retail`)) renameSync(`${file}.retail`, file)
   rmSync(SCRIPTS, { recursive: true, force: true })
   console.log('menu restored')
 }
@@ -73,6 +89,8 @@ const collect = (name: string): void => {
   const executable = join(dirname(game), 'EXE')
   const output = join(references, name)
   mkdirSync(output, { recursive: true })
+  // A rerun's screenshot has a new frame number, and an old one would be read in its place.
+  for (const entry of readdirSync(output)) if (entry.endsWith('.bmp')) rmSync(join(output, entry))
 
   const log = join(executable, 'd3d8log.jsonl')
   const capture = readCapture(readFileSync(log, 'utf8'))

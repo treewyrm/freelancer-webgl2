@@ -2,13 +2,14 @@
 import type { CompoundNode, JointState } from '@treewyrm/freelancer/compound'
 import {
   getAddress,
+  DEFAULT_NOMAD_TEXTURE_NAME,
   getMapIndex,
   TextureAddress,
   type Material,
   type TextureReference,
 } from '@treewyrm/freelancer/material'
 import { Matrix4, type Vector3 } from '@treewyrm/freelancer/math'
-import type { RigidPart } from '@treewyrm/freelancer/rigid'
+import type { RigidModel, RigidPart } from '@treewyrm/freelancer/rigid'
 import type { CubeTexture, Texture, TextureEntry } from '@treewyrm/freelancer/texture'
 import {
   getMapCount,
@@ -42,6 +43,8 @@ export interface SceneModel {
   texture: (name: string) => TextureEntry | undefined
   /** The archetype's `envmap_material`: the model does not say. Absent means no reflection. */
   environment?: string
+  /** 0 to 1, the engine's per-object fade a nomad surface reads. 1 when absent. */
+  fade?: number
 }
 
 export interface PlaceOptions {
@@ -92,13 +95,16 @@ export interface Draw {
   emissive: Vector3
   /** The mesh has vertex colours, which take the place of `diffuse`. */
   colorVertex: boolean
+  /** Unlit white at `diffuse`'s alpha, and stage 1 reads the nomad ramp. */
+  nomad: boolean
   texture?: DrawTexture
   /** A cube, reflected in camera space, as `2 × cube × colour`. */
   environment?: string
   environmentTexture?: CubeTexture
   second?: DrawStage
 
-  cull: 'back' | 'front'
+  cull: 'back' | 'front' | 'none'
+  depthWrite: boolean
   negateNormals: boolean
   normalizeNormals: boolean
   blend: boolean
@@ -132,7 +138,8 @@ export interface Frame {
   unregistered: string[]
 }
 
-type MaterialClass = 'single' | 'singleTwo' | 'glass' | 'emission' | 'detail' | 'detailTwo'
+type MaterialClass =
+  'single' | 'singleTwo' | 'glass' | 'emission' | 'detail' | 'detailTwo' | 'nomad'
 
 // What M3 has built so far. Other registered types are reported, not drawn. The eight single-pass
 // names share one bind and submit (`kMaterialTypes`, `src/Shading/Material.cpp`), and `Ec` and `OcOt`
@@ -149,6 +156,9 @@ const CLASSES: Readonly<Record<string, MaterialClass>> = {
   DcDtEt: 'emission',
   BtDetailMapMaterial: 'detail',
   BtDetailMapTwoMaterial: 'detailTwo',
+  // One class for the two names: the clock that sets them apart is read by nothing (`0x66f88bd`).
+  NomadMaterial: 'nomad',
+  NomadMaterialNoBendy: 'nomad',
   // One class for the three names (`flmaterials.dll`).
   HighGlassMaterial: 'glass',
   GlassMaterial: 'glass',
@@ -208,7 +218,7 @@ const BLACK: Vector3 = { x: 0, y: 0, z: 0 }
 type Pass = Pick<
   Draw,
   'cull' | 'negateNormals' | 'normalizeNormals' | 'blend' | 'alphaReference' | 'environment'
-> & { alpha?: number }
+> & { alpha?: number; depthWrite?: boolean }
 
 const NO_ENVIRONMENT: Pick<Pass, 'normalizeNormals'> = { normalizeNormals: false }
 
@@ -226,12 +236,32 @@ const withEnvironment = (
  */
 const BATCHED = /.*OcOt/
 
+// Truncated to the byte `SubmitNomadGeometry` writes, after the smoothstep of `NomadFadeFromValue`.
+const nomadAlpha = (fade: number): number => {
+  const delta = Math.min(Math.max(1 - fade, 0), 1)
+  return Math.trunc((1 - (3 - 2 * delta) * delta * delta) * 255) / 255
+}
+
 const passesOf = (
   kind: MaterialClass,
   type: string,
   material: Material,
   model: SceneModel,
 ): Pass[] => {
+  if (kind === 'nomad')
+    return [
+      {
+        // `kNomadRs`, then `SubmitNomadGeometry`. Stage 1 is taken, so no reflection.
+        cull: 'none',
+        depthWrite: false,
+        negateNormals: false,
+        blend: true,
+        alphaReference: DEVICE_ALPHA_REFERENCE,
+        alpha: nomadAlpha(model.fade ?? 1),
+        ...NO_ENVIRONMENT,
+      },
+    ]
+
   const opacity = material.opacity ?? 1
 
   if (kind === 'glass') {
@@ -301,10 +331,15 @@ const referenceOf = (part: RigidPart, level: number): VMeshRef | undefined => {
  * own LOD selection comes with M3; the top level is what `li_elite` draws at its distance.
  */
 export const placeParts = (
-  root: CompoundNode<RigidPart>,
+  root: RigidModel,
   transform: Matrix4,
   { level = 0, visible, jointState }: PlaceOptions = {},
 ): PlacedPart[] => {
+  // A `.3db` is one part, with no hierarchy to walk.
+  if (root.type !== 'compound') {
+    const reference = referenceOf(root, level)
+    return reference ? [{ reference, world: transform }] : []
+  }
   const parts: PlacedPart[] = []
   for (const [node, world] of partTransforms(root, transform, jointState)) {
     if (visible && !visible(node)) continue
@@ -326,13 +361,23 @@ const entryOf = (
   return undefined
 }
 
+// `nt_name`'s default (`FlmNomadParamsBase`), which wraps both ways.
+const NOMAD_RAMP: TextureReference = { name: DEFAULT_NOMAD_TEXTURE_NAME, flags: 0x40 }
+
 const secondStage = (
   kind: MaterialClass,
-  { emissionTexture, detailTexture }: Material,
+  { emissionTexture, detailTexture, nomadTexture }: Material,
   mesh: VMeshData,
   model: SceneModel,
   unsupported: Set<string>,
 ): DrawStage | undefined => {
+  if (kind === 'nomad') {
+    // No retail material names its own. Stage 1 reads the second set `NomadWriteVert` generates.
+    const slot = nomadTexture ?? NOMAD_RAMP
+    const entry = entryOf(slot.name, model, unsupported)
+    if (!entry) return undefined
+    return { operation: 'add', texture: { ...drawTexture(slot, entry, mesh), uvSet: 1 } }
+  }
   // Without an `Et`, `DcDtEt` disables the stage. `BtDetailMapMaterial` applies it regardless, and so
   // doubles without a `Bt`: two retail materials, uncaptured.
   if (kind === 'emission' && !emissionTexture) return undefined
@@ -423,7 +468,7 @@ const collectModel = (
       if (queuedHere)
         queued.push({ depth: batchDepth(mesh, reference, world, view), draws: target })
 
-      for (const { alpha, ...pass } of passes) {
+      for (const { alpha, depthWrite, ...pass } of passes) {
         const cube = pass.environment ? entryOf(pass.environment, model, unsupported) : undefined
         ;(queuedHere ? target : draws).push({
           mesh,
@@ -432,11 +477,14 @@ const collectModel = (
           count: elementCount,
           world,
           materialName: material.name,
-          diffuse: [x, y, z, alpha ?? material.opacity ?? 1],
+          // `Dc` is never read by the nomad class.
+          diffuse: kind === 'nomad' ? [1, 1, 1, alpha!] : [x, y, z, alpha ?? material.opacity ?? 1],
           // Setting `Dc` overwrites `Ac` (`0x6eb2439`), and both start white. 37 retail materials differ.
           ambient: material.diffuse ?? material.ambient ?? WHITE,
           emissive: (kind !== 'emission' && material.emission) || BLACK,
           colorVertex: (mesh.format & VertexFormat.Diffuse) !== 0,
+          nomad: kind === 'nomad',
+          depthWrite: depthWrite ?? true,
           // A slot with no texture draws as an empty stage, which reads as white.
           ...(slot && entry ? { texture: drawTexture(slot, entry, mesh) } : {}),
           ...(second ? { second } : {}),

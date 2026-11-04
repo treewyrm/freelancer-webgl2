@@ -4,8 +4,6 @@ import { readRigidModel, type RigidModel } from '@treewyrm/freelancer/rigid'
 import { readTextureLibrary, type TextureEntry } from '@treewyrm/freelancer/texture'
 import { Directory } from '@treewyrm/freelancer/utf'
 import { getMesh, readVMeshLibrary } from '@treewyrm/freelancer/vmesh'
-import type { CompoundNode } from '@treewyrm/freelancer/compound'
-import type { RigidPart } from '@treewyrm/freelancer/rigid'
 import { placeParts, type Scene } from '#/scene/frame.js'
 import { cameraOf, modelMatrixOf, type ReferenceScene } from './scene.js'
 
@@ -30,6 +28,15 @@ const ASSETS: Record<string, { model: string; libraries: string[]; environment?:
     model: 'SOLAR/DOCKABLE/prison_lod.cmp',
     libraries: ['SOLAR/Solar_mat_dockable01.mat', 'FX/envmapbasic.mat', 'FX/envmapglass.txm'],
     environment: 'envmapbasic',
+  },
+  // The archetype also lists `nomad_fx.txm`, after the `.mat`, and retail bound no ramp in the capture.
+  dyson_door_shield: {
+    model: 'SOLAR/MISC/dyson_door_shield.3db',
+    libraries: ['SOLAR/Solar_mat_dyson.mat'],
+  },
+  no_fighter: {
+    model: 'SHIPS/NOMAD/NO_FIGHTER/no_fighter.3db',
+    libraries: ['SHIPS/NOMAD/nomad_fx.txm'],
   },
   ku_dragon: {
     model: 'SHIPS/KUSARI/KU_BLOOD_DRAGON/ku_dragon.cmp',
@@ -56,7 +63,7 @@ export const loadScene = async (
     assets.libraries.map(async (path) => Directory.read(await read(path))),
   )
   const meshes = readVMeshLibrary(root)
-  const materials = libraries.flatMap((library) => [...readMaterialLibrary(library)])
+  const materials = [root, ...libraries].flatMap((library) => [...readMaterialLibrary(library)])
   const textures = [root, ...libraries].flatMap((library) => [...readTextureLibrary(library)])
   const texture = (name: string) =>
     textures.find((entry) => entry.name.toLowerCase() === name.toLowerCase())
@@ -73,7 +80,7 @@ export const loadScene = async (
       })),
       models: [definition.model, ...(definition.model.copies ?? [])].map((placed) => ({
         parts: placeParts(
-          model as CompoundNode<RigidPart>,
+          model,
           modelMatrixOf({ ...definition, model: { ...definition.model, ...placed } }),
         ),
         mesh: (id) => getMesh(meshes, id),
