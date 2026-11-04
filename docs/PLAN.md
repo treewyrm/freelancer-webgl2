@@ -75,7 +75,8 @@ end: its texture by name, stage setup, material, lights and matrices. Pinned by
 - [x] Camera: THN `cameraprops` to matrices and `CCW` (`RENDERER.md` §2). With the engine's own view
       it is a plain right-handed GL perspective, nothing negated. Reaches retail's clip space and depth
       in `li_elite`, whose camera is identity: **a turned camera is unmeasured**, and rests on the source.
-- [ ] Static `Cmpnd` hierarchy to world transforms (§5).
+- [x] Static `Cmpnd` hierarchy to world transforms (§5). All 19 hull groups stand where retail drew
+      them in `li_elite`, the wings' turned rest orientations included.
 - [ ] Frame as data: a pure function from scene to ordered draw list ([ARCHITECTURE.md](ARCHITECTURE.md)).
 - [ ] Fixed-function vertex lighting, from `SetLight` and `SetMaterial` semantics, in a vertex shader.
 - [ ] `DcDt` as the first material program. **Not plain `DcDt`:** the captured hull draws add the

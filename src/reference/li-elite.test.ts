@@ -4,14 +4,16 @@ import { existsSync, readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
+import type { CompoundNode } from '@treewyrm/freelancer/compound'
 import { Matrix3, Matrix4, type Vector3 } from '@treewyrm/freelancer/math'
-import { readRigidModel } from '@treewyrm/freelancer/rigid'
+import { readRigidModel, type RigidPart } from '@treewyrm/freelancer/rigid'
 import { Directory } from '@treewyrm/freelancer/utf'
 import { getMesh, getMeshDraw, readVMeshLibrary, type VMeshPart } from '@treewyrm/freelancer/vmesh'
 import { readCapture, type CaptureDraw } from '#/capture/capture.js'
 import { indexTextures, namesOf } from '#/capture/texture-names.js'
 import { planReference, vertexLayout } from '#/mesh/plan.js'
 import { projectionMatrix, viewMatrix, type Camera } from '#/scene/camera.js'
+import { partTransforms } from '#/scene/hierarchy.js'
 import { scenes } from './scenes.js'
 
 const data = process.env['FREELANCER_DATA'] ?? join(homedir(), 'Downloads/Freelancer/DATA')
@@ -294,4 +296,41 @@ test('retail winding faces the camera, seen through this view', { skip }, () => 
     const towards = -dot(Matrix4.transformDirection(face, toWorld), position) > 0
     assert.equal(counterClockwise, towards, `triangle ${at / 3}`)
   }
+})
+
+test('each part stands where retail drew it', { skip }, () => {
+  const draws = lastFrame()
+  const file = readFileSync(join(data, 'SHIPS/LIBERTY/LI_ELITE/li_elite.cmp'))
+  const root = Directory.read(new Uint8Array(file.buffer, file.byteOffset, file.byteLength))
+  const meshes = readVMeshLibrary(root)
+  const model = readRigidModel(root) as CompoundNode<RigidPart>
+  const transforms = partTransforms(model, sceneModel())
+  const view = viewMatrix(CAMERA)
+
+  const columns = (matrix: Matrix4) => [matrix.x, matrix.y, matrix.z, matrix.w]
+  let compared = 0
+  for (const [part, world] of transforms) {
+    const source = part.part.type === 'rigid' ? part.part.part : undefined
+    const level = source && 'levels' in source ? source.levels[0] : source
+    if (!level) continue
+    const modelView = columns(Matrix4.multiply(view, world))
+
+    for (const { startIndex } of getMeshDraw(
+      getMesh(meshes, level.reference.meshId)!,
+      level.reference,
+    )) {
+      const { world: retail } = draws.find((draw) => draw.startIndex === startIndex)!
+      // Retail's world is the modelview with Z flipped, written as rows for row vectors.
+      modelView.forEach((column, c) =>
+        [column.x, column.y, -column.z].forEach((cell, r) =>
+          assert.ok(
+            Math.abs(cell - retail![c * 4 + r]!) < 1e-3,
+            `${part.name} [${r}][${c}]: ${cell} against ${retail![c * 4 + r]}`,
+          ),
+        ),
+      )
+      compared++
+    }
+  }
+  assert.equal(compared, 19)
 })
