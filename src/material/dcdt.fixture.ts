@@ -9,6 +9,7 @@ import {
   createDcDtProgram,
   DIFFUSE_UNIT,
   ENVIRONMENT_UNIT,
+  SECOND_UNIT,
   setDrawUniforms,
   setFrameUniforms,
 } from './dcdt.js'
@@ -29,6 +30,7 @@ type Parameters = Pick<
   | 'alphaReference'
   | 'texture'
   | 'environment'
+  | 'second'
 >
 
 const BLACK = { x: 0, y: 0, z: 0 }
@@ -224,6 +226,23 @@ export default ((gl) => {
   report['alphaKept'] = read({ ...faded, alphaReference: 127 })
   report['alphaCut'] = read({ ...faded, alphaReference: 128 })
   report['alphaZero'] = read({ emissive: { x: 1, y: 1, z: 1 }, diffuse: [0, 0, 0, 0] })
+
+  // Stage 1 over a lit 128, with a 128 texture: 128 + 128, and 2 x 128 x 128.
+  gl.activeTexture(gl.TEXTURE0 + SECOND_UNIT)
+  gl.bindTexture(gl.TEXTURE_2D, createTexture(gl, planUpload(solid(128))))
+  gl.bindSampler(SECOND_UNIT, nearest)
+  const stageTexture = { name: 's', uvSet: 0 } as NonNullable<Draw['texture']>
+  const half = { emissive: { x: 0.5, y: 0.5, z: 0.5 } }
+  report['add'] = read({ ...half, second: { operation: 'add', texture: stageTexture } })
+  report['addSaturates'] = read({
+    emissive: { x: 1, y: 1, z: 1 },
+    second: { operation: 'add', texture: stageTexture },
+  })
+  report['modulate2x'] = read({
+    ...half,
+    second: { operation: 'modulate2x', texture: stageTexture },
+  })
+  report['modulate2xEmpty'] = read({ ...half, second: { operation: 'modulate2x' } })
 
   // D3DCOLOR's bytes, B G R A.
   gl.vertexAttrib4f(ATTRIBUTE_LOCATIONS.diffuse, 0.25, 0.5, 1, 0.5)

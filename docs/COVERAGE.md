@@ -16,20 +16,20 @@ it. Sphere materials aren't counted there. The nine `DcDt` rows hold 21,153 of t
 
 | Type | Draws | Read | Built | State | Picture |
 | ---- | ----: | ---- | ----- | ----- | ------- |
-| `DcDt` | 15,016 | Yes | Yes | `li_elite`, `li_elite_turned`, `ku_dragon` | `li_elite`, `li_elite_turned`, `ku_dragon` |
-| `DcDtEc` | 3,200 | Yes | Yes | | |
-| `DcDtEt` | 1,334 | | | | |
+| `DcDt` | 15,016 | Yes | Yes | `li_elite`, `li_elite_turned`, `ku_dragon`, `prison` | `li_elite`, `li_elite_turned`, `ku_dragon`, `prison` |
+| `DcDtEc` | 3,200 | Yes | Yes | `prison` | `prison` |
+| `DcDtEt` | 1,334 | Yes | Yes | `prison` | `prison` |
 | `DcDtTwo` | 522 | Yes | Yes | `li_elite`, `li_elite_turned` | |
-| `DcDtOcOt` | 484 | Yes | Yes | `ku_dragon`, blended | `ku_dragon` |
+| `DcDtOcOt` | 484 | Yes | Yes | `ku_dragon`, `prison`, both blended | `ku_dragon`, `prison` |
 | `DcDtEcOcOtTwo` | 318 | Yes | Yes | | |
 | `DcDtEcOcOt` | 179 | Yes | Yes | | |
 | `DcDtOcOtTwo` | 78 | Yes | Yes | | |
 | `DcDtEcTwo` | 22 | Yes | Yes | | |
-| `BtDetailMapMaterial` | 845 | | | | |
-| `BtDetailMapTwoMaterial` | | | | | |
+| `BtDetailMapMaterial` | 845 | Yes | Yes | `prison` | `prison` |
+| `BtDetailMapTwoMaterial` |  | Yes | Yes | | |
 | `HUDIconMaterial` | 195 | | | | |
 | `HighGlassMaterial` | 113 | Yes | Yes | `li_elite`, `li_elite_turned` | Open: [VALIDATION.md](VALIDATION.md#open-questions) |
-| `GlassMaterial`, `GFGlassMaterial` | | | | | |
+| `GlassMaterial`, `GFGlassMaterial` |  | Yes | Yes | | |
 | `NomadMaterialNoBendy` | 30 | | | | |
 | `NomadMaterial` | | | | | |
 | `HUDAnimMaterial` | 26 | | | | |
@@ -46,7 +46,7 @@ No file names these; the engine applies them.
 
 | Type | Milestone | Read | Built | State | Picture |
 | ---- | --------- | ---- | ----- | ----- | ------- |
-| `EnvMapMaterial` | M3 | | | | |
+| `EnvMapMaterial` | M3 | Yes | Yes | `li_elite`, `ku_dragon`, `prison` | `li_elite`, `prison` |
 | `ColorizeMaterial` | M3 | | | | |
 | `CloakMaterial` | M3 | | | | |
 | `WireMaterial`, `WireMaterial2` | M3 | | | | |

@@ -10,6 +10,9 @@ import type { Draw, Frame } from '#/scene/frame.js'
 /** Retail lights a model with at most four (library `THORN.md`, `lt_grp`). */
 export const MAX_LIGHTS = 4
 
+// `D3DTOP_ADD` for `DcDtEt` (`0x6ed1724`), `D3DTOP_MODULATE2X` for `BtDetailMapMaterial` (`0x6ed14dc`).
+const SECOND_STAGE = { none: 0, add: 1, modulate2x: 2 } as const
+
 const VERTEX = `#version 300 es
 layout(location = ${ATTRIBUTE_LOCATIONS.position}) in vec3 position;
 layout(location = ${ATTRIBUTE_LOCATIONS.normal}) in vec3 normal;
@@ -34,9 +37,11 @@ uniform float normalSign;
 uniform bool normalizeNormals;
 uniform bool reflecting;
 uniform int uvSet;
+uniform int secondUvSet;
 
 out vec4 lit;
 out vec2 uv;
+out vec2 secondUv;
 out vec3 reflection;
 
 void main() {
@@ -44,6 +49,7 @@ void main() {
   vec4 eyePosition = modelView * vec4(position, 1.0);
   gl_Position = projection * eyePosition;
   uv = uvSet == 1 ? uv1 : uv0;
+  secondUv = secondUvSet == 1 ? uv1 : uv0;
 
   // A normal goes through the inverse transpose, and keeps its length unless asked otherwise.
   vec3 eyeNormal = transpose(inverse(mat3(modelView))) * (normal * normalSign);
@@ -79,15 +85,26 @@ uniform sampler2D diffuseMap;
 uniform bool reflecting;
 uniform samplerCube environmentMap;
 uniform float alphaReference;
+uniform int secondStage;
+uniform bool secondTextured;
+uniform sampler2D secondMap;
 
 in vec4 lit;
 in vec2 uv;
+in vec2 secondUv;
 in vec3 reflection;
 out vec4 color;
 
 void main() {
   // An empty stage reads as white: glass has no texture, and still shows its colour.
   color = textured ? clamp(texture(diffuseMap, uv) * lit, 0.0, 1.0) : lit;
+
+  // Stage 1, which saturates like any stage. An empty one reads as white, as stage 0 does.
+  if (secondStage != ${SECOND_STAGE.none}) {
+    vec4 second = secondTextured ? texture(secondMap, secondUv) : vec4(1.0);
+    color.rgb = secondStage == ${SECOND_STAGE.add} ? color.rgb + second.rgb : 2.0 * second.rgb * color.rgb;
+    color = clamp(vec4(color.rgb, second.a * color.a), 0.0, 1.0);
+  }
 
   if (reflecting) {
     vec4 cube = texture(environmentMap, reflection);
@@ -114,6 +131,10 @@ const UNIFORMS = [
   'normalizeNormals',
   'reflecting',
   'uvSet',
+  'secondUvSet',
+  'secondStage',
+  'secondTextured',
+  'secondMap',
   'textured',
   'diffuseMap',
   'environmentMap',
@@ -124,12 +145,14 @@ export type DcDtProgram = Program<(typeof UNIFORMS)[number]>
 
 export const DIFFUSE_UNIT = 0
 export const ENVIRONMENT_UNIT = 1
+export const SECOND_UNIT = 2
 
 export const createDcDtProgram = (gl: WebGL2RenderingContext): DcDtProgram => {
   const program = createProgram(gl, VERTEX, FRAGMENT, UNIFORMS)
   gl.useProgram(program.handle)
   gl.uniform1i(program.uniforms.diffuseMap, DIFFUSE_UNIT)
   gl.uniform1i(program.uniforms.environmentMap, ENVIRONMENT_UNIT)
+  gl.uniform1i(program.uniforms.secondMap, SECOND_UNIT)
   return program
 }
 
@@ -168,6 +191,7 @@ export const setDrawUniforms = (
     | 'alphaReference'
     | 'texture'
     | 'environment'
+    | 'second'
   >,
 ): void => {
   gl.uniformMatrix4fv(uniforms.world, false, Matrix4.toArray(draw.world))
@@ -181,4 +205,7 @@ export const setDrawUniforms = (
   gl.uniform1i(uniforms.textured, draw.texture ? 1 : 0)
   gl.uniform1i(uniforms.uvSet, draw.texture?.uvSet ?? 0)
   gl.uniform1i(uniforms.reflecting, draw.environment ? 1 : 0)
+  gl.uniform1i(uniforms.secondStage, SECOND_STAGE[draw.second?.operation ?? 'none'])
+  gl.uniform1i(uniforms.secondTextured, draw.second?.texture ? 1 : 0)
+  gl.uniform1i(uniforms.secondUvSet, draw.second?.texture?.uvSet ?? 0)
 }

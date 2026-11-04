@@ -16,6 +16,8 @@ export interface ReferenceScene {
     category: 'Spaceship' | 'Solar'
     position: Vector
     orientation: Rows
+    /** More of the same model, each its own object, after this one in the script. */
+    copies?: { position: Vector; orientation: Rows }[]
   }
   camera: {
     position: Vector
@@ -96,6 +98,14 @@ export const sceneScript = (scene: ReferenceScene): string => {
       spatialprops: spatial(model.position, model.orientation),
       userprops: value.table({ category: model.category }),
     }),
+    ...(model.copies ?? []).map(({ position, orientation }, index) =>
+      value.table({
+        ...common(`Model_Reference_${index + 2}`, 'COMPOUND', model.archetype, LIGHT_GROUP),
+        flags: value.identifier('LIT_DYNAMIC', 'LIT_AMBIENT'),
+        spatialprops: spatial(position, orientation),
+        userprops: value.table({ category: model.category }),
+      }),
+    ),
     ...lights.map((light, index) =>
       value.table({
         ...common(`Light_Reference_${index + 1}`, 'LIGHT', '', LIGHT_GROUP),

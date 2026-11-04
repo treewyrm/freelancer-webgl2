@@ -56,5 +56,34 @@ export const scenes: ReadonlyMap<string, ReferenceScene> = new Map(
       ambient: [40, 40, 40],
       lights: [{ color: [255, 255, 255], direction: [0.5, -0.5, -1] }],
     } satisfies ReferenceScene,
+    {
+      // M3: two objects' queued glass. The nearer comes first in the script, so far before near can't
+      // be submit order, and if a room flushes once then both come after all of both hulls.
+      name: 'ku_dragon_pair',
+      model: {
+        archetype: 'ku_dragon',
+        category: 'Spaceship',
+        position: [-8, 0, -40],
+        orientation: rotation(150, 20),
+        copies: [{ position: [12, 0, -70], orientation: rotation(150, 20) }],
+      },
+      camera: CAMERA,
+      ambient: [40, 40, 40],
+      lights: [{ color: [255, 255, 255], direction: [0.5, -0.5, -1] }],
+    } satisfies ReferenceScene,
+    {
+      // M3: `DcDtEt`, `DcDtEc`, `BtDetailMapMaterial` and a queued glass on one environment-mapped
+      // solar, far enough back to fit its radius of 303.
+      name: 'prison',
+      model: {
+        archetype: 'prison',
+        category: 'Solar',
+        position: [0, 0, -800],
+        orientation: rotation(150, 20),
+      },
+      camera: CAMERA,
+      ambient: [40, 40, 40],
+      lights: [{ color: [255, 255, 255], direction: [0.5, -0.5, -1] }],
+    } satisfies ReferenceScene,
   ].map((scene) => [scene.name, scene]),
 )

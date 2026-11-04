@@ -78,3 +78,9 @@ test('a vertex colour replaces the material diffuse, alpha included, in B G R A'
   rgb('vertexColorAlpha', [0, 0, 255])
   rgb('vertexColorOff', [0, 255, 0])
 })
+
+test('stage 1 adds or doubles, saturating, and an empty one reads as white', () => {
+  rgb('add', [255, 255, 255])
+  rgb('modulate2x', [128, 128, 128])
+  rgb('modulate2xEmpty', [255, 255, 255])
+})

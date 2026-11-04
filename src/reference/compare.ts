@@ -46,9 +46,16 @@ export const assertFrameMatches = (
     if (ours.texture) assert.ok(stageNames(0).includes(ours.texture.name.toLowerCase()), what)
     else assert.equal(retail.stages[0]!.texture, undefined, what)
 
-    // Stage 1 is on and reflecting exactly when ours is. Draw 12 leaves a stale cube bound, off.
-    const reflects = retail.stages[1]!.states['COLOROP'] === 5
-    assert.equal(reflects, ours.environment !== undefined, what)
+    // Stage 1's operation is ours. Draw 12 of `li_elite` leaves a stale cube bound, off.
+    const operation = retail.stages[1]!.states['COLOROP']
+    // D3DTOP_DISABLE 1, MODULATE2X 5, ADD 7.
+    const stage =
+      ours.environment || ours.second?.operation === 'modulate2x' ? 5 : ours.second ? 7 : 1
+    assert.equal(operation, stage, what)
+    if (ours.second?.texture) {
+      assert.ok(stageNames(1).includes(ours.second.texture.name.toLowerCase()), what)
+      assert.equal(retail.stages[1]!.states['TEXCOORDINDEX'], ours.second.texture.uvSet, what)
+    }
     if (ours.environment) {
       assert.ok(stageNames(1).includes(ours.environment), what)
       assert.equal(retail.stages[1]!.states['TEXCOORDINDEX'], 0x30000, what)

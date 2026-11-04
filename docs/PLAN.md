@@ -130,11 +130,14 @@ closing and losing the context all work. Then revise the API with what was learn
       by reading and hand-worked pixels. Needs a reference scene to reach "state matched": what D3D8
       reads for ambient on a vertex-coloured mesh, from a `COLOR2` no mesh has, is uncaptured.
 - [x] Transparency order and `MaterialBatcher`. A blended `OcOt` waits for the flush, far before near,
-      with no environment stage or normalized normals; an opaque one submits at once. `ku_dragon` matches
-      in state and picture, one queued draw only, so **the sort itself is read and not measured**. A room
-      flushes once, and space per object, which M7 will need. Order between models belongs to each frame.
-- [x] **You:** run `ku_dragon` and press F9.
-- [ ] `DcDtEt`, `BtDetailMapMaterial`, glass, environment maps.
+      with no environment stage or normalized normals; an opaque one submits at once. A room flushes
+      once, after all its objects, and keeps them in script order. `ku_dragon` matches in state and
+      picture, and `ku_dragon_pair` confirms the order. Space flushes per object, which M7 will need.
+- [x] **You:** run `ku_dragon` and `ku_dragon_pair`, and press F9.
+- [x] `DcDtEt`, `BtDetailMapMaterial`, glass, environment maps. `prison` matches in state and picture.
+      **Unmeasured:** a `Bt` UV set the mesh hasn't got (52 draws, UV0 here), a `BtDetailMapMaterial`
+      without a `Bt` (two materials), and the planet glass, whose class is `li_elite`'s glass.
+- [x] **You:** run `prison` and press F9.
 - [ ] **`NomadMaterial` in shaders**, as the worked example of not transcribing.
 - [ ] Engine overrides: colorize, cloak, wire, engine glow.
 - [ ] LOD selection, joint animation, material UV animation, texture animation.

@@ -11,6 +11,7 @@ import { Matrix4, type Vector3 } from '@treewyrm/freelancer/math'
 import type { RigidPart } from '@treewyrm/freelancer/rigid'
 import type { CubeTexture, Texture, TextureEntry } from '@treewyrm/freelancer/texture'
 import {
+  getMapCount,
   getMeshDraw,
   vertexByteLength,
   VertexFormat,
@@ -71,6 +72,12 @@ export interface DrawTexture {
   uvSet: number
 }
 
+/** Texture stage 1, in the classes that use it. No texture reads as white. */
+export interface DrawStage {
+  operation: 'add' | 'modulate2x'
+  texture?: DrawTexture
+}
+
 export interface Draw {
   mesh: VMeshData
   reference: VMeshRef
@@ -89,6 +96,7 @@ export interface Draw {
   /** A cube, reflected in camera space, as `2 × cube × colour`. */
   environment?: string
   environmentTexture?: CubeTexture
+  second?: DrawStage
 
   cull: 'back' | 'front'
   negateNormals: boolean
@@ -124,7 +132,7 @@ export interface Frame {
   unregistered: string[]
 }
 
-type MaterialClass = 'single' | 'singleTwo' | 'glass'
+type MaterialClass = 'single' | 'singleTwo' | 'glass' | 'emission' | 'detail' | 'detailTwo'
 
 // What M3 has built so far. Other registered types are reported, not drawn. The eight single-pass
 // names share one bind and submit (`kMaterialTypes`, `src/Shading/Material.cpp`), and `Ec` and `OcOt`
@@ -138,7 +146,13 @@ const CLASSES: Readonly<Record<string, MaterialClass>> = {
   DcDtEcTwo: 'singleTwo',
   DcDtOcOtTwo: 'singleTwo',
   DcDtEcOcOtTwo: 'singleTwo',
+  DcDtEt: 'emission',
+  BtDetailMapMaterial: 'detail',
+  BtDetailMapTwoMaterial: 'detailTwo',
+  // One class for the three names (`flmaterials.dll`).
   HighGlassMaterial: 'glass',
+  GlassMaterial: 'glass',
+  GFGlassMaterial: 'glass',
 }
 
 const wrapOf = (address: TextureAddress): TextureWrap => {
@@ -151,6 +165,7 @@ const wrapOf = (address: TextureAddress): TextureWrap => {
 const drawTexture = (
   { name, flags }: TextureReference,
   entry: Texture | CubeTexture,
+  mesh: VMeshData,
 ): DrawTexture => ({
   name,
   entry,
@@ -159,7 +174,9 @@ const drawTexture = (
     wrapU: wrapOf(getAddress(flags, 'u')),
     wrapV: wrapOf(getAddress(flags, 'v')),
   },
-  uvSet: getMapIndex(flags),
+  // 52 retail draws name a set their mesh hasn't got. What D3D8 reads then is unmeasured: UV0 here is
+  // what Librelancer and the extension do, and neither is evidence.
+  uvSet: Math.min(getMapIndex(flags), Math.max(0, getMapCount(mesh.format) - 1)),
 })
 
 /** One alpha bit is cut, more is blended (`FMaterial` after `PixelFormatAlphaBits`). */
@@ -232,6 +249,24 @@ const passesOf = (
     ]
   }
 
+  if (kind === 'emission' || kind === 'detail' || kind === 'detailTwo') {
+    // Neither ever blends or cuts (`0x6ed16cc`, `0x6ed1484`). `BindEnvMap` needs stage 1 free: `DcDtEt`
+    // without an `Et` leaves it so, and `BtDetailMapMaterial` always takes it (`0x6eb5100`).
+    const free = kind === 'emission' && !material.emissionTexture
+    const front: Pass = {
+      cull: 'back',
+      negateNormals: false,
+      blend: false,
+      alphaReference: DEVICE_ALPHA_REFERENCE,
+      ...(free ? withEnvironment(model.environment) : NO_ENVIRONMENT),
+    }
+    // `DcDtEt` loads only `Dc`, `Dt` and `Et` (`0x6eb60b0`), so its opacity stays 1.
+    if (kind === 'emission') front.alpha = 1
+    return kind === 'detailTwo'
+      ? [front, { ...front, cull: 'front', negateNormals: true }]
+      : [front]
+  }
+
   const entry = material.diffuseTexture && model.texture(material.diffuseTexture.name)
   const bits = alphaBits(entry)
   const blend = opacity < 1 || bits > 1
@@ -291,6 +326,26 @@ const entryOf = (
   return undefined
 }
 
+const secondStage = (
+  kind: MaterialClass,
+  { emissionTexture, detailTexture }: Material,
+  mesh: VMeshData,
+  model: SceneModel,
+  unsupported: Set<string>,
+): DrawStage | undefined => {
+  // Without an `Et`, `DcDtEt` disables the stage. `BtDetailMapMaterial` applies it regardless, and so
+  // doubles without a `Bt`: two retail materials, uncaptured.
+  if (kind === 'emission' && !emissionTexture) return undefined
+  if (kind !== 'emission' && kind !== 'detail' && kind !== 'detailTwo') return undefined
+  const operation = kind === 'emission' ? 'add' : 'modulate2x'
+  const slot = kind === 'emission' ? emissionTexture : detailTexture
+  if (!slot) return { operation }
+  const entry = entryOf(slot.name, model, unsupported)
+  // Not in the host's libraries: retail always has them, and a white `add` would hide the model.
+  if (!entry) return undefined
+  return { operation, texture: drawTexture(slot, entry, mesh) }
+}
+
 interface Queued {
   depth: number
   draws: Draw[]
@@ -298,8 +353,8 @@ interface Queued {
 
 /**
  * `ComputeBatchDepth`: the mean of a reference's vertices along the view's Z. It is negative ahead of
- * the camera, so ascending is back to front, `Bin1SortOrder`'s default of 2. Only one queued draw has
- * been captured, so the sort is read and not measured.
+ * the camera, so ascending is back to front, `Bin1SortOrder`'s default of 2 (`ku_dragon_pair`, whose
+ * objects are 30 apart: the order is measured, but that the key is this mean is only read).
  */
 const batchDepth = (
   mesh: VMeshData,
@@ -359,6 +414,7 @@ const collectModel = (
       const { x, y, z } = material.diffuse ?? WHITE
       const slot = material.diffuseTexture
       const entry = slot && entryOf(slot.name, model, unsupported)
+      const second = secondStage(kind, material, mesh, model, unsupported)
 
       // A queued material's passes stay together, being one submission (`ProcessQueuedBin`).
       const passes = passesOf(kind, type, material, model)
@@ -379,10 +435,11 @@ const collectModel = (
           diffuse: [x, y, z, alpha ?? material.opacity ?? 1],
           // Setting `Dc` overwrites `Ac` (`0x6eb2439`), and both start white. 37 retail materials differ.
           ambient: material.diffuse ?? material.ambient ?? WHITE,
-          emissive: material.emission ?? BLACK,
+          emissive: (kind !== 'emission' && material.emission) || BLACK,
           colorVertex: (mesh.format & VertexFormat.Diffuse) !== 0,
           // A slot with no texture draws as an empty stage, which reads as white.
-          ...(slot && entry ? { texture: drawTexture(slot, entry) } : {}),
+          ...(slot && entry ? { texture: drawTexture(slot, entry, mesh) } : {}),
+          ...(second ? { second } : {}),
           ...pass,
           ...(cube?.type === 'cube' ? { environmentTexture: cube } : {}),
         })
@@ -416,8 +473,8 @@ export const collectFrame = ({
   const view = viewMatrix(camera)
   const queued: Queued[] = []
   for (const model of models) collectModel(model, view, draws, queued, unsupported, unregistered)
-  // A room flushes its queue once, after all its objects (`RoomBatcherEnd`). Space does so per object,
-  // which M7 will need. Stable, where retail's qsort leaves equal keys in no set order.
+  // A room flushes its queue once, after all its objects (`RoomBatcherEnd`, `ku_dragon_pair`). Space
+  // does so per object, which M7 will need. Stable, where retail's qsort leaves equal keys in no set order.
   queued.sort((a, b) => a.depth - b.depth)
   for (const queue of queued) draws.push(...queue.draws)
   return {

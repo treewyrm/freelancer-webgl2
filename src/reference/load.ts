@@ -22,6 +22,11 @@ const ASSETS: Record<string, { model: string; libraries: string[]; environment: 
     libraries: ['SHIPS/LIBERTY/li_playerships.mat', 'FX/envmapbasic.mat', 'FX/envmapglass.txm'],
     environment: 'envmapbasic',
   },
+  prison: {
+    model: 'SOLAR/DOCKABLE/prison_lod.cmp',
+    libraries: ['SOLAR/Solar_mat_dockable01.mat', 'FX/envmapbasic.mat', 'FX/envmapglass.txm'],
+    environment: 'envmapbasic',
+  },
   ku_dragon: {
     model: 'SHIPS/KUSARI/KU_BLOOD_DRAGON/ku_dragon.cmp',
     libraries: ['SHIPS/KUSARI/ku_blood_dragon.mat', 'FX/envmapbasic.mat', 'FX/envmapglass.txm'],
@@ -62,15 +67,16 @@ export const loadScene = async (
         color: scaled(color),
         direction: { x, y, z },
       })),
-      models: [
-        {
-          parts: placeParts(model as CompoundNode<RigidPart>, modelMatrixOf(definition)),
-          mesh: (id) => getMesh(meshes, id),
-          material: (id) => getMaterial(materials, id),
-          texture,
-          environment: assets.environment,
-        },
-      ],
+      models: [definition.model, ...(definition.model.copies ?? [])].map((placed) => ({
+        parts: placeParts(
+          model as CompoundNode<RigidPart>,
+          modelMatrixOf({ ...definition, model: { ...definition.model, ...placed } }),
+        ),
+        mesh: (id) => getMesh(meshes, id),
+        material: (id) => getMaterial(materials, id),
+        texture,
+        environment: assets.environment,
+      })),
     },
   }
 }

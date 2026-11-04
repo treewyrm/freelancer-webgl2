@@ -6,6 +6,7 @@ import {
   createDcDtProgram,
   DIFFUSE_UNIT,
   ENVIRONMENT_UNIT,
+  SECOND_UNIT,
   setDrawUniforms,
   setFrameUniforms,
   type DcDtProgram,
@@ -160,6 +161,7 @@ export const createRenderer = (gl: WebGL2RenderingContext): Renderer => {
       gl.bindVertexArray(null)
       gl.bindSampler(DIFFUSE_UNIT, null)
       gl.bindSampler(ENVIRONMENT_UNIT, null)
+      gl.bindSampler(SECOND_UNIT, null)
     }
 
     const runHooks = (before: number) => {
@@ -195,6 +197,11 @@ export const createRenderer = (gl: WebGL2RenderingContext): Renderer => {
         draw.environmentTexture ? textureOf(draw.environmentTexture) : null,
       )
       gl.bindSampler(ENVIRONMENT_UNIT, samplerOf(DEFAULT_SAMPLER))
+
+      const second = draw.second?.texture
+      gl.activeTexture(gl.TEXTURE0 + SECOND_UNIT)
+      gl.bindTexture(gl.TEXTURE_2D, second ? textureOf(second.entry) : null)
+      gl.bindSampler(SECOND_UNIT, samplerOf(second?.sampler ?? DEFAULT_SAMPLER))
 
       gl.bindVertexArray(arrayOf(draw.mesh, draw.reference))
       gl.drawElements(drawMode(draw.mesh.primitive), draw.count, gl.UNSIGNED_SHORT, draw.byteOffset)

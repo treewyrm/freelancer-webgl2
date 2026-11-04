@@ -128,14 +128,16 @@ test('the archetype decides the reflection, and it normalizes normals', () => {
 
 test('the flags choose wrap and UV set', () => {
   const material = skinned({ diffuseTexture: { name: 'skin', flags: 0x5a } })
-  const { sampler, uvSet } = collectFrame(scene(material)).draws[0]!.texture!
+  const twoSets = { ...mesh, format: 0x212 as VertexFormat }
+  const { sampler, uvSet } = collectFrame(scene(material, { mesh: () => twoSets })).draws[0]!
+    .texture!
   assert.deepEqual([sampler.wrapU, sampler.wrapV, uvSet], ['clamp', 'clamp', 1])
 })
 
 test('what M3 has yet to cover is reported, and draws nothing', () => {
-  const frame = collectFrame(scene({ name: 'detailmap_rock', type: 'DcDt' }))
+  const frame = collectFrame(scene({ name: 'ui_icon', type: 'DcDt' }))
   assert.deepEqual(frame.draws, [])
-  assert.deepEqual(frame.unsupported, ['detailmap_rock'])
+  assert.deepEqual(frame.unsupported, ['ui_icon'])
 })
 
 test('placing a compound model takes the level asked for, clamped, and leaves out hidden parts', () => {
@@ -306,4 +308,57 @@ test('a blended type that is not batched keeps its place', () => {
     frame.draws.map(({ world }) => world.w.z),
     [-5, -50],
   )
+})
+
+const named = (name: string, flags = 0x40) => ({ name, flags })
+
+test('DcDtEt adds its Et, ignoring Ec and Oc, and never blends', () => {
+  const material = skinned({
+    type: 'DcDtEt',
+    emission: { x: 1, y: 0, z: 0 },
+    opacity: 0.5,
+    emissionTexture: named('glow'),
+  })
+  const [draw] = collectFrame(scene(material)).draws
+  assert.equal(draw!.second?.operation, 'add')
+  assert.deepEqual([draw!.blend, draw!.alphaReference, draw!.diffuse[3]], [false, 0, 1])
+  assert.deepEqual(draw!.emissive, { x: 0, y: 0, z: 0 })
+})
+
+test('stage 1 taken shuts out the reflection, and a DcDtEt without Et leaves it free', () => {
+  const environment = { environment: 'cube' }
+  const [withEt] = collectFrame(
+    scene(skinned({ type: 'DcDtEt', emissionTexture: named('glow') }), environment),
+  ).draws
+  assert.deepEqual([withEt!.environment, withEt!.normalizeNormals], [undefined, false])
+
+  const [withoutEt] = collectFrame(scene(skinned({ type: 'DcDtEt' }), environment)).draws
+  assert.deepEqual([withoutEt!.environment, withoutEt!.second], ['cube', undefined])
+
+  const [detail] = collectFrame(
+    scene(skinned({ type: 'BtDetailMapMaterial', detailTexture: named('bt') }), environment),
+  ).draws
+  assert.deepEqual([detail!.environment, detail!.second?.operation], [undefined, 'modulate2x'])
+})
+
+test('BtDetailMapMaterial keeps Ec and Oc, and takes the stage even without a Bt', () => {
+  const [draw] = collectFrame(
+    scene(skinned({ type: 'BtDetailMapMaterial', emission: { x: 1, y: 0, z: 0 }, opacity: 0.5 })),
+  ).draws
+  assert.deepEqual([draw!.blend, draw!.diffuse[3]], [false, 0.5])
+  assert.deepEqual(draw!.emissive, { x: 1, y: 0, z: 0 })
+  assert.deepEqual(draw!.second, { operation: 'modulate2x' })
+})
+
+test('a UV set the mesh has not got falls back to UV0', () => {
+  const material = skinned({ type: 'DcDtEt', emissionTexture: named('glow', 0x5a) })
+  assert.equal(collectFrame(scene(material)).draws[0]!.second?.texture?.uvSet, 0)
+  const twoSets = { ...mesh, format: 0x212 as VertexFormat }
+  const [draw] = collectFrame(scene(material, { mesh: () => twoSets })).draws
+  assert.equal(draw!.second?.texture?.uvSet, 1)
+})
+
+test('the other glass names are glass', () => {
+  for (const name of ['planet_glass', 'planet_dome_glass'])
+    assert.equal(collectFrame(scene(skinned({ name, type: 'DcDt' }))).draws.length, 2)
 })
