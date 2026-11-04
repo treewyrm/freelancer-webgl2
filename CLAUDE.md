@@ -102,6 +102,7 @@ Flat, one directory per subsystem, added when there is code for it. A subsystem 
 | `gl/`           | Context, programs, GL resources       | `src/RP8/`                            |
 | `texture/`      | Upload plans, GL textures, samplers   | `src/Shading/TextureLibrary.cpp`      |
 | `mesh/`         | VMesh buffers and index plans         | `src/RendComp/`                       |
+| `scene/`        | Camera; next, frame order and lights  | `src/freelancer/`, `src/Shading/MaterialBatcher.cpp` |
 | `harness.ts`    | GPU test runner, never shipped        |                                       |
 | `capture/`      | Capture reader and texture names, never shipped |                             |
 | `reference/`    | Reference scenes and their install, never shipped |                           |
@@ -112,7 +113,6 @@ Expected next, as a guide and not a commitment:
 | Directory       | Holds                                 | Decomp source                         |
 | --------------- | ------------------------------------- | ------------------------------------- |
 | `material/`     | One program per material type         | `src/Shading/`, `src/flmaterials/`    |
-| `scene/`        | Frame order, batching, lights, fog    | `src/freelancer/`, `src/Shading/MaterialBatcher.cpp` |
 | `deformable/`   | Skinned characters                    | `src/Deformable2/`                    |
 | `alchemy/`      | Particle effects                      | `src/alchemy/`                        |
 | `thorn/`        | THN scene playback                    | `src/Thorn/`                          |

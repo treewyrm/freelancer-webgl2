@@ -4,12 +4,15 @@ import { existsSync, readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
+import { Matrix3, Matrix4, type Vector3 } from '@treewyrm/freelancer/math'
 import { readRigidModel } from '@treewyrm/freelancer/rigid'
 import { Directory } from '@treewyrm/freelancer/utf'
 import { getMesh, getMeshDraw, readVMeshLibrary, type VMeshPart } from '@treewyrm/freelancer/vmesh'
 import { readCapture, type CaptureDraw } from '#/capture/capture.js'
 import { indexTextures, namesOf } from '#/capture/texture-names.js'
 import { planReference, vertexLayout } from '#/mesh/plan.js'
+import { projectionMatrix, viewMatrix, type Camera } from '#/scene/camera.js'
+import { scenes } from './scenes.js'
 
 const data = process.env['FREELANCER_DATA'] ?? join(homedir(), 'Downloads/Freelancer/DATA')
 const references = process.env['FREELANCER_REFERENCES'] ?? 'references'
@@ -154,4 +157,141 @@ test('planned indices and vertices are what retail drew', { skip }, () => {
   }
   assert.equal(checked, 19)
   assert.ok(vertices > 100, `only ${vertices} vertices compared`)
+})
+
+// `li_elite` in `scenes.ts`. THN triples are columns, so the rows are their transpose.
+const CAMERA: Camera = {
+  position: { x: 0, y: 0, z: 0 },
+  orientation: Matrix3.identity,
+  fovh: 30,
+  near: 1,
+  far: 10000,
+}
+
+const sceneModel = (): Matrix4 => {
+  const [x, y, z] = scenes.get('li_elite')!.model.orientation
+  const [px, py, pz] = scenes.get('li_elite')!.model.position
+  return Matrix4.fromRotationTranslation(
+    {
+      x: { x: x[0], y: y[0], z: z[0] },
+      y: { x: x[1], y: y[1], z: z[1] },
+      z: { x: x[2], y: y[2], z: z[2] },
+    },
+    { x: px, y: py, z: pz },
+  )
+}
+
+const rootVertices = (): Vector3[] => {
+  const file = readFileSync(join(data, 'SHIPS/LIBERTY/LI_ELITE/li_elite.cmp'))
+  const root = Directory.read(new Uint8Array(file.buffer, file.byteOffset, file.byteLength))
+  const meshes = readVMeshLibrary(root)
+  const part = topLevels(readRigidModel(root) as never)[0]!
+  const mesh = getMesh(meshes, part.reference.meshId)!
+  const { stride } = vertexLayout(mesh.format)
+  const view = new DataView(mesh.vertices.buffer, mesh.vertices.byteOffset)
+  return [...new Set(planReference(mesh, part.reference).indices)].map((index) => ({
+    x: view.getFloat32(index * stride, true),
+    y: view.getFloat32(index * stride + 4, true),
+    z: view.getFloat32(index * stride + 8, true),
+  }))
+}
+
+const clipOf = (point: Vector3) =>
+  Matrix4.transform(
+    { ...point, w: 1 },
+    Matrix4.multiply(
+      Matrix4.multiply(projectionMatrix(CAMERA, 1024 / 768), viewMatrix(CAMERA)),
+      sceneModel(),
+    ),
+  )
+
+test('camera and model reach the clip space retail reached', { skip }, () => {
+  const { world, view, projection } = lastFrame()[0]!
+  // D3D's row vectors: p * world * view * projection.
+  const rowTimes = (v: number[], m: number[]) =>
+    [0, 1, 2, 3].map((c) => v.reduce((sum, value, r) => sum + value * m[r * 4 + c]!, 0))
+
+  for (const point of rootVertices()) {
+    const retail = rowTimes(
+      rowTimes(rowTimes([point.x, point.y, point.z, 1], world!), view!),
+      projection!,
+    )
+    const ours = clipOf(point)
+    const within = (a: number, b: number) =>
+      assert.ok(Math.abs(a - b) < 1e-3 * Math.max(1, Math.abs(b)), `${a} against ${b}`)
+    within(ours.x, retail[0]!)
+    within(ours.y, retail[1]!)
+    within(ours.w, retail[3]!)
+    // GL's clip z is D3D's remapped, so that window depth is the same number.
+    within(ours.z, 2 * retail[2]! - retail[3]!)
+  }
+})
+
+test('the mirror is settled by the retail screenshot, not by the matrices', { skip }, () => {
+  const shot = readFileSync(join(references, 'li_elite/d3d8log.f607.bmp'))
+  const lit = (x: number, y: number): boolean => {
+    if (x < 0 || y < 0 || x >= 1024 || y >= 768) return false
+    // 24-bit BMP, bottom row first, after its 54-byte header.
+    const at = 54 + (767 - y) * ((1024 * 3 + 3) & ~3) + x * 3
+    return shot[at]! + shot[at + 1]! + shot[at + 2]! > 0
+  }
+  const near = (x: number, y: number) =>
+    [-1, 0, 1].some((dx) => [-1, 0, 1].some((dy) => lit(x + dx, y + dy)))
+
+  const onShip = (mirrored: boolean) => {
+    const points = rootVertices()
+    const hits = points.filter((point) => {
+      const { x, y, w } = clipOf(point)
+      const ndcX = ((mirrored ? -x : x) / w + 1) / 2
+      return near(Math.round(ndcX * 1024), Math.round(((1 - y / w) / 2) * 768))
+    })
+    return hits.length / points.length
+  }
+  const [ours, flipped] = [onShip(false), onShip(true)]
+  assert.ok(ours > 0.99, `only ${ours} of the hull lands on the ship`)
+  assert.ok(flipped < ours - 0.1, `mirrored scores ${flipped} against ${ours}`)
+})
+
+test('retail winding faces the camera, seen through this view', { skip }, () => {
+  const file = readFileSync(join(data, 'SHIPS/LIBERTY/LI_ELITE/li_elite.cmp'))
+  const root = Directory.read(new Uint8Array(file.buffer, file.byteOffset, file.byteLength))
+  const meshes = readVMeshLibrary(root)
+  const part = topLevels(readRigidModel(root) as never)[0]!
+  const mesh = getMesh(meshes, part.reference.meshId)!
+  const { stride } = vertexLayout(mesh.format)
+  const view = new DataView(mesh.vertices.buffer, mesh.vertices.byteOffset)
+  const { indices } = planReference(mesh, part.reference)
+
+  const read = (index: number, offset: number): Vector3 => ({
+    x: view.getFloat32(index * stride + offset, true),
+    y: view.getFloat32(index * stride + offset + 4, true),
+    z: view.getFloat32(index * stride + offset + 8, true),
+  })
+  const toWorld = sceneModel()
+  const minus = (a: Vector3, b: Vector3): Vector3 => ({ x: a.x - b.x, y: a.y - b.y, z: a.z - b.z })
+  const dot = (a: Vector3, b: Vector3) => a.x * b.x + a.y * b.y + a.z * b.z
+
+  for (let at = 0; at + 2 < indices.length; at += 3) {
+    const corners = [indices[at]!, indices[at + 1]!, indices[at + 2]!] as const
+    const [a, b, c] = corners.map((index) => read(index, 0)) as [Vector3, Vector3, Vector3]
+    const [u, v] = [minus(b, a), minus(c, a)]
+    const face = { x: u.y * v.z - u.z * v.y, y: u.z * v.x - u.x * v.z, z: u.x * v.y - u.y * v.x }
+
+    // Index order is right-handed against the normals stored beside it, independently of any view.
+    const stored = corners
+      .map((index) => read(index, 12))
+      .reduce((sum, n) => ({ x: sum.x + n.x, y: sum.y + n.y, z: sum.z + n.z }))
+    assert.ok(dot(face, stored) > 0, `triangle ${at / 3} winds against its normals`)
+
+    // So counter-clockwise on screen is exactly the triangles facing the camera, at the origin.
+    const [pa, pb, pc] = [a, b, c].map(clipOf).map(({ x, y, w }) => ({ x: x / w, y: y / w })) as [
+      { x: number; y: number },
+      { x: number; y: number },
+      { x: number; y: number },
+    ]
+    const counterClockwise = (pb.x - pa.x) * (pc.y - pa.y) - (pb.y - pa.y) * (pc.x - pa.x) > 0
+    const position = Matrix4.transformPoint(a, toWorld)
+    const towards = -dot(Matrix4.transformDirection(face, toWorld), position) > 0
+    assert.equal(counterClockwise, towards, `triangle ${at / 3}`)
+  }
 })

@@ -72,7 +72,9 @@ end: its texture by name, stage setup, material, lights and matrices. Pinned by
 - [x] VMesh buffers, including the base-vertex scheme (library `RENDERER.md` §3). Indices rebased per
       reference. They and the logged vertices match `li_elite` exactly; all 9,322 retail references
       stay in range. **Not captured:** normals, which `d3d8log` doesn't log. Add them for lighting.
-- [ ] Camera: THN `cameraprops` to matrices, with the mirrored projection and `CCW` (`RENDERER.md` §2).
+- [x] Camera: THN `cameraprops` to matrices and `CCW` (`RENDERER.md` §2). With the engine's own view
+      it is a plain right-handed GL perspective, nothing negated. Reaches retail's clip space and depth
+      in `li_elite`, whose camera is identity: **a turned camera is unmeasured**, and rests on the source.
 - [ ] Static `Cmpnd` hierarchy to world transforms (§5).
 - [ ] Frame as data: a pure function from scene to ordered draw list ([ARCHITECTURE.md](ARCHITECTURE.md)).
 - [ ] Fixed-function vertex lighting, from `SetLight` and `SetMaterial` semantics, in a vertex shader.
@@ -84,7 +86,9 @@ end: its texture by name, stage setup, material, lights and matrices. Pinned by
       (`src/freelancer/Client/room_control.cpp`).
 - [ ] The second passes in `li_elite`: `L_glass` draws back faces, then blended front faces with
       `envmapglass`; `DcDtTwo` draws front, then back. So 19 mesh groups make 22 draws.
-- [ ] Comparator: draw list against capture, then canvas against screenshot.
+- [ ] Comparator: draw list against capture, then canvas against screenshot. D3D8 samples pixels at
+      integer coordinates, so expect to shift clip space half a pixel to match: `x + 1/W`, `y - 1/H`.
+      Retail's screen quads sit at `n.5` (draws 53-58), which supports it. Unapplied until measured.
 
 **Done when** the reference scene matches in draw count, order, state and matrices, and the picture
 matches within a stated tolerance.
