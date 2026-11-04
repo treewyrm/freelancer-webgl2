@@ -50,8 +50,8 @@ No file names these; the engine applies them.
 | `ColorizeMaterial` | M10 | | | | |
 | `CloakMaterial` | M3 | Yes | Yes | | |
 | `WireMaterial` | M10 | | | | |
-| `WireMaterial2` | Nothing asks for it | | | | |
-| `EngineGlowMaterial` | Unreachable | | | | |
+| `WireMaterial2` | M3, a mod can name it | | | | |
+| `EngineGlowMaterial` | M3, a mod can name it | | | | |
 | `StarsphereMaterial`, `BackdropMaterial` | M4 | | | | |
 | `ShadowMaterial` | M8 | | | | |
 | `VisibleCounterMaterial` | M7 | | | | |

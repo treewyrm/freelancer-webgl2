@@ -146,9 +146,9 @@ closing and losing the context all work. Then revise the API with what was learn
 - [x] **You:** run `dyson_door_shield` and `no_fighter`, and press F9.
 - [x] Engine overrides, where the game reaches them on a rigid model: `CloakMaterial`, set by the host.
       Read from `flmaterials.dll` and pinned by tests, **uncaptured**, as only flight has a cloak.
-      `EngineGlowMaterial` needs nothing: only its factory names it, no file does, and it isn't in the
-      override table. `WireMaterial` and `ColorizeMaterial` are the interface controls', so M10's, and
-      nothing in the client asks for `WireMaterial2`.
+      `WireMaterial` and `ColorizeMaterial` are asked for by the interface controls, so M10's.
+- [ ] Every other type the DLLs register, used in retail or not, since a mod can name any of them:
+      `EngineGlowMaterial`, `EcEt`, `EcEtTwo`, `LightMap` and the like. Checked on generated spheres.
 - [x] LOD selection: `placeParts` with a camera and the archetype's lists, or `levelAt` for a host
       posing its own. `ku_dragon_pair`'s far ship matches at its lower level, in state and picture.
 - [x] Material UV animation, from the host's clock on `Scene.time`. Live in retail (`0x41b2e0` passes the
@@ -157,7 +157,11 @@ closing and losing the context all work. Then revise the API with what was learn
       `jointState`. Playing a script is the host's, or M8's.
 - [x] Texture animation moved to M8. Only base interiors and effects have animated textures, so no
       reference scene reaches it yet. Reported as unsupported until then.
-- [ ] Corpus suite: every retail model plans a frame without an unexplained material.
+- [x] Corpus suite: all 1,852 retail models plan a frame at every level, and what's left is pinned by
+      type (`src/reference/corpus.test.ts`): `HUDIconMaterial`, `HUDAnimMaterial`,
+      `ExclusionZoneMaterial` and `PlanetWaterMaterial` to build, `Nebula` for M4, four animated
+      textures for M8, and 7 materials no retail file defines.
+- [ ] `HUDIconMaterial`, `HUDAnimMaterial`, `ExclusionZoneMaterial`, `PlanetWaterMaterial`.
 - [ ] **You:** reference scenes for each new family.
       A material retail barely uses, or no spawnable model has, can still be checked: generate a small
       UV sphere carrying it, give it a lab-only archetype, and capture how the game draws it.
