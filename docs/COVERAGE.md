@@ -18,14 +18,14 @@ it. Sphere materials aren't counted there. The nine `DcDt` rows hold 21,153 of t
 | ---- | ----: | ---- | ----- | ----- | ------- |
 | `DcDt` | 15,016 | Yes | Yes | `li_elite`, `li_elite_turned`, `ku_dragon`, `prison` | `li_elite`, `li_elite_turned`, `ku_dragon`, `prison` |
 | `DcDtEc` | 3,200 | Yes | Yes | `prison` | `prison` |
-| `DcDtEt` | 1,334 | Yes | Yes | `prison` | `prison` |
+| `DcDtEt` | 1,334 | Yes | Yes | `prison`, `lair_core` | `prison`, `lair_core` |
 | `DcDtTwo` | 522 | Yes | Yes | `li_elite`, `li_elite_turned` | |
 | `DcDtOcOt` | 484 | Yes | Yes | `ku_dragon`, `prison`, both blended | `ku_dragon`, `prison` |
 | `DcDtEcOcOtTwo` | 318 | Yes | Yes | | |
 | `DcDtEcOcOt` | 179 | Yes | Yes | | |
-| `DcDtOcOtTwo` | 78 | Yes | Yes | | |
+| `DcDtOcOtTwo` | 78 | Yes | Yes | `lair_core`, blended | `lair_core` |
 | `DcDtEcTwo` | 22 | Yes | Yes | | |
-| `BtDetailMapMaterial` | 845 | Yes | Yes | `prison` | `prison` |
+| `BtDetailMapMaterial` | 845 | Yes | Yes | `prison`, `lair_core` | `prison`, `lair_core` |
 | `BtDetailMapTwoMaterial` |  | Yes | Yes | | |
 | `HUDIconMaterial` | 195 | | | | |
 | `HighGlassMaterial` | 113 | Yes | Yes | `li_elite`, `li_elite_turned` | Open: [VALIDATION.md](VALIDATION.md#open-questions) |

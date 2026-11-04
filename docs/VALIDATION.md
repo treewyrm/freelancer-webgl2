@@ -49,6 +49,7 @@ Models chosen because the earlier projects already found them useful for these f
 | M3 | `ku_dragon` | A batched `DcDtOcOt` on an environment-mapped ship |
 | M3 | `ku_dragon_pair` | Two objects' queued glass: sort, and a room's single flush |
 | M3 | `prison` | `DcDtEt`, `DcDtEc`, `BtDetailMapMaterial` on one environment-mapped solar |
+| M3 | `lair_core` | A queued `DcDtOcOtTwo`, and `DcDtEt` and `BtDetailMapMaterial` with no environment map |
 | M3 | Rheinland fighter cockpit | Batching, translucency |
 | M3 | Nomad fighter | Nomad material |
 | M3 | Dyson platform | Detail map |

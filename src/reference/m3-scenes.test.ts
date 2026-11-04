@@ -47,7 +47,7 @@ test(
   },
 )
 
-for (const name of ['ku_dragon', 'prison'])
+for (const name of ['ku_dragon', 'prison', 'lair_core'])
   test(`${name} is retail draw for draw, in retail order`, { skip: skipFor(name) }, async () => {
     const frame = await load(name)
     assert.deepEqual(frame.unsupported, [])

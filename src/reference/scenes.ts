@@ -85,5 +85,19 @@ export const scenes: ReadonlyMap<string, ReferenceScene> = new Map(
       ambient: [40, 40, 40],
       lights: [{ color: [255, 255, 255], direction: [0.5, -0.5, -1] }],
     } satisfies ReferenceScene,
+    {
+      // M3: `DcDtOcOtTwo`, `DcDtEt` and `BtDetailMapMaterial` with no environment map. Its radius is
+      // 2,558, and the far plane has to reach past it.
+      name: 'lair_core',
+      model: {
+        archetype: 'lair_core',
+        category: 'Solar',
+        position: [0, 0, -6500],
+        orientation: rotation(150, 20),
+      },
+      camera: { ...CAMERA, far: 20000 },
+      ambient: [40, 40, 40],
+      lights: [{ color: [255, 255, 255], direction: [0.5, -0.5, -1] }],
+    } satisfies ReferenceScene,
   ].map((scene) => [scene.name, scene]),
 )

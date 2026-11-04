@@ -16,11 +16,15 @@ export interface LoadedScene {
 }
 
 /** Assets of the one archetype so far. `envmap_material` is its `shiparch.ini` value. */
-const ASSETS: Record<string, { model: string; libraries: string[]; environment: string }> = {
+const ASSETS: Record<string, { model: string; libraries: string[]; environment?: string }> = {
   li_elite: {
     model: 'SHIPS/LIBERTY/LI_ELITE/li_elite.cmp',
     libraries: ['SHIPS/LIBERTY/li_playerships.mat', 'FX/envmapbasic.mat', 'FX/envmapglass.txm'],
     environment: 'envmapbasic',
+  },
+  lair_core: {
+    model: 'SOLAR/DOCKABLE/nomad_lair_core.cmp',
+    libraries: ['SOLAR/nomad.mat'],
   },
   prison: {
     model: 'SOLAR/DOCKABLE/prison_lod.cmp',
@@ -75,7 +79,7 @@ export const loadScene = async (
         mesh: (id) => getMesh(meshes, id),
         material: (id) => getMaterial(materials, id),
         texture,
-        environment: assets.environment,
+        ...(assets.environment ? { environment: assets.environment } : {}),
       })),
     },
   }

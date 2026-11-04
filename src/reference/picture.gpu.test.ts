@@ -66,6 +66,7 @@ for (const [name, draws] of [
   ['li_elite_turned', 22],
   ['ku_dragon', 12],
   ['prison', 28],
+  ['lair_core', 12],
 ] as const)
   test(
     `${name} matches retail's screenshot, outside its menu and canopy`,
