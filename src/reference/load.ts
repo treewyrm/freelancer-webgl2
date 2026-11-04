@@ -14,31 +14,41 @@ export interface LoadedScene {
 }
 
 /** Assets of the one archetype so far. `envmap_material` is its `shiparch.ini` value. */
-const ASSETS: Record<string, { model: string; libraries: string[]; environment?: string }> = {
+/** Assets as the archetype's section writes them, `lod` being its `LODranges`. */
+const ASSETS: Record<
+  string,
+  { model: string; libraries: string[]; environment?: string; lod: number[] }
+> = {
   li_elite: {
+    lod: [0, 75, 150, 1300],
     model: 'SHIPS/LIBERTY/LI_ELITE/li_elite.cmp',
     libraries: ['SHIPS/LIBERTY/li_playerships.mat', 'FX/envmapbasic.mat', 'FX/envmapglass.txm'],
     environment: 'envmapbasic',
   },
   lair_core: {
+    lod: [0, 20000],
     model: 'SOLAR/DOCKABLE/nomad_lair_core.cmp',
     libraries: ['SOLAR/nomad.mat'],
   },
   prison: {
+    lod: [0, 1000, 2500, 6000, 20000],
     model: 'SOLAR/DOCKABLE/prison_lod.cmp',
     libraries: ['SOLAR/Solar_mat_dockable01.mat', 'FX/envmapbasic.mat', 'FX/envmapglass.txm'],
     environment: 'envmapbasic',
   },
   // The archetype also lists `nomad_fx.txm`, after the `.mat`, and retail bound no ramp in the capture.
   dyson_door_shield: {
+    lod: [0, 50000],
     model: 'SOLAR/MISC/dyson_door_shield.3db',
     libraries: ['SOLAR/Solar_mat_dyson.mat'],
   },
   no_fighter: {
+    lod: [0, 80, 120, 1000],
     model: 'SHIPS/NOMAD/NO_FIGHTER/no_fighter.3db',
     libraries: ['SHIPS/NOMAD/nomad_fx.txm'],
   },
   ku_dragon: {
+    lod: [0, 40, 80, 180, 1000],
     model: 'SHIPS/KUSARI/KU_BLOOD_DRAGON/ku_dragon.cmp',
     libraries: ['SHIPS/KUSARI/ku_blood_dragon.mat', 'FX/envmapbasic.mat', 'FX/envmapglass.txm'],
     environment: 'envmapbasic',
@@ -82,6 +92,7 @@ export const loadScene = async (
         parts: placeParts(
           model,
           modelMatrixOf({ ...definition, model: { ...definition.model, ...placed } }),
+          { camera: cameraOf(definition), lod: [{ ranges: assets.lod }] },
         ),
         mesh: (id) => getMesh(meshes, id),
         material: (id) => getMaterial(materials, id),

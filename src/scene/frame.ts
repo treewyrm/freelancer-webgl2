@@ -23,6 +23,7 @@ import { mapMaterialType, REGISTERED_TYPES } from '#/material/map.js'
 import { DEFAULT_SAMPLER, type SamplerState, type TextureWrap } from '#/texture/texture.js'
 import { projectionMatrix, viewMatrix, type Camera } from './camera.js'
 import { partTransforms } from './hierarchy.js'
+import { levelAt, levelEnds, levelMetric, type LodList } from './level.js'
 
 export interface SceneLight {
   color: Vector3
@@ -50,7 +51,11 @@ export interface SceneModel {
 }
 
 export interface PlaceOptions {
-  /** Which detail level to take, clamped to what a part has. The top one when absent. */
+  /** Choose each part's level as the game does, from this camera. Unless `level` pins one. */
+  camera?: Camera
+  /** The archetype's level-of-detail lists, in matching order, over the model's own `Switch2`. */
+  lod?: readonly LodList[]
+  /** Pins a level, clamped to what a part has. The top one when there is no `camera` either. */
   level?: number
   /** A part left out draws nothing, and its children still do. */
   visible?: (part: CompoundNode<RigidPart>) => boolean
@@ -346,31 +351,40 @@ const passesOf = (
   ]
 }
 
-const referenceOf = (part: RigidPart, level: number): VMeshRef | undefined => {
+const referenceOf = (
+  part: RigidPart,
+  name: string,
+  world: Matrix4,
+  transform: Matrix4,
+  { level, camera, lod }: PlaceOptions,
+): VMeshRef | undefined => {
   if (part.type !== 'rigid' || !part.part) return undefined
-  if (part.part.type !== 'multilevel') return part.part.reference
-  const { levels } = part.part
-  return levels[Math.min(level, levels.length - 1)]?.reference
+  const source = part.part
+  if (level === undefined && camera)
+    return levelAt(
+      source,
+      levelMetric(source, world, transform, camera),
+      levelEnds(source, name, lod),
+    )?.reference
+  if (source.type !== 'multilevel') return source.reference
+  return source.levels[Math.min(level ?? 0, source.levels.length - 1)]?.reference
 }
 
-/**
- * A compound model's parts, depth first (`li_elite`), for a host that doesn't pose its own. The game's
- * own LOD selection comes with M3; the top level is what `li_elite` draws at its distance.
- */
+/** A compound model's parts, depth first (`li_elite`), for a host that doesn't pose its own. */
 export const placeParts = (
   root: RigidModel,
   transform: Matrix4,
-  { level = 0, visible, jointState }: PlaceOptions = {},
+  options: PlaceOptions = {},
 ): PlacedPart[] => {
-  // A `.3db` is one part, with no hierarchy to walk.
+  // A `.3db` is one part, with no hierarchy to walk. The game matches it as `Root`.
   if (root.type !== 'compound') {
-    const reference = referenceOf(root, level)
+    const reference = referenceOf(root, 'Root', transform, transform, options)
     return reference ? [{ reference, world: transform }] : []
   }
   const parts: PlacedPart[] = []
-  for (const [node, world] of partTransforms(root, transform, jointState)) {
-    if (visible && !visible(node)) continue
-    const reference = referenceOf(node.part, level)
+  for (const [node, world] of partTransforms(root, transform, options.jointState)) {
+    if (options.visible && !options.visible(node)) continue
+    const reference = referenceOf(node.part, node.name, world, transform, options)
     if (reference) parts.push({ reference, world })
   }
   return parts

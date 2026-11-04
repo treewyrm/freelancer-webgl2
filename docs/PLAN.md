@@ -149,7 +149,9 @@ closing and losing the context all work. Then revise the API with what was learn
       `EngineGlowMaterial` needs nothing: only its factory names it, no file does, and it isn't in the
       override table. `WireMaterial` and `ColorizeMaterial` are the interface controls', so M10's, and
       nothing in the client asks for `WireMaterial2`.
-- [ ] LOD selection, joint animation, material UV animation, texture animation.
+- [x] LOD selection: `placeParts` with a camera and the archetype's lists, or `levelAt` for a host
+      posing its own. `ku_dragon_pair`'s far ship matches at its lower level, in state and picture.
+- [ ] Joint animation, material UV animation, texture animation.
 - [ ] Corpus suite: every retail model plans a frame without an unexplained material.
 - [ ] **You:** reference scenes for each new family.
 - [ ] Move the extension's material and texture previews across.

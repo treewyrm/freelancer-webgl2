@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict'
 import type { CaptureDraw } from '#/capture/capture.js'
 import { namesOf, type TextureIndex } from '#/capture/texture-names.js'
-import type { Frame } from '#/scene/frame.js'
+import type { Draw, Frame } from '#/scene/frame.js'
 
 // D3DTADDRESS_*.
 const ADDRESS = { repeat: 1, mirror: 2, clamp: 3 } as const
@@ -15,14 +15,21 @@ export const assertFrameMatches = (
   const close = (a: number, b: number, what: string) =>
     assert.ok(Math.abs(a - b) < 1e-5, `${what}: ${a} against ${b}`)
 
+  const offsets = new Map<Draw['mesh'], number>()
+
   frame.draws.forEach((ours, n) => {
     const retail = draws[n]!
     const what = `draw ${n}, ${ours.materialName}`
 
     assert.equal(ours.count, retail.indices, what)
     // Retail's Two and nomad copy their vertices elsewhere, so only the others compare.
-    if (!ours.negateNormals && !ours.nomad)
-      assert.equal(ours.reference.indexStart + ours.byteOffset / 2, retail.startIndex, what)
+    // Retail holds a model's meshes in one index buffer, so each mesh has one constant offset.
+    if (!ours.negateNormals && !ours.nomad) {
+      const start = ours.reference.indexStart + ours.byteOffset / 2
+      const offset = offsets.get(ours.mesh) ?? retail.startIndex! - start
+      offsets.set(ours.mesh, offset)
+      assert.equal(start + offset, retail.startIndex, what)
+    }
 
     // D3DCULL_NONE 1, CW 2, CCW 3.
     assert.equal(retail.states['CULLMODE'], { none: 1, back: 2, front: 3 }[ours.cull], what)

@@ -18,6 +18,7 @@ export {
 } from '#/scene/frame.js'
 export { projectionMatrix, viewMatrix, type Camera } from '#/scene/camera.js'
 export { partTransforms } from '#/scene/hierarchy.js'
+export { levelAt, levelEnds, levelMetric, type LodList } from '#/scene/level.js'
 export {
   ATTRIBUTE_LOCATIONS,
   planReference,

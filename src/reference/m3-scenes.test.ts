@@ -53,7 +53,14 @@ const MISSING: Record<string, string[]> = {
   dyson_door_shield: ['texture NomadRGB1_NomadAlpha1'],
 }
 
-for (const name of ['ku_dragon', 'prison', 'lair_core', 'dyson_door_shield', 'no_fighter'])
+for (const name of [
+  'ku_dragon',
+  'ku_dragon_pair',
+  'prison',
+  'lair_core',
+  'dyson_door_shield',
+  'no_fighter',
+])
   test(`${name} is retail draw for draw, in retail order`, { skip: skipFor(name) }, async () => {
     const frame = await load(name)
     assert.deepEqual(frame.unsupported, MISSING[name] ?? [])
@@ -72,10 +79,8 @@ test(
       ['D_glass', 'D_glass'],
     )
 
-    // Retail draws the far ship at a lower level, which M3 has yet to select, so only the glass
-    // compares here. The hulls' 23 draws come first, in script order, nearer ship first.
     const draws = readCapture(readFileSync(runOf('ku_dragon_pair'), 'utf8')).frames.at(-1)!.draws
-    const hull = draws.flatMap((draw) => (draw.fvf === 0x112 ? [draw] : []))
+    const hull = draws.slice(0, frame.draws.length)
     assert.equal(hull.length, 25)
     assert.deepEqual(
       hull.map((draw) => draw.states['ALPHABLENDENABLE']),
