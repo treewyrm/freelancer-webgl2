@@ -16,10 +16,10 @@ it. Sphere materials aren't counted there. The nine `DcDt` rows hold 21,153 of t
 
 | Type | Draws | Read | Built | State | Picture |
 | ---- | ----: | ---- | ----- | ----- | ------- |
-| `DcDt` | 15,016 | | | | |
+| `DcDt` | 15,016 | Yes | Yes | `li_elite`, `li_elite_turned` | `li_elite`, `li_elite_turned` |
 | `DcDtEc` | 3,200 | | | | |
 | `DcDtEt` | 1,334 | | | | |
-| `DcDtTwo` | 522 | | | | |
+| `DcDtTwo` | 522 | Yes | Yes | `li_elite`, `li_elite_turned` | |
 | `DcDtOcOt` | 484 | | | | |
 | `DcDtEcOcOtTwo` | 318 | | | | |
 | `DcDtEcOcOt` | 179 | | | | |
@@ -28,7 +28,7 @@ it. Sphere materials aren't counted there. The nine `DcDt` rows hold 21,153 of t
 | `BtDetailMapMaterial` | 845 | | | | |
 | `BtDetailMapTwoMaterial` | | | | | |
 | `HUDIconMaterial` | 195 | | | | |
-| `HighGlassMaterial` | 113 | | | | |
+| `HighGlassMaterial` | 113 | Yes | Yes | `li_elite`, `li_elite_turned` | Open: [VALIDATION.md](VALIDATION.md#open-questions) |
 | `GlassMaterial`, `GFGlassMaterial` | | | | | |
 | `NomadMaterialNoBendy` | 30 | | | | |
 | `NomadMaterial` | | | | | |

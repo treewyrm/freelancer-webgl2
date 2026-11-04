@@ -24,5 +24,23 @@ export const scenes: ReadonlyMap<string, ReferenceScene> = new Map(
       ambient: [40, 40, 40],
       lights: [{ color: [255, 255, 255], direction: [0.5, -0.5, -1] }],
     } satisfies ReferenceScene,
+    {
+      // M1: a moved, turned camera, the one thing `li_elite` can't check. Its back axis, the third
+      // row of a rotation here, points from the ship at the origin to the camera.
+      name: 'li_elite_turned',
+      model: {
+        archetype: 'li_elite',
+        category: 'Spaceship',
+        position: [0, 0, 0],
+        orientation: rotation(150, 20),
+      },
+      camera: {
+        ...CAMERA,
+        position: [-14, -8.293, 22.787],
+        orientation: rotation(30, -20),
+      },
+      ambient: [40, 40, 40],
+      lights: [{ color: [255, 255, 255], direction: [0.5, -0.5, -1] }],
+    } satisfies ReferenceScene,
   ].map((scene) => [scene.name, scene]),
 )

@@ -4,11 +4,20 @@ import { build } from 'esbuild'
 import { chromium, type Browser } from 'playwright'
 
 /** Runs in the page with a fresh context; its return value must survive structured cloning. */
-export type Fixture<T> = (gl: WebGL2RenderingContext) => T | Promise<T>
+export type Fixture<T> = (gl: WebGL2RenderingContext, host: FixtureHost) => T | Promise<T>
+
+/** What a fixture can ask of the test that started it, which alone touches the filesystem. */
+export interface FixtureHost {
+  args: unknown
+  read: (path: string) => Promise<Uint8Array>
+}
 
 export interface FixtureOptions {
   width?: number
   height?: number
+  context?: WebGLContextAttributes
+  args?: unknown
+  read?: (path: string) => Promise<Uint8Array>
 }
 
 export interface FixtureResult<T> {
@@ -44,12 +53,14 @@ const bundle = async (fixture: URL): Promise<string> => {
     import { createContext } from ${JSON.stringify(fileURLToPath(new URL('./gl/context.ts', import.meta.url)))}
     import fixture from ${JSON.stringify(fileURLToPath(fixture))}
 
-    globalThis.runFixture = async (width, height) => {
+    globalThis.runFixture = async (width, height, attributes, args) => {
       const canvas = Object.assign(document.createElement('canvas'), { width, height })
-      const gl = createContext(canvas, { preserveDrawingBuffer: true })
+      const gl = createContext(canvas, { preserveDrawingBuffer: true, ...attributes })
+      const read = async (path) =>
+        Uint8Array.from(atob(await globalThis.readForFixture(path)), (c) => c.charCodeAt(0))
       const info = gl.getExtension('WEBGL_debug_renderer_info')
       const renderer = gl.getParameter(info ? info.UNMASKED_RENDERER_WEBGL : gl.RENDERER)
-      const value = await fixture(gl)
+      const value = await fixture(gl, { args, read })
       return { value, renderer, png: canvas.toDataURL('image/png') }
     }
   `
@@ -71,21 +82,30 @@ const bundle = async (fixture: URL): Promise<string> => {
 export const runFixture = async <T>(
   browser: Browser,
   fixture: URL,
-  { width = 256, height = 256 }: FixtureOptions = {},
+  { width = 256, height = 256, context, args, read }: FixtureOptions = {},
 ): Promise<FixtureResult<T>> => {
   const page = await browser.newPage()
 
   try {
     await page.addScriptTag({ content: await bundle(fixture) })
+    if (read)
+      await page.exposeFunction('readForFixture', async (path: string) =>
+        Buffer.from(await read(path)).toString('base64'),
+      )
 
     const { value, renderer, png } = await page.evaluate(
-      ([width, height]) =>
-        (globalThis as unknown as { runFixture: Function }).runFixture(width, height) as Promise<{
+      ([width, height, context, args]) =>
+        (globalThis as unknown as { runFixture: Function }).runFixture(
+          width,
+          height,
+          context,
+          args,
+        ) as Promise<{
           value: unknown
           renderer: string
           png: string
         }>,
-      [width, height],
+      [width, height, context, args] as const,
     )
 
     if (SOFTWARE_RENDERER.test(renderer)) throw new Error(`Software renderer in use: ${renderer}`)

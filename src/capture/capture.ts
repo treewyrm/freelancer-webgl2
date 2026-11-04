@@ -47,6 +47,7 @@ export interface CaptureMaterial {
 
 export interface CaptureVertex {
   p: number[]
+  n?: number[]
   d?: string
   t0?: number[]
   t1?: number[]

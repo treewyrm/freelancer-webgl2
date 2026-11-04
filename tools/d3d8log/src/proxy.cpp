@@ -552,6 +552,13 @@ void DeviceProxy::writeVertices(const unsigned char* base, UINT stride, int coun
         if (layout.transformed) log8::put(",%.9g", (double)position[3]);
         log8::put("]");
 
+        if (layout.normal >= 0 && layout.normal + 12 <= (int)stride) {
+            float normal[3];
+            memcpy(normal, vertex + layout.normal, 12);
+            log8::put(",\"n\":[%.9g,%.9g,%.9g]", (double)normal[0], (double)normal[1],
+                      (double)normal[2]);
+        }
+
         if (layout.diffuse >= 0 && layout.diffuse + 4 <= (int)stride) {
             DWORD colour = 0;
             memcpy(&colour, vertex + layout.diffuse, 4);

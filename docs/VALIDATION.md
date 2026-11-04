@@ -72,9 +72,6 @@ renderer. **An address looked up in the corpus's `common.dll` may not match what
 
 The game can't be started from the Mac, since `prlctl exec` needs Parallels Pro or Business.
 
-**Open: the gamma ramp.** `GetGammaRamp` returns a linear 0..255 where D3D's full range is 0..65535,
-and the screenshot isn't darkened by it. Unexplained, so settle it before trusting a picture comparison.
-
 ## Reading a capture correctly
 
 - **D3D matrices are row-major and apply to row vectors**: `p * M`, translation in the last row.
@@ -92,6 +89,38 @@ and the screenshot isn't darkened by it. Unexplained, so settle it before trusti
   different and still agree.
 - **We need not issue the same draws.** We can merge passes in a shader. The comparator must allow an
   explicit, reviewed mapping such as "these two retail passes are this one draw".
+
+## Measured agreement
+
+`src/reference/picture.gpu.test.ts` compares the canvas with the screenshot on the hull: outside the
+menu's art, which this renderer doesn't draw, and the canopy, below. **Tolerance: at least 99.5% of
+pixels within 2 of 255 on every channel, a mean worst-channel difference of at most 0.5, and at most
+0.2% of pixels lit on one side only.** Measured in `li_elite` and `li_elite_turned`: 99.9% and a mean of
+about 0.2, on an Apple M4 Max under ANGLE Metal.
+
+So the rig's stack adds little to a picture of a textured surface, and neither does gamma. The log's
+gamma ramp reads a linear 0..255 where D3D's range is 0..65535. That stays unexplained, but the
+screenshot shows no sign of it.
+
+## Open questions
+
+**Does retail's glass reflect?** `SubmitEnvMapGeometry` binds `envmapglass` on stage 1 for the outer
+pass, and the capture shows it bound and `MODULATE2X` (draw 13). The rig's screenshot shows no such
+thing: solving each canopy pixel for the cube value gives 0.50 everywhere, whichever way the reflection
+points, so the stage acts as nothing. On the hull the same stage works, and `envmapbasic` beats a flat
+0.5 and a flipped direction. What sets glass apart is an empty stage 0. The rig's D3D8 is a translator,
+so this may be its handling of that stage and not what a real D3D8 driver draws, and the rig can't tell
+those apart. **It takes a screenshot from a real GPU to settle.** Until then the frame follows the
+capture, the shader reflects, and the picture test masks the canopy, so our canopy differs from the
+rig's screenshot by about 11 of 255 on average.
+
+Deferred on purpose. To settle it, mount `li_elite_turned` on a Windows machine with a real GPU and
+compare the canopy with the rig's screenshot:
+
+- **It reflects:** the rig is at fault. Keep the shader, note the rig's limit here, and test the canopy
+  against the new screenshot.
+- **It doesn't:** an empty stage 0 turns the reflection off. Make that the rule, in
+  `src/material/dcdt.ts` (`reflecting && textured`), and drop the canopy from the test's mask.
 
 ## Checking a reading in the retail binary
 

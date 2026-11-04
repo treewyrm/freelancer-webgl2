@@ -1,6 +1,8 @@
 /** Writes a reference scene as a `.thn`, for the game to play in place of its menu room. */
+import { Matrix4, type Vector3 } from '@treewyrm/freelancer/math'
 import { value } from '@treewyrm/freelancer/thn'
 import { write } from '@treewyrm/freelancer/thn/text'
+import type { Camera } from '#/scene/camera.js'
 
 type Vector = readonly [number, number, number]
 type Rows = readonly [Vector, Vector, Vector]
@@ -129,3 +131,27 @@ export const sceneScript = (scene: ReferenceScene): string => {
     { name: 'events', value: value.list(...events) },
   ])
 }
+
+type Rowed = { x: Vector3; y: Vector3; z: Vector3 }
+
+/** THN triples are columns (library `THORN.md`); a `Matrix3` holds rows. */
+const toRows = ([a, b, c]: Rows): Rowed => ({
+  x: { x: a[0], y: b[0], z: c[0] },
+  y: { x: a[1], y: b[1], z: c[1] },
+  z: { x: a[2], y: b[2], z: c[2] },
+})
+
+const toVector = ([x, y, z]: Vector): Vector3 => ({ x, y, z })
+
+/** The scene's camera, as the renderer takes one. */
+export const cameraOf = ({ camera }: ReferenceScene): Camera => ({
+  position: toVector(camera.position),
+  orientation: toRows(camera.orientation),
+  fovh: camera.fovh,
+  near: camera.near,
+  far: camera.far,
+})
+
+/** Where the scene stands its model. */
+export const modelMatrixOf = ({ model }: ReferenceScene): Matrix4 =>
+  Matrix4.fromRotationTranslation(toRows(model.orientation), toVector(model.position))

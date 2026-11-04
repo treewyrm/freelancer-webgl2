@@ -21,8 +21,8 @@ An earlier attempt, `freelancer-render`, failed the other way, by transcribing t
 | Milestone | Delivers | Status |
 | --------- | -------- | ------ |
 | [M0](#m0-retail-evidence) | Captures and screenshots from retail, on demand | Done |
-| [M1](#m1-first-picture) | One static ship, matched against retail | **Next** |
-| [M2](#m2-in-the-model-viewer) | That ship in the real model viewer, with editor overlays | |
+| [M1](#m1-first-picture) | One static ship, matched against retail | Done, canopy deferred |
+| [M2](#m2-in-the-model-viewer) | That ship in the real model viewer, with editor overlays | **Next** |
 | [M3](#m3-every-rigid-model) | All materials on rigid models, with animation and LOD | |
 | [M4](#m4-spheres-and-the-sky) | Planets, atmospheres, starspheres | |
 | [M5](#m5-characters) | Skinned characters | |
@@ -70,29 +70,31 @@ end: its texture by name, stage setup, material, lights and matrices. Pinned by
       cube's generated levels a rounded 2x2 box. **Not yet captured:** top-left Targas (the source
       and the library agree on reversing them), DXT3, 16-bit Targas, the two 24-bit surfaces.
 - [x] VMesh buffers, including the base-vertex scheme (library `RENDERER.md` §3). Indices rebased per
-      reference. They and the logged vertices match `li_elite` exactly; all 9,322 retail references
-      stay in range. **Not captured:** normals, which `d3d8log` doesn't log. Add them for lighting.
+      reference. They match `li_elite` exactly, and every hull vertex and normal matches
+      `li_elite_turned`, second passes negated. All 9,322 retail references stay in range.
 - [x] Camera: THN `cameraprops` to matrices and `CCW` (`RENDERER.md` §2). With the engine's own view
       it is a plain right-handed GL perspective, nothing negated. Reaches retail's clip space and depth
-      in `li_elite`, whose camera is identity: **a turned camera is unmeasured**, and rests on the source.
+      in `li_elite`, and every part's modelview under a moved, turned camera in `li_elite_turned`.
 - [x] Static `Cmpnd` hierarchy to world transforms (§5). All 19 hull groups stand where retail drew
       them in `li_elite`, the wings' turned rest orientations included.
 - [x] Frame as data: a pure function from scene to ordered draw list ([ARCHITECTURE.md](ARCHITECTURE.md)).
       `li_elite`'s 22 hull draws match in order, cull, blend, alpha reference, colours and textures.
       Covers `DcDt`, `DcDtEc`, their `Two`s and the high glass names; the rest is reported, undrawn.
       **Beyond this capture:** ordering between models, and no-reflection and blended `DcDt` states.
-- [ ] Fixed-function vertex lighting, from `SetLight` and `SetMaterial` semantics, in a vertex shader.
-- [ ] `DcDt` as the first material program. **Not plain `DcDt`:** the captured hull draws add the
-      `envmapbasic` cube on the next stage, `MODULATE2X` with camera space reflection
-      (`FMaterialImpl::BindEnvMap`). It comes from the archetype's `envmap_material`, not the model
-      (library `RENDERER.md` §6), and `use_environment_maps` must be above 0, so the scene must carry
-      it from the host. In a room any non-empty value means `envmapbasic`, whatever it names
-      (`src/freelancer/Client/room_control.cpp`).
-- [ ] The second passes in `li_elite`: `L_glass` draws back faces, then blended front faces with
-      `envmapglass`; `DcDtTwo` draws front, then back. So 19 mesh groups make 22 draws.
-- [ ] Comparator: draw list against capture, then canvas against screenshot. D3D8 samples pixels at
-      integer coordinates, so expect to shift clip space half a pixel to match: `x + 1/W`, `y - 1/H`.
-      Retail's screen quads sit at `n.5` (draws 53-58), which supports it. Unapplied until measured.
+- [x] Fixed-function vertex lighting, from `SetLight` and `SetMaterial` semantics, in a vertex shader.
+      Directional lights only, and no vertex colour, which `0x152` and `0x252` meshes need in M3.
+      Pinned by hand-worked pixels, and by the hull matching retail in the picture comparison.
+- [x] `DcDt` as the first material program, with the `envmapbasic` cube from the archetype's
+      `envmap_material` (library `RENDERER.md` §6). In a room any non-empty value means `envmapbasic`
+      (`src/freelancer/Client/room_control.cpp`). The hull matches retail in pixels, reflection included.
+- [x] The second passes in `li_elite`: `L_glass` draws back faces, then blended front faces with
+      `envmapglass`; `DcDtTwo` draws front, then back with negated normals. 19 groups make 22 draws.
+- [x] Comparator: draw list against capture, then canvas against screenshot, in `src/reference/`. D3D8
+      samples pixels at integer coordinates, so the renderer shifts clip space by `x + 1/W`, `y - 1/H`;
+      measured, it takes mean difference from 8.55 to 1.55 of 255.
+- [ ] **Deferred: decide the canopy.** The capture has `envmapglass` bound and on, but the rig's picture
+      shows none of it. Doesn't block M2, and the rest of M1 stands. Come back with a real-GPU
+      screenshot if one turns up; what to do is in [VALIDATION.md](VALIDATION.md#open-questions).
 
 **Done when** the reference scene matches in draw count, order, state and matrices, and the picture
 matches within a stated tolerance.

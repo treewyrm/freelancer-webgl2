@@ -98,6 +98,8 @@ places a `clear`, `scene`, `target` or `copy` among the draws.
 - **`shot`** comes after the last frame of a capture. The gamma ramps are recorded because the picture
   may or may not include them, and a comparison has to know. On failure it has `hr` instead of `file`.
 - **`idx`** stops at 1024 entries; `indices` is the true count.
+- **`v`** holds, per vertex in buffer order from `minIndex`: `p`, then `n`, `d` and `t0`.. as the FVF has
+  them. Only draws at or under `verts_max` vertices have it.
 - **`pos`** is `model` or `screen`: a `D3DFVF_XYZRHW` vertex is already in screen space.
 - **Matrices are row-major and apply to row vectors**: `p * M`, translation in the last row.
 - **Numbers carry nine significant digits**, which round-trips a float32.

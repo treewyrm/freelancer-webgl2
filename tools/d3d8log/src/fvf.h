@@ -18,6 +18,7 @@ namespace fvf {
 struct Layout {
     bool transformed = false;  // D3DFVF_XYZRHW — position is already in screen space
     int positionFloats = 0;    // 3, or 4 when transformed
+    int normal = -1;           // byte offset, or -1
     int diffuse = -1;          // byte offset, or -1
     int specular = -1;
     int textures = 0;
@@ -45,7 +46,7 @@ inline Layout decode(DWORD code) {
         default: return layout;  // a vertex shader handle, or nothing we know
     }
 
-    if (code & D3DFVF_NORMAL) at += 12;
+    if (code & D3DFVF_NORMAL) { layout.normal = at; at += 12; }
     if (code & D3DFVF_PSIZE) at += 4;
     if (code & D3DFVF_DIFFUSE) { layout.diffuse = at; at += 4; }
     if (code & D3DFVF_SPECULAR) { layout.specular = at; at += 4; }
