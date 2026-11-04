@@ -13,6 +13,7 @@ export const MAX_LIGHTS = 4
 const VERTEX = `#version 300 es
 layout(location = ${ATTRIBUTE_LOCATIONS.position}) in vec3 position;
 layout(location = ${ATTRIBUTE_LOCATIONS.normal}) in vec3 normal;
+layout(location = ${ATTRIBUTE_LOCATIONS.diffuse}) in vec4 diffuse;
 layout(location = ${ATTRIBUTE_LOCATIONS.uv0}) in vec2 uv0;
 layout(location = ${ATTRIBUTE_LOCATIONS.uv1}) in vec2 uv1;
 
@@ -28,6 +29,7 @@ uniform int lightCount;
 uniform vec3 lightColor[${MAX_LIGHTS}];
 uniform vec3 lightDirection[${MAX_LIGHTS}];
 
+uniform bool colorVertex;
 uniform float normalSign;
 uniform bool normalizeNormals;
 uniform bool reflecting;
@@ -47,13 +49,18 @@ void main() {
   vec3 eyeNormal = transpose(inverse(mat3(modelView))) * (normal * normalSign);
   if (normalizeNormals) eyeNormal = normalize(eyeNormal);
 
+  // D3DMCS_COLOR1 under COLORVERTEX (\`BindMaterialAndContext\`; captured source states, \`li_elite\`).
+  // Those states also take ambient from COLOR2, which no retail mesh has. What D3D8 reads then is
+  // uncaptured, so the material's ambient here is a reading to check. 22 mesh groups depend on it.
+  vec4 source = colorVertex ? diffuse.bgra : materialDiffuse;
+
   vec3 sum = materialEmissive + materialAmbient * sceneAmbient;
   for (int i = 0; i < lightCount; i++) {
     vec3 toLight = -normalize(mat3(view) * lightDirection[i]);
-    sum += materialDiffuse.rgb * lightColor[i] * max(dot(eyeNormal, toLight), 0.0);
+    sum += source.rgb * lightColor[i] * max(dot(eyeNormal, toLight), 0.0);
   }
   // Saturated here, per vertex, before it is interpolated or meets a texture.
-  lit = clamp(vec4(sum, materialDiffuse.a), 0.0, 1.0);
+  lit = clamp(vec4(sum, source.a), 0.0, 1.0);
 
   // D3DTSS_TCI_CAMERASPACEREFLECTIONVECTOR with LOCALVIEWER on, in D3D's Z-flipped camera space.
   reflection = vec3(0.0);
@@ -102,6 +109,7 @@ const UNIFORMS = [
   'lightCount',
   'lightColor',
   'lightDirection',
+  'colorVertex',
   'normalSign',
   'normalizeNormals',
   'reflecting',
@@ -154,6 +162,7 @@ export const setDrawUniforms = (
     | 'diffuse'
     | 'ambient'
     | 'emissive'
+    | 'colorVertex'
     | 'negateNormals'
     | 'normalizeNormals'
     | 'alphaReference'
@@ -165,6 +174,7 @@ export const setDrawUniforms = (
   gl.uniform4fv(uniforms.materialDiffuse, draw.diffuse)
   gl.uniform3f(uniforms.materialAmbient, draw.ambient.x, draw.ambient.y, draw.ambient.z)
   gl.uniform3f(uniforms.materialEmissive, draw.emissive.x, draw.emissive.y, draw.emissive.z)
+  gl.uniform1i(uniforms.colorVertex, draw.colorVertex ? 1 : 0)
   gl.uniform1f(uniforms.normalSign, draw.negateNormals ? -1 : 1)
   gl.uniform1i(uniforms.normalizeNormals, draw.normalizeNormals ? 1 : 0)
   gl.uniform1f(uniforms.alphaReference, draw.alphaReference)

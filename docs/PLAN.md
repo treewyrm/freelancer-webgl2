@@ -123,8 +123,12 @@ closing and losing the context all work. Then revise the API with what was learn
 
 ## M3: Every rigid model
 
-- [ ] `[MaterialMap]` and the name rewrites; unregistered types draw nothing, as in retail.
-- [ ] All `DcDt` classes, blending by value, the alpha test, two-sided variants.
+- [x] `[MaterialMap]` and the name rewrites; unregistered types draw nothing, as in retail. The table
+      equals retail's `dacom.ini`, and the map rescues 443 of retail's 445 unregistered materials. It
+      isn't read from an install, so a mod's edits don't reach it yet.
+- [x] All `DcDt` classes, blending by value, the alpha test, two-sided variants, vertex colour. Pinned
+      by reading and hand-worked pixels. Needs a reference scene to reach "state matched": what D3D8
+      reads for ambient on a vertex-coloured mesh, from a `COLOR2` no mesh has, is uncaptured.
 - [ ] Transparency order and `MaterialBatcher`.
 - [ ] `DcDtEt`, `BtDetailMapMaterial`, glass, environment maps.
 - [ ] **`NomadMaterial` in shaders**, as the worked example of not transcribing.

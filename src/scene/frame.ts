@@ -10,7 +10,13 @@ import {
 import type { Matrix4, Vector3 } from '@treewyrm/freelancer/math'
 import type { RigidPart } from '@treewyrm/freelancer/rigid'
 import type { CubeTexture, Texture, TextureEntry } from '@treewyrm/freelancer/texture'
-import { getMeshDraw, type VMeshData, type VMeshRef } from '@treewyrm/freelancer/vmesh'
+import {
+  getMeshDraw,
+  VertexFormat,
+  type VMeshData,
+  type VMeshRef,
+} from '@treewyrm/freelancer/vmesh'
+import { mapMaterialType, REGISTERED_TYPES } from '#/material/map.js'
 import { DEFAULT_SAMPLER, type SamplerState, type TextureWrap } from '#/texture/texture.js'
 import { projectionMatrix, viewMatrix, type Camera } from './camera.js'
 import { partTransforms } from './hierarchy.js'
@@ -76,6 +82,8 @@ export interface Draw {
   diffuse: [number, number, number, number]
   ambient: Vector3
   emissive: Vector3
+  /** The mesh has vertex colours, which take the place of `diffuse`. */
+  colorVertex: boolean
   texture?: DrawTexture
   /** A cube, reflected in camera space, as `2 × cube × colour`. */
   environment?: string
@@ -111,21 +119,25 @@ export interface Frame {
   draws: Draw[]
   /** What didn't draw as authored: materials M3 is to cover, and any mesh or texture not found. */
   unsupported: string[]
+  /** Materials of a type no DLL registers. They draw nothing in retail either. */
+  unregistered: string[]
 }
-
-// `[MaterialMap]` in `dacom.ini`, for now only as far as telling these apart. M3 does it in full.
-const HIGH_GLASS = /^(c|cv|b|k|l|r|bw|o)_glass$/i
-const OTHER_NAME_RULE =
-  /^(alpha_mask|detailmap_|tlr_(material|energy)$|nomad|n-texture|ui_|exclusion_|anim_hud|sea_anim|planet.*_glass$|null$)/i
 
 type MaterialClass = 'single' | 'singleTwo' | 'glass'
 
-const classOf = ({ name, type }: Material): MaterialClass | undefined => {
-  if (HIGH_GLASS.test(name)) return 'glass'
-  if (OTHER_NAME_RULE.test(name)) return undefined
-  if (type === 'DcDt' || type === 'DcDtEc') return 'single'
-  if (type === 'DcDtTwo' || type === 'DcDtEcTwo') return 'singleTwo'
-  return undefined
+// What M3 has built so far. Other registered types are reported, not drawn. The eight single-pass
+// names share one bind and submit (`kMaterialTypes`, `src/Shading/Material.cpp`), and `Ec` and `OcOt`
+// are properties: the latter only batches.
+const CLASSES: Readonly<Record<string, MaterialClass>> = {
+  DcDt: 'single',
+  DcDtEc: 'single',
+  DcDtOcOt: 'single',
+  DcDtEcOcOt: 'single',
+  DcDtTwo: 'singleTwo',
+  DcDtEcTwo: 'singleTwo',
+  DcDtOcOtTwo: 'singleTwo',
+  DcDtEcOcOtTwo: 'singleTwo',
+  HighGlassMaterial: 'glass',
 }
 
 const wrapOf = (address: TextureAddress): TextureWrap => {
@@ -212,7 +224,8 @@ const passesOf = (kind: MaterialClass, material: Material, model: SceneModel): P
     cull: 'back',
     negateNormals: false,
     blend: opacity < 1 || bits > 1,
-    alphaReference: bits === 1 ? CUT_ALPHA_REFERENCE : DEVICE_ALPHA_REFERENCE,
+    // An `Oc` below 1 leaves before the format is read, so it isn't cut (`0x6eb6d63`).
+    alphaReference: opacity >= 1 && bits === 1 ? CUT_ALPHA_REFERENCE : DEVICE_ALPHA_REFERENCE,
     ...withEnvironment(model.environment),
   }
   if (kind === 'single') return [front]
@@ -262,7 +275,12 @@ const entryOf = (
 }
 
 /** Lists a model's draws, its parts in the order given and each part's groups in order. */
-const collectModel = (model: SceneModel, draws: Draw[], unsupported: Set<string>): void => {
+const collectModel = (
+  model: SceneModel,
+  draws: Draw[],
+  unsupported: Set<string>,
+  unregistered: Set<string>,
+): void => {
   for (const { reference, world } of model.parts) {
     const mesh = model.mesh(reference.meshId)
     if (!mesh) {
@@ -272,9 +290,20 @@ const collectModel = (model: SceneModel, draws: Draw[], unsupported: Set<string>
 
     for (const { materialId, startIndex, elementCount } of getMeshDraw(mesh, reference)) {
       const material = model.material(materialId)
-      const kind = material && classOf(material)
-      if (!material || !kind) {
-        unsupported.add(material?.name ?? `material ${materialId}`)
+      if (!material) {
+        unsupported.add(`material ${materialId}`)
+        continue
+      }
+      const type = mapMaterialType(material)
+      // `SubmitNull` draws nothing, and an unregistered type has no fallback (`0x6ecc47e`).
+      if (type === 'NullMaterial') continue
+      if (!REGISTERED_TYPES.has(type)) {
+        unregistered.add(material.name)
+        continue
+      }
+      const kind = CLASSES[type]
+      if (!kind) {
+        unsupported.add(material.name)
         continue
       }
 
@@ -294,6 +323,7 @@ const collectModel = (model: SceneModel, draws: Draw[], unsupported: Set<string>
           diffuse: [x, y, z, alpha ?? material.opacity ?? 1],
           ambient: material.ambient ?? { x, y, z },
           emissive: material.emission ?? BLACK,
+          colorVertex: (mesh.format & VertexFormat.Diffuse) !== 0,
           // A slot with no texture draws as an empty stage, which reads as white.
           ...(slot && entry ? { texture: drawTexture(slot, entry) } : {}),
           ...pass,
@@ -325,7 +355,8 @@ export const collectFrame = ({
 }: Scene): Frame => {
   const draws: Draw[] = []
   const unsupported = new Set<string>()
-  for (const model of models) collectModel(model, draws, unsupported)
+  const unregistered = new Set<string>()
+  for (const model of models) collectModel(model, draws, unsupported, unregistered)
   return {
     background: background ?? BLACK_BACKGROUND,
     hooks: hooksOf(draws),
@@ -335,5 +366,6 @@ export const collectFrame = ({
     lights,
     draws,
     unsupported: [...unsupported],
+    unregistered: [...unregistered],
   }
 }

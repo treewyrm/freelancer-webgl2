@@ -1,0 +1,105 @@
+/** Which class a material is shaded as: `[MaterialMap]` in `EXE/dacom.ini`, then what is registered. */
+import type { Material } from '@treewyrm/freelancer/material'
+
+export interface MaterialMapRule {
+  on: 'name' | 'type'
+  pattern: RegExp
+  to: string
+}
+
+const type = (pattern: RegExp, to: string): MaterialMapRule => ({ on: 'type', pattern, to })
+const name = (pattern: RegExp, to: string): MaterialMapRule => ({ on: 'name', pattern, to })
+
+/**
+ * Retail's section, in file order. `shading.dll` matches with Spencer's regular expressions, which
+ * search rather than anchor (`0x6ed0540`), and these patterns mean the same in JavaScript. So a type
+ * rule's plain text matches anywhere in the type. Not read from the install, so a mod's edits to
+ * `dacom.ini` don't reach this yet.
+ */
+export const MATERIAL_MAP: readonly MaterialMapRule[] = [
+  type(/EcEtOcOt/, 'DcDtOcOt'),
+  type(/DcDtEcEt/, 'DcDtEt'),
+  name(/^alpha_mask.*/, 'DcDt'),
+  name(/^alpha_mask.*2side/, 'DcDtTwo'),
+  name(/^detailmap_.*/, 'BtDetailMapMaterial'),
+  name(/^tlr_material$/, 'NebulaTwo'),
+  name(/^tlr_energy$/, 'NebulaTwo'),
+  name(/^nomad.*$/, 'NomadMaterialNoBendy'),
+  name(/^n-texture.*$/, 'NomadMaterialNoBendy'),
+  name(/^ui_.*/, 'HUDIconMaterial'),
+  name(/^exclusion_.*/, 'ExclusionZoneMaterial'),
+  name(/^c_glass$/, 'HighGlassMaterial'),
+  name(/^cv_glass$/, 'HighGlassMaterial'),
+  name(/^b_glass$/, 'HighGlassMaterial'),
+  name(/^k_glass$/, 'HighGlassMaterial'),
+  name(/^l_glass$/, 'HighGlassMaterial'),
+  name(/^r_glass$/, 'HighGlassMaterial'),
+  name(/^planet.*_glass$/, 'GFGlassMaterial'),
+  name(/^bw_glass$/, 'HighGlassMaterial'),
+  name(/^o_glass$/, 'HighGlassMaterial'),
+  name(/^anim_hud.*$/, 'HUDAnimMaterial'),
+  name(/^sea_anim.*$/, 'PlanetWaterMaterial'),
+  name(/^null$/, 'NullMaterial'),
+]
+
+// `FMaterialLibrary::CreateAfterMap` (`0x6ec9aa0`) copies both into 64 bytes.
+const FIELD_LENGTH = 63
+
+/**
+ * The type a material is created as. Each rule is added at the front, so the last listed wins
+ * (`FMaterialLibrary::AddMapRule`, `RemapType`). Only the name is lowercased (`_strlwr`, `0x6ec9afa`).
+ */
+export const mapMaterialType = ({ name, type }: Pick<Material, 'name' | 'type'>): string => {
+  const lowered = name.slice(0, FIELD_LENGTH).toLowerCase()
+  const original = type.slice(0, FIELD_LENGTH)
+  for (let at = MATERIAL_MAP.length - 1; at >= 0; at--) {
+    const rule = MATERIAL_MAP[at]!
+    if (rule.pattern.test(rule.on === 'name' ? lowered : original)) return rule.to
+  }
+  return original
+}
+
+/** The factories of `shading.dll` (`src/Shading/Shading.cpp`) and `flmaterials.dll`. Case matters. */
+export const REGISTERED_TYPES: ReadonlySet<string> = new Set([
+  'DcDt',
+  'DcDtEc',
+  'DcDtOcOt',
+  'DcDtEcOcOt',
+  'DcDtTwo',
+  'DcDtEcTwo',
+  'DcDtOcOtTwo',
+  'DcDtEcOcOtTwo',
+  'DcDtEt',
+  'EcEt',
+  'EcEtTwo',
+  'AtmosphereMaterial',
+  'Nebula',
+  'NebulaTwo',
+  'NullMaterial',
+  'LightMap',
+  'DetailMapMaterial',
+  'DetailMap2Dm1Msk2PassMaterial',
+  'IllumDetailMapMaterial',
+  'Masked2DetailMapMaterial',
+  'BtDetailMapMaterial',
+  'BtDetailMapTwoMaterial',
+  'NomadMaterial',
+  'NomadMaterialNoBendy',
+  'HUDIconMaterial',
+  'HUDAnimMaterial',
+  'ColorizeMaterial',
+  'CloakMaterial',
+  'WireMaterial',
+  'WireMaterial2',
+  'ExclusionZoneMaterial',
+  'GlassMaterial',
+  'HighGlassMaterial',
+  'GFGlassMaterial',
+  'EnvMapMaterial',
+  'BackdropMaterial',
+  'StarsphereMaterial',
+  'ShadowMaterial',
+  'EngineGlowMaterial',
+  'VisibleCounterMaterial',
+  'PlanetWaterMaterial',
+])

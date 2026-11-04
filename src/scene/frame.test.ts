@@ -5,12 +5,7 @@ import type { Material } from '@treewyrm/freelancer/material'
 import { Matrix3, Matrix4 } from '@treewyrm/freelancer/math'
 import type { RigidPart } from '@treewyrm/freelancer/rigid'
 import type { TextureEntry } from '@treewyrm/freelancer/texture'
-import {
-  Primitive,
-  type VertexFormat,
-  type VMeshData,
-  type VMeshRef,
-} from '@treewyrm/freelancer/vmesh'
+import { Primitive, VertexFormat, type VMeshData, type VMeshRef } from '@treewyrm/freelancer/vmesh'
 import { collectFrame, placeParts, type Scene, type SceneModel } from './frame.js'
 
 const reference: VMeshRef = {
@@ -182,4 +177,59 @@ test('placing a compound model takes the level asked for, clamped, and leaves ou
   assert.deepEqual(ids({ level: 9 }), [2, 2])
   // A hidden parent's child still draws.
   assert.deepEqual(ids({ visible: ({ name }) => name !== 'parent' }), [1])
+})
+
+test('every single-pass type draws, and a two-sided one twice', () => {
+  for (const [type, count] of [
+    ['DcDt', 1],
+    ['DcDtEc', 1],
+    ['DcDtOcOt', 1],
+    ['DcDtEcOcOt', 1],
+    ['DcDtTwo', 2],
+    ['DcDtEcTwo', 2],
+    ['DcDtOcOtTwo', 2],
+    ['DcDtEcOcOtTwo', 2],
+  ] as const) {
+    const { draws, unsupported } = collectFrame(scene(skinned({ type })))
+    assert.deepEqual([type, draws.length, unsupported], [type, count, []])
+  }
+})
+
+test('below full opacity a one-bit texture blends, and is not cut', () => {
+  const [draw] = collectFrame(scene(skinned({ opacity: 0.5 }))).draws
+  assert.deepEqual([draw!.blend, draw!.alphaReference], [true, 0])
+})
+
+test('the type drawn is the one the map gives, by the lowercased name', () => {
+  const opaque = { texture: () => texture('rgb24_888') }
+  const [mask] = collectFrame(
+    scene(skinned({ name: 'Alpha_Mask_x', type: 'DcDtBt' }), opaque),
+  ).draws
+  assert.equal(mask!.materialName, 'Alpha_Mask_x')
+  assert.equal(
+    collectFrame(scene(skinned({ name: 'L_GLASS', type: 'DcDtOcOt' }), opaque)).draws.length,
+    2,
+  )
+})
+
+test('an unregistered type is told apart from one not built yet, and NullMaterial is neither', () => {
+  const unregistered = collectFrame(scene(skinned({ type: 'DcDtEtTwo' })))
+  assert.deepEqual(
+    [unregistered.draws, unregistered.unregistered, unregistered.unsupported],
+    [[], ['hull'], []],
+  )
+
+  const unbuilt = collectFrame(scene(skinned({ type: 'Nebula' })))
+  assert.deepEqual([unbuilt.draws, unbuilt.unregistered, unbuilt.unsupported], [[], [], ['hull']])
+
+  const nothing = collectFrame(scene(skinned({ name: 'null', type: 'DcDt' })))
+  assert.deepEqual([nothing.draws, nothing.unregistered, nothing.unsupported], [[], [], []])
+})
+
+test('a mesh with vertex colours says so on its draws', () => {
+  const [plain] = collectFrame(scene(skinned({}))).draws
+  assert.equal(plain!.colorVertex, false)
+  const coloured = { ...mesh, format: mesh.format | VertexFormat.Diffuse }
+  const [draw] = collectFrame(scene(skinned({}), { mesh: () => coloured })).draws
+  assert.equal(draw!.colorVertex, true)
 })

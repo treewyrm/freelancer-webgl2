@@ -72,3 +72,9 @@ test('alpha test is GREATER on the 8-bit value', () => {
   rgb('alphaCut', [0, 0, 255])
   rgb('alphaZero', [0, 0, 255])
 })
+
+test('a vertex colour replaces the material diffuse, alpha included, in B G R A', () => {
+  rgb('vertexColor', [255, 128, 64])
+  rgb('vertexColorAlpha', [0, 0, 255])
+  rgb('vertexColorOff', [0, 255, 0])
+})

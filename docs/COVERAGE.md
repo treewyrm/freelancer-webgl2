@@ -17,14 +17,14 @@ it. Sphere materials aren't counted there. The nine `DcDt` rows hold 21,153 of t
 | Type | Draws | Read | Built | State | Picture |
 | ---- | ----: | ---- | ----- | ----- | ------- |
 | `DcDt` | 15,016 | Yes | Yes | `li_elite`, `li_elite_turned` | `li_elite`, `li_elite_turned` |
-| `DcDtEc` | 3,200 | | | | |
+| `DcDtEc` | 3,200 | Yes | Yes | | |
 | `DcDtEt` | 1,334 | | | | |
 | `DcDtTwo` | 522 | Yes | Yes | `li_elite`, `li_elite_turned` | |
-| `DcDtOcOt` | 484 | | | | |
-| `DcDtEcOcOtTwo` | 318 | | | | |
-| `DcDtEcOcOt` | 179 | | | | |
-| `DcDtOcOtTwo` | 78 | | | | |
-| `DcDtEcTwo` | 22 | | | | |
+| `DcDtOcOt` | 484 | Yes | Yes | | |
+| `DcDtEcOcOtTwo` | 318 | Yes | Yes | | |
+| `DcDtEcOcOt` | 179 | Yes | Yes | | |
+| `DcDtOcOtTwo` | 78 | Yes | Yes | | |
+| `DcDtEcTwo` | 22 | Yes | Yes | | |
 | `BtDetailMapMaterial` | 845 | | | | |
 | `BtDetailMapTwoMaterial` | | | | | |
 | `HUDIconMaterial` | 195 | | | | |

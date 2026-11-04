@@ -23,6 +23,7 @@ type Parameters = Pick<
   | 'diffuse'
   | 'ambient'
   | 'emissive'
+  | 'colorVertex'
   | 'negateNormals'
   | 'normalizeNormals'
   | 'alphaReference'
@@ -38,6 +39,7 @@ const base: Parameters = {
   diffuse: [0, 0, 0, 1],
   ambient: BLACK,
   emissive: BLACK,
+  colorVertex: false,
   negateNormals: false,
   normalizeNormals: false,
   alphaReference: 0,
@@ -50,6 +52,7 @@ const frameOf = (fields: Partial<Frame>): Frame => ({
   lights: [],
   draws: [],
   unsupported: [],
+  unregistered: [],
   background: BLACK,
   hooks: [],
   ...fields,
@@ -221,6 +224,19 @@ export default ((gl) => {
   report['alphaKept'] = read({ ...faded, alphaReference: 127 })
   report['alphaCut'] = read({ ...faded, alphaReference: 128 })
   report['alphaZero'] = read({ emissive: { x: 1, y: 1, z: 1 }, diffuse: [0, 0, 0, 0] })
+
+  // D3DCOLOR's bytes, B G R A.
+  gl.vertexAttrib4f(ATTRIBUTE_LOCATIONS.diffuse, 0.25, 0.5, 1, 0.5)
+  const coloured = { colorVertex: true, diffuse: [0, 0, 0, 1] as Draw['diffuse'] }
+  report['vertexColor'] = read({ ...coloured, alphaReference: 127 }, { lights: [LIGHT_DOWN_Z] })
+  report['vertexColorAlpha'] = read(
+    { ...coloured, alphaReference: 128 },
+    { lights: [LIGHT_DOWN_Z] },
+  )
+  report['vertexColorOff'] = read(
+    { diffuse: [0, 1, 0, 1], colorVertex: false },
+    { lights: [LIGHT_DOWN_Z] },
+  )
 
   report['error'] = [gl.getError()]
   return report
