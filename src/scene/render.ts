@@ -1,6 +1,6 @@
-/** Executes a frame. All the GL of a game frame lives here. */
+/** Executes a frame. All the GL of a game frame lives here, and it owns what it creates. */
 import { Matrix4 } from '@treewyrm/freelancer/math'
-import type { TextureEntry } from '@treewyrm/freelancer/texture'
+import type { CubeTexture, Texture } from '@treewyrm/freelancer/texture'
 import type { VMeshData, VMeshRef } from '@treewyrm/freelancer/vmesh'
 import {
   createDcDtProgram,
@@ -8,8 +8,9 @@ import {
   ENVIRONMENT_UNIT,
   setDrawUniforms,
   setFrameUniforms,
+  type DcDtProgram,
 } from '#/material/dcdt.js'
-import { createReferenceArray, createVertexBuffer } from '#/mesh/mesh.js'
+import { createReferenceArray, createVertexBuffer, type ReferenceArray } from '#/mesh/mesh.js'
 import { drawMode, planReference } from '#/mesh/plan.js'
 import {
   createSampler,
@@ -18,43 +19,87 @@ import {
   type SamplerState,
 } from '#/texture/texture.js'
 import { planUpload } from '#/texture/upload.js'
-import type { Frame } from './frame.js'
+import type { Frame, HookName } from './frame.js'
 
-export interface RendererHost {
-  texture: (name: string) => TextureEntry | undefined
+export interface HookContext {
+  gl: WebGL2RenderingContext
+  frame: Frame
+  /** With D3D's pixel shift, so a host's lines land on the pixels the ship did. */
+  viewProjection: Matrix4
 }
+
+/**
+ * The host's own drawing. It finds the depth buffer the game path left, and may change any GL state:
+ * the renderer sets its own again after each hook, so nothing leaks into the game path.
+ */
+export type FrameHooks = Partial<Record<HookName, (context: HookContext) => void>>
 
 export interface Renderer {
-  render: (frame: Frame) => void
+  /** Draws, and answers false if there is no context to draw with for now. */
+  render: (frame: Frame, hooks?: FrameHooks) => boolean
+  /** Frees what depends on an edited mesh or texture. The next frame uses it afresh. */
+  invalidate: (asset: VMeshData | Texture | CubeTexture) => void
+  /** Frees everything, and the renderer with it. */
+  dispose: () => void
 }
 
-export const createRenderer = (gl: WebGL2RenderingContext, host: RendererHost): Renderer => {
-  const program = createDcDtProgram(gl)
-  const vertexBuffers = new Map<VMeshData, WebGLBuffer>()
-  const arrays = new Map<VMeshRef, WebGLVertexArrayObject>()
-  const textures = new Map<string, WebGLTexture>()
-  const samplers = new Map<string, WebGLSampler>()
+interface MeshResources {
+  vertices: WebGLBuffer
+  references: Map<VMeshRef, ReferenceArray>
+}
 
-  const arrayOf = (mesh: VMeshData, reference: VMeshRef): WebGLVertexArrayObject => {
-    let array = arrays.get(reference)
-    if (array) return array
-    let vertices = vertexBuffers.get(mesh)
-    if (!vertices) {
-      vertices = createVertexBuffer(gl, mesh)
-      vertexBuffers.set(mesh, vertices)
-    }
-    array = createReferenceArray(gl, mesh, vertices, planReference(mesh, reference))
-    arrays.set(reference, array)
-    return array
+/**
+ * Takes a context, and keeps only GPU handles keyed on what the host's frames hold. So a lost context
+ * needs nothing from the host but the next frame, whose data rebuilds them.
+ */
+export const createRenderer = (gl: WebGL2RenderingContext): Renderer => {
+  let program: DcDtProgram | undefined
+  let meshes = new Map<VMeshData, MeshResources>()
+  let textures = new Map<Texture | CubeTexture, WebGLTexture>()
+  let samplers = new Map<string, WebGLSampler>()
+  let disposed = false
+
+  const forget = () => {
+    program = undefined
+    meshes = new Map()
+    textures = new Map()
+    samplers = new Map()
   }
 
-  const textureOf = (name: string): WebGLTexture | undefined => {
-    const known = textures.get(name)
-    if (known) return known
-    const entry = host.texture(name)
-    if (!entry || entry.type === 'animated') return undefined
-    const texture = createTexture(gl, planUpload(entry))
-    textures.set(name, texture)
+  // Without this default a lost context never comes back.
+  const onLost = (event: Event) => event.preventDefault()
+  const onRestored = () => forget()
+  gl.canvas.addEventListener('webglcontextlost', onLost)
+  gl.canvas.addEventListener('webglcontextrestored', onRestored)
+
+  const freeMesh = ({ vertices, references }: MeshResources) => {
+    gl.deleteBuffer(vertices)
+    for (const { array, elements } of references.values()) {
+      gl.deleteVertexArray(array)
+      gl.deleteBuffer(elements)
+    }
+  }
+
+  const arrayOf = (mesh: VMeshData, reference: VMeshRef): WebGLVertexArrayObject => {
+    let resources = meshes.get(mesh)
+    if (!resources) {
+      resources = { vertices: createVertexBuffer(gl, mesh), references: new Map() }
+      meshes.set(mesh, resources)
+    }
+    let array = resources.references.get(reference)
+    if (!array) {
+      array = createReferenceArray(gl, mesh, resources.vertices, planReference(mesh, reference))
+      resources.references.set(reference, array)
+    }
+    return array.array
+  }
+
+  const textureOf = (entry: Texture | CubeTexture): WebGLTexture => {
+    let texture = textures.get(entry)
+    if (!texture) {
+      texture = createTexture(gl, planUpload(entry))
+      textures.set(entry, texture)
+    }
     return texture
   }
 
@@ -68,56 +113,115 @@ export const createRenderer = (gl: WebGL2RenderingContext, host: RendererHost): 
     return sampler
   }
 
-  const render = (frame: Frame): void => {
-    gl.useProgram(program.handle)
+  const render = (frame: Frame, hooks: FrameHooks = {}): boolean => {
+    if (disposed) throw new Error('This renderer has been disposed')
+    if (gl.isContextLost()) return false
+    program ??= createDcDtProgram(gl)
+    const active = program
+
+    const target: WebGLFramebuffer | null = gl.getParameter(gl.FRAMEBUFFER_BINDING)
+    const width = target ? gl.getParameter(gl.VIEWPORT)[2] : gl.drawingBufferWidth
+    const height = target ? gl.getParameter(gl.VIEWPORT)[3] : gl.drawingBufferHeight
+
     // D3D8 samples pixels at integer coordinates, GL at half. Measured: without this shift, mean
     // difference from retail's `li_elite_turned` is 8.55 of 255, against 1.55 with it.
-    const shift = Matrix4.translation({
-      x: 1 / gl.drawingBufferWidth,
-      y: -1 / gl.drawingBufferHeight,
-      z: 0,
-    })
-    setFrameUniforms(gl, program, {
-      ...frame,
-      projection: Matrix4.multiply(shift, frame.projection),
-    })
+    const shift = Matrix4.translation({ x: 1 / width, y: -1 / height, z: 0 })
+    const projection = Matrix4.multiply(shift, frame.projection)
+    const viewProjection = Matrix4.multiply(projection, frame.view)
 
-    // Retail's device: DITHERENABLE 0, D3DCMP_LESS, and a target with no alpha to keep (`li_elite`).
-    gl.disable(gl.DITHER)
-    gl.enable(gl.DEPTH_TEST)
-    gl.depthFunc(gl.LESS)
-    gl.depthMask(true)
-    gl.enable(gl.CULL_FACE)
-    gl.frontFace(gl.CCW)
-    gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ZERO, gl.ONE)
+    const applyState = () => {
+      gl.bindFramebuffer(gl.FRAMEBUFFER, target)
+      gl.viewport(0, 0, width, height)
+      gl.useProgram(active.handle)
+      setFrameUniforms(gl, active, { ...frame, projection })
 
-    gl.clearColor(0, 0, 0, 1)
+      // Retail's device: DITHERENABLE 0, D3DCMP_LESS, and a target with no alpha to keep (`li_elite`).
+      gl.disable(gl.DITHER)
+      gl.disable(gl.SCISSOR_TEST)
+      gl.disable(gl.STENCIL_TEST)
+      gl.disable(gl.SAMPLE_COVERAGE)
+      gl.disable(gl.SAMPLE_ALPHA_TO_COVERAGE)
+      gl.disable(gl.POLYGON_OFFSET_FILL)
+      gl.disable(gl.RASTERIZER_DISCARD)
+      gl.enable(gl.DEPTH_TEST)
+      gl.depthFunc(gl.LESS)
+      gl.depthMask(true)
+      gl.depthRange(0, 1)
+      gl.colorMask(true, true, true, true)
+      gl.enable(gl.CULL_FACE)
+      gl.frontFace(gl.CCW)
+      gl.blendEquation(gl.FUNC_ADD)
+      gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ZERO, gl.ONE)
+    }
+
+    const runHooks = (before: number) => {
+      for (const hook of frame.hooks) {
+        const run = hook.before === before ? hooks[hook.name] : undefined
+        if (!run) continue
+        gl.bindVertexArray(null)
+        run({ gl, frame, viewProjection })
+        applyState()
+      }
+    }
+
+    applyState()
+    const { x, y, z } = frame.background
+    gl.clearColor(x, y, z, 1)
     gl.clearDepth(1)
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
 
-    for (const draw of frame.draws) {
-      setDrawUniforms(gl, program, draw)
+    frame.draws.forEach((draw, at) => {
+      runHooks(at)
+      setDrawUniforms(gl, active, draw)
       gl.cullFace(draw.cull === 'back' ? gl.BACK : gl.FRONT)
       if (draw.blend) gl.enable(gl.BLEND)
       else gl.disable(gl.BLEND)
 
       gl.activeTexture(gl.TEXTURE0 + DIFFUSE_UNIT)
-      gl.bindTexture(gl.TEXTURE_2D, draw.texture ? (textureOf(draw.texture.name) ?? null) : null)
+      gl.bindTexture(gl.TEXTURE_2D, draw.texture ? textureOf(draw.texture.entry) : null)
       gl.bindSampler(DIFFUSE_UNIT, samplerOf(draw.texture?.sampler ?? DEFAULT_SAMPLER))
 
       gl.activeTexture(gl.TEXTURE0 + ENVIRONMENT_UNIT)
       gl.bindTexture(
         gl.TEXTURE_CUBE_MAP,
-        draw.environment ? (textureOf(draw.environment) ?? null) : null,
+        draw.environmentTexture ? textureOf(draw.environmentTexture) : null,
       )
       gl.bindSampler(ENVIRONMENT_UNIT, samplerOf(DEFAULT_SAMPLER))
 
       gl.bindVertexArray(arrayOf(draw.mesh, draw.reference))
       gl.drawElements(drawMode(draw.mesh.primitive), draw.count, gl.UNSIGNED_SHORT, draw.byteOffset)
-    }
+    })
 
+    runHooks(frame.draws.length)
     gl.bindVertexArray(null)
+    return true
   }
 
-  return { render }
+  const invalidate = (asset: VMeshData | Texture | CubeTexture) => {
+    if ('vertices' in asset) {
+      const resources = meshes.get(asset)
+      if (resources) freeMesh(resources)
+      meshes.delete(asset)
+      return
+    }
+    const texture = textures.get(asset)
+    if (texture) gl.deleteTexture(texture)
+    textures.delete(asset)
+  }
+
+  const dispose = () => {
+    if (disposed) return
+    disposed = true
+    gl.canvas.removeEventListener('webglcontextlost', onLost)
+    gl.canvas.removeEventListener('webglcontextrestored', onRestored)
+    if (!gl.isContextLost()) {
+      for (const resources of meshes.values()) freeMesh(resources)
+      for (const texture of textures.values()) gl.deleteTexture(texture)
+      for (const sampler of samplers.values()) gl.deleteSampler(sampler)
+      if (program) gl.deleteProgram(program.handle)
+    }
+    forget()
+  }
+
+  return { render, invalidate, dispose }
 }

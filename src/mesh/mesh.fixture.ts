@@ -99,7 +99,7 @@ export default ((gl) => {
   gl.useProgram(handle)
 
   const draw = (plan: ReferencePlan, at: number, show = 0): number[] => {
-    gl.bindVertexArray(createReferenceArray(gl, data, vertices, plan))
+    gl.bindVertexArray(createReferenceArray(gl, data, vertices, plan).array)
     gl.uniform1i(uniforms.show, show)
     gl.clearColor(0, 0, 0, 1)
     gl.clear(gl.COLOR_BUFFER_BIT)

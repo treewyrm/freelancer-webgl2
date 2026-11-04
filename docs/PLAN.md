@@ -103,10 +103,14 @@ matches within a stated tolerance.
 
 Early on purpose: it tests the API and the injection design while they are cheap to change.
 
-- [ ] Renderer API, first version, shaped by what `src/webview/model/` calls.
-- [ ] Hook points in the frame, with the empty-hook pixel test.
-- [ ] Resource ownership: explicit disposal, sharing between instances, context-loss recovery.
-- [ ] Unsupported materials are reported to the host; none disappears silently.
+- [x] Renderer API, first version: `collectFrame`, `createRenderer`, and what overlays need, from
+      `src/index.ts`. Shaped by reading `src/webview/model/`, so expect revision once it's in use.
+- [x] Hook points in the frame, with the empty-hook pixel test: `begin`, `opaque` and `end`. Between
+      layers comes with M8, which has them.
+- [x] Resource ownership: explicit disposal, sharing between instances, context-loss recovery, and
+      invalidating an edited asset.
+- [x] Unsupported materials are reported to the host; none disappears silently. So is a mesh or
+      texture that isn't found.
 - [ ] In `freelancer-vscode`, as its own change: a setting that switches the model viewer to this
       renderer, with at least hardpoints and wireframe drawn through hooks.
 

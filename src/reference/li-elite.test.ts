@@ -349,7 +349,12 @@ test('the collected frame is retail draw for draw, in retail order', { skip }, (
   }
   const ships = library('SHIPS/LIBERTY/li_playerships.mat')
   const materials = readMaterialLibrary(ships)
-  const textures = [...readTextureLibrary(ships), ...readTextureLibrary(root)]
+  const textures = [
+    ...readTextureLibrary(ships),
+    ...readTextureLibrary(root),
+    ...readTextureLibrary(library('FX/envmapbasic.mat')),
+    ...readTextureLibrary(library('FX/envmapglass.txm')),
+  ]
   const index = indexTextures(data)
 
   const frame = collectFrame({

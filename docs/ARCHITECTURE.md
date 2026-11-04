@@ -69,10 +69,11 @@ appearance adds a draw to the frame list, in the game's tree order.
 
 ## Editor injection
 
-Frames contain named hook points: at least after opaque and before blended, between scene layers, and
-after everything. At a hook the host gets the depth buffer and camera the game path left, with GL state
-as documented. The library restores its own state afterward, so a host's changes can't leak into the
-game path.
+Frames contain named hook points: `begin` after the clear, `opaque` before the first blended draw, and
+`end` after everything; between scene layers comes with M8. They sit between draws and move none, since
+retail doesn't draw opaque and blended apart: `li_elite`'s glass blends mid-model. At a hook the host gets
+the depth buffer the game path left and a view-projection that includes D3D's pixel shift. It may change
+any GL state: the library sets its own again afterward, so a host's changes can't leak into the game path.
 
 What editor passes need, per `freelancer-vscode/docs/renderer/FRAME.md`:
 

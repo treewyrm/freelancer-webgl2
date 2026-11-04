@@ -50,6 +50,8 @@ const frameOf = (fields: Partial<Frame>): Frame => ({
   lights: [],
   draws: [],
   unsupported: [],
+  background: BLACK,
+  hooks: [],
   ...fields,
 })
 

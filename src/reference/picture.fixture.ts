@@ -18,12 +18,12 @@ export interface PictureReport {
 
 export default (async (gl, { args, read }) => {
   const { scene: name } = args as PictureArgs
-  const { scene, texture } = await loadScene(scenes.get(name)!, read)
+  const { scene } = await loadScene(scenes.get(name)!, read)
   const frame = collectFrame(scene)
 
   const { width, height } = gl.canvas
   gl.viewport(0, 0, width, height)
-  createRenderer(gl, { texture }).render(frame)
+  createRenderer(gl).render(frame)
 
   const raw = new Uint8Array(width * height * 4)
   gl.readPixels(0, 0, width, height, gl.RGBA, gl.UNSIGNED_BYTE, raw)

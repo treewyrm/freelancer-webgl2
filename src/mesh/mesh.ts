@@ -10,13 +10,18 @@ export const createVertexBuffer = (gl: WebGL2RenderingContext, data: VMeshData):
   return buffer
 }
 
+export interface ReferenceArray {
+  array: WebGLVertexArrayObject
+  elements: WebGLBuffer
+}
+
 /** A vertex array over a mesh's shared vertices and one reference's own indices. */
 export const createReferenceArray = (
   gl: WebGL2RenderingContext,
   data: VMeshData,
   vertices: WebGLBuffer,
   { indices }: ReferencePlan,
-): WebGLVertexArrayObject => {
+): ReferenceArray => {
   const { stride, attributes } = vertexLayout(data.format)
   const array = gl.createVertexArray()
 
@@ -42,5 +47,5 @@ export const createReferenceArray = (
   gl.bindVertexArray(null)
   gl.bindBuffer(gl.ARRAY_BUFFER, null)
   gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null)
-  return array
+  return { array, elements }
 }

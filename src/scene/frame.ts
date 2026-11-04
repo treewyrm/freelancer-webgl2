@@ -1,5 +1,5 @@
 /** A frame as data: what is drawn, in what order, in GL terms. Pure, no GL. */
-import type { CompoundNode } from '@treewyrm/freelancer/compound'
+import type { CompoundNode, JointState } from '@treewyrm/freelancer/compound'
 import {
   getAddress,
   getMapIndex,
@@ -9,7 +9,7 @@ import {
 } from '@treewyrm/freelancer/material'
 import type { Matrix4, Vector3 } from '@treewyrm/freelancer/math'
 import type { RigidPart } from '@treewyrm/freelancer/rigid'
-import type { TextureEntry } from '@treewyrm/freelancer/texture'
+import type { CubeTexture, Texture, TextureEntry } from '@treewyrm/freelancer/texture'
 import { getMeshDraw, type VMeshData, type VMeshRef } from '@treewyrm/freelancer/vmesh'
 import { DEFAULT_SAMPLER, type SamplerState, type TextureWrap } from '#/texture/texture.js'
 import { projectionMatrix, viewMatrix, type Camera } from './camera.js'
@@ -29,6 +29,11 @@ export interface SceneModel {
   texture: (name: string) => TextureEntry | undefined
   /** The archetype's `envmap_material`: the model does not say. Absent means no reflection. */
   environment?: string
+  /** Which detail level to draw, clamped to what a part has. The top one when absent. */
+  level?: number
+  /** A part left out draws nothing, and its children still do. */
+  visible?: (part: CompoundNode<RigidPart>) => boolean
+  jointState?: (part: CompoundNode<RigidPart>) => JointState | undefined
 }
 
 export interface Scene {
@@ -39,10 +44,13 @@ export interface Scene {
   ambient: Vector3
   lights: SceneLight[]
   models: SceneModel[]
+  /** 0 to 1. Black when absent, which is what the menu clears to. */
+  background?: Vector3
 }
 
 export interface DrawTexture {
   name: string
+  entry: Texture | CubeTexture
   sampler: SamplerState
   /** Which of the mesh's UV sets it samples. */
   uvSet: number
@@ -63,6 +71,7 @@ export interface Draw {
   texture?: DrawTexture
   /** A cube, reflected in camera space, as `2 × cube × colour`. */
   environment?: string
+  environmentTexture?: CubeTexture
 
   cull: 'back' | 'front'
   negateNormals: boolean
@@ -72,13 +81,27 @@ export interface Draw {
   alphaReference: number
 }
 
+/**
+ * Where a host's own drawing goes. `begin` is after the clear, `opaque` before the first blended draw,
+ * and `end` after everything. None of them changes the game's order.
+ */
+export type HookName = 'begin' | 'opaque' | 'end'
+
+export interface FrameHook {
+  name: HookName
+  /** Index of the draw it goes in front of, so the length of `draws` is after the last. */
+  before: number
+}
+
 export interface Frame {
+  background: Vector3
+  hooks: FrameHook[]
   view: Matrix4
   projection: Matrix4
   ambient: Vector3
   lights: SceneLight[]
   draws: Draw[]
-  /** Materials not drawn, which M3 is to cover or which have no class in retail. */
+  /** What didn't draw as authored: materials M3 is to cover, and any mesh or texture not found. */
   unsupported: string[]
 }
 
@@ -104,8 +127,12 @@ const wrapOf = (address: TextureAddress): TextureWrap => {
   throw new RangeError('WebGL2 has no border address mode, and retail uses none')
 }
 
-const drawTexture = ({ name, flags }: TextureReference): DrawTexture => ({
+const drawTexture = (
+  { name, flags }: TextureReference,
+  entry: Texture | CubeTexture,
+): DrawTexture => ({
   name,
+  entry,
   sampler: {
     ...DEFAULT_SAMPLER,
     wrapU: wrapOf(getAddress(flags, 'u')),
@@ -189,16 +216,31 @@ const passesOf = (kind: MaterialClass, material: Material, model: SceneModel): P
   ]
 }
 
-const topLevelOf = (part: RigidPart): VMeshRef | undefined => {
+const referenceOf = (part: RigidPart, level: number): VMeshRef | undefined => {
   if (part.type !== 'rigid' || !part.part) return undefined
-  // LOD selection comes with M3. The top level is what `li_elite` draws at its distance.
-  return part.part.type === 'multilevel' ? part.part.levels[0]?.reference : part.part.reference
+  if (part.part.type !== 'multilevel') return part.part.reference
+  // The game's own LOD selection comes with M3. The top level is what `li_elite` draws at its distance.
+  const { levels } = part.part
+  return levels[Math.min(level, levels.length - 1)]?.reference
+}
+
+/** A slot's texture, reporting what the library doesn't hold or M3 has yet to animate. */
+const entryOf = (
+  name: string,
+  model: SceneModel,
+  unsupported: Set<string>,
+): Texture | CubeTexture | undefined => {
+  const entry = model.texture(name)
+  if (entry && entry.type !== 'animated') return entry
+  unsupported.add(`texture ${name}`)
+  return undefined
 }
 
 /** Lists a model's draws, parts depth first and each part's groups in order (`li_elite`). */
 const collectModel = (model: SceneModel, draws: Draw[], unsupported: Set<string>): void => {
-  for (const [{ part }, world] of partTransforms(model.root, model.transform)) {
-    const reference = topLevelOf(part)
+  for (const [node, world] of partTransforms(model.root, model.transform, model.jointState)) {
+    if (model.visible && !model.visible(node)) continue
+    const reference = referenceOf(node.part, model.level ?? 0)
     if (!reference) continue
     const mesh = model.mesh(reference.meshId)
     if (!mesh) {
@@ -215,7 +257,11 @@ const collectModel = (model: SceneModel, draws: Draw[], unsupported: Set<string>
       }
 
       const { x, y, z } = material.diffuse ?? WHITE
-      for (const { alpha, ...pass } of passesOf(kind, material, model))
+      const slot = material.diffuseTexture
+      const entry = slot && entryOf(slot.name, model, unsupported)
+
+      for (const { alpha, ...pass } of passesOf(kind, material, model)) {
+        const cube = pass.environment ? entryOf(pass.environment, model, unsupported) : undefined
         draws.push({
           mesh,
           reference,
@@ -226,18 +272,41 @@ const collectModel = (model: SceneModel, draws: Draw[], unsupported: Set<string>
           diffuse: [x, y, z, alpha ?? material.opacity ?? 1],
           ambient: material.ambient ?? { x, y, z },
           emissive: material.emission ?? BLACK,
-          ...(material.diffuseTexture ? { texture: drawTexture(material.diffuseTexture) } : {}),
+          // A slot with no texture draws as an empty stage, which reads as white.
+          ...(slot && entry ? { texture: drawTexture(slot, entry) } : {}),
           ...pass,
+          ...(cube?.type === 'cube' ? { environmentTexture: cube } : {}),
         })
+      }
     }
   }
 }
 
-export const collectFrame = ({ camera, aspect, ambient, lights, models }: Scene): Frame => {
+const BLACK_BACKGROUND: Vector3 = { x: 0, y: 0, z: 0 }
+
+const hooksOf = (draws: Draw[]): FrameHook[] => {
+  const firstBlended = draws.findIndex(({ blend }) => blend)
+  return [
+    { name: 'begin', before: 0 },
+    { name: 'opaque', before: firstBlended === -1 ? draws.length : firstBlended },
+    { name: 'end', before: draws.length },
+  ]
+}
+
+export const collectFrame = ({
+  camera,
+  aspect,
+  ambient,
+  lights,
+  models,
+  background,
+}: Scene): Frame => {
   const draws: Draw[] = []
   const unsupported = new Set<string>()
   for (const model of models) collectModel(model, draws, unsupported)
   return {
+    background: background ?? BLACK_BACKGROUND,
+    hooks: hooksOf(draws),
     view: viewMatrix(camera),
     projection: projectionMatrix(camera, aspect),
     ambient,

@@ -13,7 +13,6 @@ export type ReadAsset = (path: string) => Promise<Uint8Array>
 
 export interface LoadedScene {
   scene: Scene
-  texture: (name: string) => TextureEntry | undefined
 }
 
 /** Assets of the one archetype so far. `envmap_material` is its `shiparch.ini` value. */
@@ -50,7 +49,6 @@ export const loadScene = async (
 
   const model: RigidModel = readRigidModel(root)
   return {
-    texture,
     scene: {
       camera: cameraOf(definition),
       aspect: 1024 / 768,
