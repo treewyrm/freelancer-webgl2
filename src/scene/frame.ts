@@ -43,8 +43,10 @@ export interface SceneModel {
   texture: (name: string) => TextureEntry | undefined
   /** The archetype's `envmap_material`: the model does not say. Absent means no reflection. */
   environment?: string
-  /** 0 to 1, the engine's per-object fade a nomad surface reads. 1 when absent. */
+  /** 0 to 1, the engine's per-object value that nomad surfaces and `cloaked` read. 1 when absent. */
   fade?: number
+  /** Drawn through `CloakMaterial`, which the host decides: the game spares nomad archetypes. */
+  cloaked?: boolean
 }
 
 export interface PlaceOptions {
@@ -235,6 +237,31 @@ const withEnvironment = (
  * again over the stage. No environment-mapped ship has that, so it stands as read, and uncaptured.
  */
 const BATCHED = /.*OcOt/
+
+/**
+ * `BindCloak` binds the material as usual, so its texture stays, then sets alpha to the object's value
+ * times the material's, and a blend table on that alpha alone. Below 1 there's no cut either
+ * (`Flag64_`, `0x400`). A cloaked object passes this in place of `EnvMapMaterial`, so nothing reflects
+ * (`0x539a87`). A batched material binds again at submit, undoing the alpha, so it only loses the
+ * reflection. Read from `flmaterials.dll`, uncaptured: only flight has a cloak.
+ */
+const cloak = (
+  pass: Pass,
+  kind: MaterialClass,
+  type: string,
+  material: Material,
+  fade: number,
+): Pass => {
+  const plain: Pass = { ...pass, normalizeNormals: false }
+  delete plain.environment
+  if (BATCHED.test(type)) return plain
+  const alpha = (pass.alpha ?? material.opacity ?? 1) * fade
+  // Glass sets its own blend for each pass as it draws.
+  if (kind === 'glass') return { ...plain, alpha }
+  return alpha < 1
+    ? { ...plain, alpha, blend: true, alphaReference: DEVICE_ALPHA_REFERENCE }
+    : { ...plain, alpha, blend: false }
+}
 
 // Truncated to the byte `SubmitNomadGeometry` writes, after the smoothstep of `NomadFadeFromValue`.
 const nomadAlpha = (fade: number): number => {
@@ -462,7 +489,11 @@ const collectModel = (
       const second = secondStage(kind, material, mesh, model, unsupported)
 
       // A queued material's passes stay together, being one submission (`ProcessQueuedBin`).
-      const passes = passesOf(kind, type, material, model)
+      const passes = passesOf(kind, type, material, model).map((pass) =>
+        model.cloaked && kind !== 'nomad'
+          ? cloak(pass, kind, type, material, model.fade ?? 1)
+          : pass,
+      )
       const target: Draw[] = []
       const queuedHere = BATCHED.test(type) && passes[0]!.blend
       if (queuedHere)

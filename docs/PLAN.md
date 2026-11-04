@@ -144,7 +144,11 @@ closing and losing the context all work. Then revise the API with what was learn
       fixed at 1, as every caller of the update passes 0. **Picture within a wider tolerance**: see
       [VALIDATION.md](VALIDATION.md#open-questions).
 - [x] **You:** run `dyson_door_shield` and `no_fighter`, and press F9.
-- [ ] Engine overrides: colorize, cloak, wire, engine glow.
+- [x] Engine overrides, where the game reaches them on a rigid model: `CloakMaterial`, set by the host.
+      Read from `flmaterials.dll` and pinned by tests, **uncaptured**, as only flight has a cloak.
+      `EngineGlowMaterial` needs nothing: only its factory names it, no file does, and it isn't in the
+      override table. `WireMaterial` and `ColorizeMaterial` are the interface controls', so M10's, and
+      nothing in the client asks for `WireMaterial2`.
 - [ ] LOD selection, joint animation, material UV animation, texture animation.
 - [ ] Corpus suite: every retail model plans a frame without an unexplained material.
 - [ ] **You:** reference scenes for each new family.

@@ -47,10 +47,11 @@ No file names these; the engine applies them.
 | Type | Milestone | Read | Built | State | Picture |
 | ---- | --------- | ---- | ----- | ----- | ------- |
 | `EnvMapMaterial` | M3 | Yes | Yes | `li_elite`, `ku_dragon`, `prison` | `li_elite`, `prison` |
-| `ColorizeMaterial` | M3 | | | | |
-| `CloakMaterial` | M3 | | | | |
-| `WireMaterial`, `WireMaterial2` | M3 | | | | |
-| `EngineGlowMaterial` | M3 | | | | |
+| `ColorizeMaterial` | M10 | | | | |
+| `CloakMaterial` | M3 | Yes | Yes | | |
+| `WireMaterial` | M10 | | | | |
+| `WireMaterial2` | Nothing asks for it | | | | |
+| `EngineGlowMaterial` | Unreachable | | | | |
 | `StarsphereMaterial`, `BackdropMaterial` | M4 | | | | |
 | `ShadowMaterial` | M8 | | | | |
 | `VisibleCounterMaterial` | M7 | | | | |

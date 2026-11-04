@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { test } from 'node:test'
+import { describe, test } from 'node:test'
 import type { CompoundNode } from '@treewyrm/freelancer/compound'
 import type { Material } from '@treewyrm/freelancer/material'
 import { Matrix3, Matrix4 } from '@treewyrm/freelancer/math'
@@ -407,4 +407,41 @@ test('a .3db is placed as one part, at the transform', () => {
   const placed = placeParts(single, Matrix4.translation({ x: 1, y: 2, z: 3 }))
   assert.equal(placed.length, 1)
   assert.equal(placed[0]!.world.w.x, 1)
+})
+
+describe('a cloaked model', () => {
+  const cloaked = { cloaked: true, fade: 0.5, environment: 'cube', texture: () => texture('dxt1') }
+
+  test('keeps its texture, multiplies alpha, blends, and neither cuts nor reflects', () => {
+    const [draw] = collectFrame(scene(skinned({ opacity: 0.5 }), cloaked)).draws
+    assert.equal(draw!.texture?.name, 'skin')
+    assert.equal(draw!.diffuse[3], 0.25)
+    assert.deepEqual([draw!.blend, draw!.alphaReference], [true, 0])
+    assert.deepEqual([draw!.environment, draw!.normalizeNormals], [undefined, false])
+  })
+
+  test('fully there draws plain, whatever its texture blended by', () => {
+    const [draw] = collectFrame(
+      scene(skinned({}), { cloaked: true, fade: 1, texture: () => texture('dxt5') }),
+    ).draws
+    assert.deepEqual([draw!.blend, draw!.diffuse[3]], [false, 1])
+  })
+
+  test('keeps a two-sided pair and a stage 1', () => {
+    assert.equal(collectFrame(scene(skinned({ type: 'DcDtTwo' }), cloaked)).draws.length, 2)
+    const [emission] = collectFrame(
+      scene(skinned({ type: 'DcDtEt', emissionTexture: named('glow') }), cloaked),
+    ).draws
+    assert.deepEqual([emission!.second?.operation, emission!.diffuse[3]], ['add', 0.5])
+  })
+
+  test('undoes nothing but the reflection on a batched material', () => {
+    const [draw] = collectFrame(scene(skinned({ type: 'DcDtOcOt', opacity: 0.5 }), cloaked)).draws
+    assert.deepEqual([draw!.diffuse[3], draw!.environment], [0.5, undefined])
+  })
+
+  test('leaves a nomad surface to the value alone', () => {
+    const [draw] = collectFrame(scene(skinned({ name: 'nomad_hull' }), cloaked)).draws
+    assert.deepEqual([draw!.nomad, draw!.diffuse[3]], [true, 127 / 255])
+  })
 })
