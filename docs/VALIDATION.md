@@ -38,6 +38,13 @@ For a system frame, use a custom system and a save that places the ship.
 quads that are filterable as `D3DFVF_XYZRHW`, and a software cursor to keep out of the way. See
 `freelancer-vscode/docs/renderer/ALCHEMY-LAB.md`, "Mounts, ranked by what a measurement needs".
 
+### A generated model, for what retail barely uses
+
+A material no spawnable archetype carries can still be captured: write a small UV sphere with
+`@treewyrm/freelancer`, give it the material under test, and add a lab-only archetype beside the scene.
+It shows what the classes do with any data, so it says nothing about what retail's own assets look
+like. A generated model is built, not game data, but the capture still goes to `references/`.
+
 ### First scenes, by milestone
 
 Models chosen because the earlier projects already found them useful for these features.
@@ -51,6 +58,7 @@ Models chosen because the earlier projects already found them useful for these f
 | M3 | `prison` | `DcDtEt`, `DcDtEc`, `BtDetailMapMaterial` on one environment-mapped solar |
 | M3 | `dyson_door_shield` | A nomad surface whose ramp didn't resolve |
 | M3 | `no_fighter` | A nomad surface with its ramp, preloaded on the lab install |
+| M3 | `lair` | A material UV animation, on the one archetype in retail with any |
 | M3 | `lair_core` | A queued `DcDtOcOtTwo`, and `DcDtEt` and `BtDetailMapMaterial` with no environment map |
 | M3 | Rheinland fighter cockpit | Batching, translucency |
 | M3 | Nomad fighter | Nomad material |

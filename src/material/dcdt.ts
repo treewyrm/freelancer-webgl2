@@ -39,6 +39,8 @@ uniform bool normalizeNormals;
 uniform bool reflecting;
 uniform int uvSet;
 uniform int secondUvSet;
+// Offset, then scale, on stage 0 alone.
+uniform vec4 uvTransform;
 
 out vec4 lit;
 out vec2 uv;
@@ -49,7 +51,7 @@ void main() {
   mat4 modelView = view * world;
   vec4 eyePosition = modelView * vec4(position, 1.0);
   gl_Position = projection * eyePosition;
-  uv = uvSet == 1 ? uv1 : uv0;
+  uv = (uvSet == 1 ? uv1 : uv0) * uvTransform.zw + uvTransform.xy;
   secondUv = secondUvSet == 1 ? uv1 : uv0;
 
   // What \`NomadWriteVert\` writes to locked memory each frame: white at the draw's alpha, and a ramp
@@ -145,6 +147,7 @@ const UNIFORMS = [
   'normalizeNormals',
   'reflecting',
   'uvSet',
+  'uvTransform',
   'secondUvSet',
   'secondStage',
   'secondTextured',
@@ -207,6 +210,7 @@ export const setDrawUniforms = (
     | 'texture'
     | 'environment'
     | 'second'
+    | 'uvTransform'
   >,
 ): void => {
   gl.uniformMatrix4fv(uniforms.world, false, Matrix4.toArray(draw.world))
@@ -220,6 +224,8 @@ export const setDrawUniforms = (
   gl.uniform1f(uniforms.alphaReference, draw.alphaReference)
   gl.uniform1i(uniforms.textured, draw.texture ? 1 : 0)
   gl.uniform1i(uniforms.uvSet, draw.texture?.uvSet ?? 0)
+  const { offset, scale } = draw.uvTransform ?? { offset: [0, 0], scale: [1, 1] }
+  gl.uniform4f(uniforms.uvTransform, offset[0]!, offset[1]!, scale[0]!, scale[1]!)
   gl.uniform1i(uniforms.reflecting, draw.environment ? 1 : 0)
   gl.uniform1i(uniforms.secondStage, SECOND_STAGE[draw.second?.operation ?? 'none'])
   gl.uniform1i(uniforms.secondTextured, draw.second?.texture ? 1 : 0)

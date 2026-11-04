@@ -151,9 +151,16 @@ closing and losing the context all work. Then revise the API with what was learn
       nothing in the client asks for `WireMaterial2`.
 - [x] LOD selection: `placeParts` with a camera and the archetype's lists, or `levelAt` for a host
       posing its own. `ku_dragon_pair`'s far ship matches at its lower level, in state and picture.
-- [ ] Joint animation, material UV animation, texture animation.
+- [x] Material UV animation, from the host's clock on `Scene.time`. Live in retail (`0x41b2e0` passes the
+      real delta), and `lair`'s transform matches in state and picture.
+- [x] Joint animation needs nothing here: `sampleChannel` from the library feeds `placeParts`'
+      `jointState`. Playing a script is the host's, or M8's.
+- [x] Texture animation moved to M8. Only base interiors and effects have animated textures, so no
+      reference scene reaches it yet. Reported as unsupported until then.
 - [ ] Corpus suite: every retail model plans a frame without an unexplained material.
 - [ ] **You:** reference scenes for each new family.
+      A material retail barely uses, or no spawnable model has, can still be checked: generate a small
+      UV sphere carrying it, give it a lab-only archetype, and capture how the game draws it.
 - [ ] Move the extension's material and texture previews across.
 
 **Done when** every rigid-model row in [COVERAGE.md](COVERAGE.md) has reached "state matched", and
@@ -212,6 +219,7 @@ renderer.
 
 - [ ] Room frame: `room_control.cpp`, its star sphere, backdrop and shadow passes.
 - [ ] Thorn playback: clock, attachments, THN cameras and letterbox.
+- [ ] Texture animation, moved here from M3: `TickAllPlayback`, and base interiors to test it on.
 
 `freelancer-vscode/docs/renderer/CUTSCENES.md` is a specification to check against the source.
 

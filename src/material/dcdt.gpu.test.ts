@@ -93,3 +93,10 @@ test('a nomad surface reads the ramp by the camera axis, at its fixed v, unlit',
   rgb('nomadSide', [120, 180, 0])
   rgb('nomadLightsIgnored', [0, 180, 0])
 })
+
+test('a UV transform scales, then offsets, stage 0', () => {
+  rgb('uvPlain', [255, 0, 0])
+  rgb('uvOffset', [0, 255, 0])
+  // 0.25 * 3 lands in the checker's second texel.
+  rgb('uvScaled', [0, 255, 0])
+})

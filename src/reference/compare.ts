@@ -58,6 +58,9 @@ export const assertFrameMatches = (
     if (ours.texture) assert.ok(stageNames(0).includes(ours.texture.name.toLowerCase()), what)
     else assert.equal(retail.stages[0]!.texture, undefined, what)
 
+    // Stage 0's transform is on when ours is.
+    assert.equal(retail.stages[0]!.transform !== undefined, ours.uvTransform !== undefined, what)
+
     // Stage 1's operation is ours. Draw 12 of `li_elite` leaves a stale cube bound, off.
     const operation = retail.stages[1]!.states['COLOROP']
     // D3DTOP_DISABLE 1, MODULATE2X 5, ADD 7.

@@ -9,7 +9,12 @@ import {
   type TextureReference,
 } from '@treewyrm/freelancer/material'
 import { Matrix4, type Vector3 } from '@treewyrm/freelancer/math'
-import type { RigidModel, RigidPart } from '@treewyrm/freelancer/rigid'
+import {
+  getMaterialAnim,
+  type MaterialAnimLibrary,
+  type RigidModel,
+  type RigidPart,
+} from '@treewyrm/freelancer/rigid'
 import type { CubeTexture, Texture, TextureEntry } from '@treewyrm/freelancer/texture'
 import {
   getMapCount,
@@ -23,6 +28,7 @@ import { mapMaterialType, REGISTERED_TYPES } from '#/material/map.js'
 import { DEFAULT_SAMPLER, type SamplerState, type TextureWrap } from '#/texture/texture.js'
 import { projectionMatrix, viewMatrix, type Camera } from './camera.js'
 import { partTransforms } from './hierarchy.js'
+import { sampleUvAnimation, type UvTransform } from './uv-animation.js'
 import { levelAt, levelEnds, levelMetric, type LodList } from './level.js'
 
 export interface SceneLight {
@@ -48,6 +54,8 @@ export interface SceneModel {
   fade?: number
   /** Drawn through `CloakMaterial`, which the host decides: the game spares nomad archetypes. */
   cloaked?: boolean
+  /** UV animations, found by material name as the game does. */
+  materialAnimations?: MaterialAnimLibrary
 }
 
 export interface PlaceOptions {
@@ -72,6 +80,8 @@ export interface Scene {
   models: SceneModel[]
   /** 0 to 1. Black when absent, which is what the menu clears to. */
   background?: Vector3
+  /** Seconds, the host's clock, for material UV animation. 0 when absent. */
+  time?: number
 }
 
 export interface DrawTexture {
@@ -109,6 +119,7 @@ export interface Draw {
   environment?: string
   environmentTexture?: CubeTexture
   second?: DrawStage
+  uvTransform?: UvTransform
 
   cull: 'back' | 'front' | 'none'
   depthWrite: boolean
@@ -466,6 +477,7 @@ const batchDepth = (
 const collectModel = (
   model: SceneModel,
   view: Matrix4,
+  time: number,
   draws: Draw[],
   queued: Queued[],
   unsupported: Set<string>,
@@ -501,6 +513,12 @@ const collectModel = (
       const slot = material.diffuseTexture
       const entry = slot && entryOf(slot.name, model, unsupported)
       const second = secondStage(kind, material, mesh, model, unsupported)
+      // Only the single-pass family asks for an instance (`ApplyVerifyMatAnim`) among those built.
+      const anim =
+        (kind === 'single' || kind === 'singleTwo') && model.materialAnimations
+          ? getMaterialAnim(model.materialAnimations, material.name)
+          : undefined
+      const animated = anim && sampleUvAnimation(anim, time)
 
       // A queued material's passes stay together, being one submission (`ProcessQueuedBin`).
       const passes = passesOf(kind, type, material, model).map((pass) =>
@@ -533,6 +551,7 @@ const collectModel = (
           // A slot with no texture draws as an empty stage, which reads as white.
           ...(slot && entry ? { texture: drawTexture(slot, entry, mesh) } : {}),
           ...(second ? { second } : {}),
+          ...(animated ? { uvTransform: animated } : {}),
           ...pass,
           ...(cube?.type === 'cube' ? { environmentTexture: cube } : {}),
         })
@@ -559,13 +578,15 @@ export const collectFrame = ({
   lights,
   models,
   background,
+  time = 0,
 }: Scene): Frame => {
   const draws: Draw[] = []
   const unsupported = new Set<string>()
   const unregistered = new Set<string>()
   const view = viewMatrix(camera)
   const queued: Queued[] = []
-  for (const model of models) collectModel(model, view, draws, queued, unsupported, unregistered)
+  for (const model of models)
+    collectModel(model, view, time, draws, queued, unsupported, unregistered)
   // A room flushes its queue once, after all its objects (`RoomBatcherEnd`, `ku_dragon_pair`). Space
   // does so per object, which M7 will need. Stable, where retail's qsort leaves equal keys in no set order.
   queued.sort((a, b) => a.depth - b.depth)

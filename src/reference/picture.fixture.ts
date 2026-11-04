@@ -6,6 +6,8 @@ import { scenes } from './scenes.js'
 
 export interface PictureArgs {
   scene: string
+  /** The moment the screenshot was taken at, for what animates. */
+  time?: number
 }
 
 export interface PictureReport {
@@ -17,9 +19,9 @@ export interface PictureReport {
 }
 
 export default (async (gl, { args, read }) => {
-  const { scene: name } = args as PictureArgs
+  const { scene: name, time } = args as PictureArgs
   const { scene } = await loadScene(scenes.get(name)!, read)
-  const frame = collectFrame(scene)
+  const frame = collectFrame({ ...scene, ...(time === undefined ? {} : { time }) })
 
   const { width, height } = gl.canvas
   gl.viewport(0, 0, width, height)

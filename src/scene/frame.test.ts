@@ -3,7 +3,7 @@ import { describe, test } from 'node:test'
 import type { CompoundNode } from '@treewyrm/freelancer/compound'
 import type { Material } from '@treewyrm/freelancer/material'
 import { Matrix3, Matrix4 } from '@treewyrm/freelancer/math'
-import type { RigidPart } from '@treewyrm/freelancer/rigid'
+import type { MaterialAnim, RigidPart } from '@treewyrm/freelancer/rigid'
 import type { TextureEntry } from '@treewyrm/freelancer/texture'
 import { Primitive, VertexFormat, type VMeshData, type VMeshRef } from '@treewyrm/freelancer/vmesh'
 import { collectFrame, placeParts, type Scene, type SceneModel } from './frame.js'
@@ -444,4 +444,35 @@ describe('a cloaked model', () => {
     const [draw] = collectFrame(scene(skinned({ name: 'nomad_hull' }), cloaked)).draws
     assert.deepEqual([draw!.nomad, draw!.diffuse[3]], [true, 127 / 255])
   })
+})
+
+const scroll = {
+  name: 'hull',
+  flags: 0,
+  segments: [
+    {
+      duration: 2,
+      start: { uOffset: 0, vOffset: 0, uScale: 0, vScale: 0 },
+      velocity: { uOffset: 0.5, vOffset: 0, uScale: 0, vScale: 0 },
+    },
+  ],
+} as unknown as MaterialAnim
+
+test('a single-pass material takes its UV animation by name, at the host clock', () => {
+  const frame = collectFrame({
+    ...scene(skinned({}), { materialAnimations: [scroll] }),
+    time: 1,
+  })
+  assert.deepEqual(frame.draws[0]!.uvTransform, { offset: [0.5, 0], scale: [1, 1] })
+})
+
+test('a material with none, or of another class, has no transform', () => {
+  const [other] = collectFrame(
+    scene(skinned({ name: 'other' }), { materialAnimations: [scroll] }),
+  ).draws
+  assert.equal(other!.uvTransform, undefined)
+  const [emission] = collectFrame(
+    scene(skinned({ type: 'DcDtEt' }), { materialAnimations: [scroll] }),
+  ).draws
+  assert.equal(emission!.uvTransform, undefined)
 })

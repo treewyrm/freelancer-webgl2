@@ -1,6 +1,10 @@
 /** Loads a reference scene's assets into a renderer scene, from whatever reads bytes. */
 import { getMaterial, readMaterialLibrary } from '@treewyrm/freelancer/material'
-import { readRigidModel, type RigidModel } from '@treewyrm/freelancer/rigid'
+import {
+  readMaterialAnimLibrary,
+  readRigidModel,
+  type RigidModel,
+} from '@treewyrm/freelancer/rigid'
 import { readTextureLibrary, type TextureEntry } from '@treewyrm/freelancer/texture'
 import { Directory } from '@treewyrm/freelancer/utf'
 import { getMesh, readVMeshLibrary } from '@treewyrm/freelancer/vmesh'
@@ -24,6 +28,11 @@ const ASSETS: Record<
     model: 'SHIPS/LIBERTY/LI_ELITE/li_elite.cmp',
     libraries: ['SHIPS/LIBERTY/li_playerships.mat', 'FX/envmapbasic.mat', 'FX/envmapglass.txm'],
     environment: 'envmapbasic',
+  },
+  lair: {
+    lod: [0, 50000],
+    model: 'SOLAR/DOCKABLE/nomad_lair.cmp',
+    libraries: ['SOLAR/nomad_lair.mat'],
   },
   lair_core: {
     lod: [0, 20000],
@@ -78,6 +87,10 @@ export const loadScene = async (
   const texture = (name: string) =>
     textures.find((entry) => entry.name.toLowerCase() === name.toLowerCase())
 
+  const materialAnimations = [root, ...libraries].flatMap((library) => [
+    ...readMaterialAnimLibrary(library),
+  ])
+
   const model: RigidModel = readRigidModel(root)
   return {
     scene: {
@@ -97,6 +110,7 @@ export const loadScene = async (
         mesh: (id) => getMesh(meshes, id),
         material: (id) => getMaterial(materials, id),
         texture,
+        materialAnimations,
         ...(assets.environment ? { environment: assets.environment } : {}),
       })),
     },

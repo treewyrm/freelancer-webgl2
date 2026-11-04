@@ -23,7 +23,7 @@ it. Sphere materials aren't counted there. The nine `DcDt` rows hold 21,153 of t
 | `DcDtOcOt` | 484 | Yes | Yes | `ku_dragon`, `prison`, both blended | `ku_dragon`, `prison` |
 | `DcDtEcOcOtTwo` | 318 | Yes | Yes | | |
 | `DcDtEcOcOt` | 179 | Yes | Yes | | |
-| `DcDtOcOtTwo` | 78 | Yes | Yes | `lair_core`, blended | `lair_core` |
+| `DcDtOcOtTwo` | 78 | Yes | Yes | `lair_core`, `lair`, blended | `lair_core`, `lair` |
 | `DcDtEcTwo` | 22 | Yes | Yes | | |
 | `BtDetailMapMaterial` | 845 | Yes | Yes | `prison`, `lair_core` | `prison`, `lair_core` |
 | `BtDetailMapTwoMaterial` |  | Yes | Yes | | |

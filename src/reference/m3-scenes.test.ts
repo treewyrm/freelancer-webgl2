@@ -8,6 +8,7 @@ import { Matrix4 } from '@treewyrm/freelancer/math'
 import { readCapture } from '#/capture/capture.js'
 import { indexTextures } from '#/capture/texture-names.js'
 import { collectFrame } from '#/scene/frame.js'
+import { sampleUvAnimation } from '#/scene/uv-animation.js'
 import { vertexLayout } from '#/mesh/plan.js'
 import { assertFrameMatches } from './compare.js'
 import { loadScene } from './load.js'
@@ -23,14 +24,16 @@ const skipFor = (name: string) =>
       ? `no ${name} capture in references`
       : false
 
-const load = async (name = 'ku_dragon') => {
+const loadedScene = async (name: string) => {
   const read = async (path: string) => {
     const file = readFileSync(join(data, path))
     return new Uint8Array(file.buffer, file.byteOffset, file.byteLength)
   }
   const { scene } = await loadScene(scenes.get(name)!, read)
-  return collectFrame(scene)
+  return scene
 }
+
+const load = async (name = 'ku_dragon') => collectFrame(await loadedScene(name))
 
 test(
   'the batched glass comes last, without a reflection',
@@ -60,6 +63,7 @@ for (const name of [
   'lair_core',
   'dyson_door_shield',
   'no_fighter',
+  'lair',
 ])
   test(`${name} is retail draw for draw, in retail order`, { skip: skipFor(name) }, async () => {
     const frame = await load(name)
@@ -153,3 +157,32 @@ for (const name of ['dyson_door_shield', 'no_fighter'])
       assert.ok(compared > 0)
     },
   )
+
+test('lair`s UV animation is retail`s at some one moment', { skip: skipFor('lair') }, async () => {
+  const frame = await load('lair')
+  const draws = readCapture(readFileSync(runOf('lair'), 'utf8')).frames.at(-1)!.draws
+  const scene = await loadedScene('lair')
+  const anim = scene.models[0]!.materialAnimations![0]!
+  const period = anim.segments.reduce((sum, { duration }) => sum + duration, 0)
+  let checked = 0
+  frame.draws.forEach((ours, n) => {
+    const transform = draws[n]!.stages[0]!.transform
+    if (!ours.uvTransform) return
+    assert.ok(transform, `draw ${n}`)
+    // Column major from row vectors, offset in the third row: the moment that best explains all four.
+    let best = Infinity
+    for (let step = 0; step <= 4000; step++) {
+      const { offset, scale } = sampleUvAnimation(anim, (step / 4000) * period)
+      const error = Math.max(
+        Math.abs(transform[0]! - scale[0]),
+        Math.abs(transform[5]! - scale[1]),
+        Math.abs(transform[8]! - offset[0]),
+        Math.abs(transform[9]! - offset[1]),
+      )
+      best = Math.min(best, error)
+    }
+    assert.ok(best < 1e-3, `draw ${n}: ${best}, ${transform}`)
+    checked++
+  })
+  assert.ok(checked > 0)
+})

@@ -32,6 +32,7 @@ type Parameters = Pick<
   | 'texture'
   | 'environment'
   | 'second'
+  | 'uvTransform'
 >
 
 const BLACK = { x: 0, y: 0, z: 0 }
@@ -228,6 +229,30 @@ export default ((gl) => {
   report['alphaKept'] = read({ ...faded, alphaReference: 127 })
   report['alphaCut'] = read({ ...faded, alphaReference: 128 })
   report['alphaZero'] = read({ emissive: { x: 1, y: 1, z: 1 }, diffuse: [0, 0, 0, 0] })
+
+  // A stage-0 UV transform: a 2x2 checker, moved half a texture across.
+  const checker: Texture = {
+    name: 'checker',
+    type: 'image',
+    storage: 'targa',
+    format: 'rgba32_8888',
+    width: 2,
+    height: 1,
+    flip: false,
+    levels: [new Uint8Array([255, 0, 0, 255, 0, 255, 0, 255])],
+  }
+  gl.activeTexture(gl.TEXTURE0 + DIFFUSE_UNIT)
+  gl.bindTexture(gl.TEXTURE_2D, createTexture(gl, planUpload(checker)))
+  gl.vertexAttrib2f(ATTRIBUTE_LOCATIONS.uv0, 0.25, 0.5)
+  const stageZero = {
+    emissive: { x: 1, y: 1, z: 1 },
+    texture: { name: 'checker', uvSet: 0 } as NonNullable<Draw['texture']>,
+  }
+  report['uvPlain'] = read(stageZero)
+  report['uvOffset'] = read({ ...stageZero, uvTransform: { offset: [0.5, 0], scale: [1, 1] } })
+  report['uvScaled'] = read({ ...stageZero, uvTransform: { offset: [0, 0], scale: [3, 1] } })
+  gl.vertexAttrib2f(ATTRIBUTE_LOCATIONS.uv0, 0, 0)
+  gl.bindTexture(gl.TEXTURE_2D, createTexture(gl, planUpload(solid(128))))
 
   // Stage 1 over a lit 128, with a 128 texture: 128 + 128, and 2 x 128 x 128.
   gl.activeTexture(gl.TEXTURE0 + SECOND_UNIT)
