@@ -135,9 +135,9 @@ test('the flags choose wrap and UV set', () => {
 })
 
 test('what M3 has yet to cover is reported, and draws nothing', () => {
-  const frame = collectFrame(scene({ name: 'ui_icon', type: 'DcDt' }))
+  const frame = collectFrame(scene({ name: 'planet', type: 'AtmosphereMaterial' }))
   assert.deepEqual(frame.draws, [])
-  assert.deepEqual(frame.unsupported, ['ui_icon'])
+  assert.deepEqual(frame.unsupported, ['planet'])
 })
 
 test('placing a compound model takes the level asked for, clamped, and leaves out hidden parts', () => {
@@ -214,7 +214,7 @@ test('an unregistered type is told apart from one not built yet, and NullMateria
     [[], ['hull'], []],
   )
 
-  const unbuilt = collectFrame(scene(skinned({ type: 'Nebula' })))
+  const unbuilt = collectFrame(scene(skinned({ type: 'AtmosphereMaterial' })))
   assert.deepEqual([unbuilt.draws, unbuilt.unregistered, unbuilt.unsupported], [[], [], ['hull']])
 
   const nothing = collectFrame(scene(skinned({ name: 'null', type: 'DcDt' })))
@@ -372,7 +372,6 @@ test('a nomad surface draws once, blended, both sides, writing no depth, with it
   const ramp = texture('rgb24_888')
   const frame = collectFrame(
     scene(material, {
-      environment: 'cube',
       texture: (name) => (name === 'NomadRGB1_NomadAlpha1' ? ramp : texture('dxt1')),
     }),
   )
@@ -475,4 +474,102 @@ test('a material with none, or of another class, has no transform', () => {
     scene(skinned({ type: 'DcDtEt' }), { materialAnimations: [scroll] }),
   ).draws
   assert.equal(emission!.uvTransform, undefined)
+})
+
+describe('the classes that take a per-object colour', () => {
+  const ambient = { x: 0.1, y: 0.2, z: 0.3 }
+  const opaque = { texture: () => texture('rgb24_888') }
+
+  test('a HUD icon takes its instance over Ac and Oc, and blends only below 1', () => {
+    const icon = skinned({ name: 'ui_x', opacity: 0.5, diffuse: { x: 1, y: 1, z: 1 } })
+    const [drawn] = collectFrame(
+      scene(icon, { ...opaque, instance: { ambient, alpha: 0.25 } }),
+    ).draws
+    assert.deepEqual([drawn!.ambient, drawn!.diffuse[3], drawn!.blend], [ambient, 0.25, true])
+    const [own] = collectFrame(scene(skinned({ name: 'ui_x' }), opaque)).draws
+    assert.deepEqual([own!.blend, own!.cull, own!.alphaReference], [false, 'back', 0])
+  })
+
+  test('an exclusion zone always blends, under a white ambient', () => {
+    const [drawn] = collectFrame(scene(skinned({ name: 'exclusion_x' }), opaque)).draws
+    assert.equal(drawn!.blend, true)
+    assert.deepEqual(drawn!.sceneAmbient, { x: 1, y: 1, z: 1 })
+  })
+
+  test('water writes no depth, compares at or below, and animates', () => {
+    const [drawn] = collectFrame({
+      ...scene(skinned({ name: 'sea_anim_x' }), {
+        ...opaque,
+        materialAnimations: [{ ...scroll, name: 'sea_anim_x' }],
+      }),
+      time: 1,
+    }).draws
+    assert.deepEqual([drawn!.depthWrite, drawn!.depthFunc], [false, 'lequal'])
+    assert.deepEqual(drawn!.uvTransform?.offset, [0.5, 0])
+  })
+
+  test('each leaves stage 1 free for a reflection', () => {
+    for (const name of ['ui_x', 'anim_hud_x', 'exclusion_x', 'sea_anim_x']) {
+      const [drawn] = collectFrame(
+        scene(skinned({ name }), { ...opaque, environment: 'cube' }),
+      ).draws
+      assert.deepEqual([name, drawn!.environment], [name, 'cube'])
+    }
+  })
+})
+
+test('a host`s own [MaterialMap] replaces retail`s', () => {
+  const rules = [{ on: 'name', pattern: /^mine/, to: 'DcDtTwo' }] as const
+  const draws = collectFrame(scene(skinned({ name: 'mine_hull' }), { materialMap: rules })).draws
+  assert.equal(draws.length, 2)
+  const untouched = collectFrame(
+    scene(skinned({ name: 'nomad_hull' }), { materialMap: rules }),
+  ).draws
+  assert.equal(untouched[0]!.nomad, false)
+})
+
+describe('the classes with fixed tables', () => {
+  const env = { environment: 'cube', texture: () => texture('rgb24_888') }
+
+  test('EcEt adds its Et on stage 0, lit, twice when Two, and reflects', () => {
+    const glow = named('glow')
+    const [draw] = collectFrame(scene(skinned({ type: 'EcEt', emissionTexture: glow }), env)).draws
+    assert.deepEqual(
+      [draw!.texture?.name, draw!.blendMode, draw!.blend, draw!.unlit, draw!.environment],
+      ['glow', 'add', true, false, 'cube'],
+    )
+    assert.equal(collectFrame(scene(skinned({ type: 'EcEtTwo' }), env)).draws.length, 2)
+  })
+
+  test('LightMap multiplies the frame, unlit, at or below', () => {
+    const [draw] = collectFrame(scene(skinned({ type: 'LightMap' }), env)).draws
+    assert.deepEqual(
+      [draw!.blendMode, draw!.unlit, draw!.depthFunc, draw!.environment],
+      ['multiply', true, 'lequal', 'cube'],
+    )
+  })
+
+  test('engine glow has no texture and doesn`t blend, and takes the reflection', () => {
+    const [draw] = collectFrame(scene(skinned({ type: 'EngineGlowMaterial' }), env)).draws
+    assert.deepEqual(
+      [draw!.texture, draw!.blend, draw!.unlit, draw!.environment],
+      [undefined, false, false, 'cube'],
+    )
+  })
+
+  test('Nebula adds by alpha, unlit, and Two draws twice', () => {
+    const [draw] = collectFrame(scene(skinned({ type: 'Nebula' }), env)).draws
+    assert.deepEqual([draw!.blendMode, draw!.unlit], ['alphaAdd', true])
+    assert.equal(collectFrame(scene(skinned({ type: 'NebulaTwo' }), env)).draws.length, 2)
+  })
+
+  test('other draws blend by alpha, and are lit', () => {
+    const [draw] = collectFrame(scene(skinned({ opacity: 0.5 }), env)).draws
+    assert.deepEqual([draw!.blendMode, draw!.unlit], ['alpha', false])
+  })
+})
+
+test('a nomad surface vanishes on an environment-mapped object', () => {
+  const [draw] = collectFrame(scene(skinned({ name: 'nomad_hull' }), { environment: 'cube' })).draws
+  assert.equal(draw!.diffuse[3], 0)
 })

@@ -13,8 +13,9 @@ const name = (pattern: RegExp, to: string): MaterialMapRule => ({ on: 'name', pa
 /**
  * Retail's section, in file order. `shading.dll` matches with Spencer's regular expressions, which
  * search rather than anchor (`0x6ed0540`), and these patterns mean the same in JavaScript. So a type
- * rule's plain text matches anywhere in the type. Not read from the install, so a mod's edits to
- * `dacom.ini` don't reach this yet.
+ * rule's plain text matches anywhere in the type. A host with a mod's `dacom.ini` passes its own rules
+ * as `SceneModel.materialMap`: JavaScript's patterns are a superset, and how a mod's unusual pattern
+ * differs under Spencer's engine is unmeasured.
  */
 export const MATERIAL_MAP: readonly MaterialMapRule[] = [
   type(/EcEtOcOt/, 'DcDtOcOt'),
@@ -49,11 +50,14 @@ const FIELD_LENGTH = 63
  * The type a material is created as. Each rule is added at the front, so the last listed wins
  * (`FMaterialLibrary::AddMapRule`, `RemapType`). Only the name is lowercased (`_strlwr`, `0x6ec9afa`).
  */
-export const mapMaterialType = ({ name, type }: Pick<Material, 'name' | 'type'>): string => {
+export const mapMaterialType = (
+  { name, type }: Pick<Material, 'name' | 'type'>,
+  rules: readonly MaterialMapRule[] = MATERIAL_MAP,
+): string => {
   const lowered = name.slice(0, FIELD_LENGTH).toLowerCase()
   const original = type.slice(0, FIELD_LENGTH)
-  for (let at = MATERIAL_MAP.length - 1; at >= 0; at--) {
-    const rule = MATERIAL_MAP[at]!
+  for (let at = rules.length - 1; at >= 0; at--) {
+    const rule = rules[at]!
     if (rule.pattern.test(rule.on === 'name' ? lowered : original)) return rule.to
   }
   return original

@@ -140,5 +140,20 @@ export const scenes: ReadonlyMap<string, ReferenceScene> = new Map(
       ambient: [40, 40, 40],
       lights: [{ color: [255, 255, 255], direction: [0.5, -0.5, -1] }],
     } satisfies ReferenceScene,
+    {
+      // M3: every band its own material, for what retail barely uses and mods can name. Reflecting,
+      // so the capture also shows which classes leave stage 1 free.
+      name: 'bands',
+      generated: true,
+      model: {
+        archetype: 'reference_bands',
+        category: 'Solar',
+        position: [0, 0, -40],
+        orientation: rotation(30, 20),
+      },
+      camera: CAMERA,
+      ambient: [40, 40, 40],
+      lights: [{ color: [255, 255, 255], direction: [0.5, -0.5, -1] }],
+    } satisfies ReferenceScene,
   ].map((scene) => [scene.name, scene]),
 )

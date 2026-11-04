@@ -106,19 +106,12 @@ test('every retail model plans a frame, and what is left is known', { skip }, ()
     }
   }
 
-  assert.deepEqual([models, failed, draws], [1852, 0, 16976])
+  assert.deepEqual([models, failed, draws], [1852, 0, 17465])
 
   // Registered by no DLL, so they draw nothing in retail either: the two the map can't rescue.
   assert.deepEqual([...unregistered].sort(), ['Helicopter.tga030123140205', 'lib_eq_08.tga'])
 
-  // Materials per model, across its levels. Each is a class still to build, and M4 has `Nebula`.
-  assert.deepEqual(Object.fromEntries(undrawn), {
-    HUDIconMaterial: 195,
-    Nebula: 188,
-    HUDAnimMaterial: 24,
-    ExclusionZoneMaterial: 20,
-    PlanetWaterMaterial: 4,
-  })
+  assert.deepEqual(Object.fromEntries(undrawn), {})
 
   // Animated textures, which M8 has, in four base models.
   assert.deepEqual(

@@ -34,6 +34,7 @@ uniform vec3 lightDirection[${MAX_LIGHTS}];
 
 uniform bool colorVertex;
 uniform bool nomad;
+uniform bool unlit;
 uniform float normalSign;
 uniform bool normalizeNormals;
 uniform bool reflecting;
@@ -82,6 +83,7 @@ void main() {
   }
   // Saturated here, per vertex, before it is interpolated or meets a texture.
   lit = clamp(vec4(sum, source.a), 0.0, 1.0);
+  if (unlit) lit = colorVertex ? diffuse.bgra : vec4(1.0, 1.0, 1.0, materialDiffuse.a);
 
   // D3DTSS_TCI_CAMERASPACEREFLECTIONVECTOR with LOCALVIEWER on, in D3D's Z-flipped camera space.
   reflection = vec3(0.0);
@@ -114,9 +116,9 @@ void main() {
   // An empty stage reads as white: glass has no texture, and still shows its colour.
   color = textured ? clamp(texture(diffuseMap, uv) * lit, 0.0, 1.0) : lit;
 
-  // Stage 1, which saturates like any stage. An empty one reads as white, as stage 0 does.
-  if (secondStage != ${SECOND_STAGE.none}) {
-    vec4 second = secondTextured ? texture(secondMap, secondUv) : vec4(1.0);
+  // Stage 1, which saturates like any stage.
+  if (secondStage != ${SECOND_STAGE.none} && secondTextured) {
+    vec4 second = texture(secondMap, secondUv);
     color.rgb = secondStage == ${SECOND_STAGE.add} ? color.rgb + second.rgb : 2.0 * second.rgb * color.rgb;
     color = clamp(vec4(color.rgb, second.a * color.a), 0.0, 1.0);
   }
@@ -143,6 +145,7 @@ const UNIFORMS = [
   'lightDirection',
   'colorVertex',
   'nomad',
+  'unlit',
   'normalSign',
   'normalizeNormals',
   'reflecting',
@@ -204,6 +207,8 @@ export const setDrawUniforms = (
     | 'emissive'
     | 'colorVertex'
     | 'nomad'
+    | 'unlit'
+    | 'sceneAmbient'
     | 'negateNormals'
     | 'normalizeNormals'
     | 'alphaReference'
@@ -217,8 +222,13 @@ export const setDrawUniforms = (
   gl.uniform4fv(uniforms.materialDiffuse, draw.diffuse)
   gl.uniform3f(uniforms.materialAmbient, draw.ambient.x, draw.ambient.y, draw.ambient.z)
   gl.uniform3f(uniforms.materialEmissive, draw.emissive.x, draw.emissive.y, draw.emissive.z)
+  if (draw.sceneAmbient) {
+    const { x, y, z } = draw.sceneAmbient
+    gl.uniform3f(uniforms.sceneAmbient, x, y, z)
+  }
   gl.uniform1i(uniforms.colorVertex, draw.colorVertex ? 1 : 0)
   gl.uniform1i(uniforms.nomad, draw.nomad ? 1 : 0)
+  gl.uniform1i(uniforms.unlit, draw.unlit ? 1 : 0)
   gl.uniform1f(uniforms.normalSign, draw.negateNormals ? -1 : 1)
   gl.uniform1i(uniforms.normalizeNormals, draw.normalizeNormals ? 1 : 0)
   gl.uniform1f(uniforms.alphaReference, draw.alphaReference)

@@ -26,6 +26,7 @@ type Parameters = Pick<
   | 'emissive'
   | 'colorVertex'
   | 'nomad'
+  | 'unlit'
   | 'negateNormals'
   | 'normalizeNormals'
   | 'alphaReference'
@@ -45,6 +46,7 @@ const base: Parameters = {
   emissive: BLACK,
   colorVertex: false,
   nomad: false,
+  unlit: false,
   negateNormals: false,
   normalizeNormals: false,
   alphaReference: 0,
@@ -303,6 +305,16 @@ export default ((gl) => {
   )
   gl.activeTexture(gl.TEXTURE0 + DIFFUSE_UNIT)
   gl.bindTexture(gl.TEXTURE_2D, createTexture(gl, planUpload(solid(128))))
+
+  // Lighting off: white at the draw's alpha, whatever the lights and ambient say.
+  report['unlit'] = read(
+    { unlit: true, emissive: { x: 0, y: 0, z: 0 } },
+    { ambient: { x: 0, y: 0, z: 0 } },
+  )
+  report['unlitVertex'] = (() => {
+    gl.vertexAttrib4f(ATTRIBUTE_LOCATIONS.diffuse, 0, 0.5, 1, 1)
+    return read({ unlit: true, colorVertex: true }, { ambient: { x: 0, y: 0, z: 0 } })
+  })()
 
   // D3DCOLOR's bytes, B G R A.
   gl.vertexAttrib4f(ATTRIBUTE_LOCATIONS.diffuse, 0.25, 0.5, 1, 0.5)

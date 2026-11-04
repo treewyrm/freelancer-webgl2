@@ -79,10 +79,10 @@ test('a vertex colour replaces the material diffuse, alpha included, in B G R A'
   rgb('vertexColorOff', [0, 255, 0])
 })
 
-test('stage 1 adds or doubles, saturating, and an empty one reads as white', () => {
+test('stage 1 adds or doubles, saturating, and an empty one does nothing', () => {
   rgb('add', [255, 255, 255])
   rgb('modulate2x', [128, 128, 128])
-  rgb('modulate2xEmpty', [255, 255, 255])
+  rgb('modulate2xEmpty', [128, 128, 128])
 })
 
 test('a nomad surface reads the ramp by the camera axis, at its fixed v, unlit', () => {
@@ -99,4 +99,9 @@ test('a UV transform scales, then offsets, stage 0', () => {
   rgb('uvOffset', [0, 255, 0])
   // 0.25 * 3 lands in the checker's second texel.
   rgb('uvScaled', [0, 255, 0])
+})
+
+test('lighting off draws white, or the vertex colour', () => {
+  rgb('unlit', [255, 255, 255])
+  rgb('unlitVertex', [255, 128, 0])
 })

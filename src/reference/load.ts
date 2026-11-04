@@ -9,6 +9,8 @@ import { readTextureLibrary, type TextureEntry } from '@treewyrm/freelancer/text
 import { Directory } from '@treewyrm/freelancer/utf'
 import { getMesh, readVMeshLibrary } from '@treewyrm/freelancer/vmesh'
 import { placeParts, type Scene } from '#/scene/frame.js'
+import { BAND_ANIMATIONS, BAND_LIBRARIES, BANDS } from './bands.js'
+import { generateBands } from './generate.js'
 import { cameraOf, modelMatrixOf, type ReferenceScene } from './scene.js'
 
 export type ReadAsset = (path: string) => Promise<Uint8Array>
@@ -21,7 +23,7 @@ export interface LoadedScene {
 /** Assets as the archetype's section writes them, `lod` being its `LODranges`. */
 const ASSETS: Record<
   string,
-  { model: string; libraries: string[]; environment?: string; lod: number[] }
+  { model: string; libraries: readonly string[]; environment?: string; lod: number[] }
 > = {
   li_elite: {
     lod: [0, 75, 150, 1300],
@@ -46,6 +48,12 @@ const ASSETS: Record<
     environment: 'envmapbasic',
   },
   // The archetype also lists `nomad_fx.txm`, after the `.mat`, and retail bound no ramp in the capture.
+  reference_bands: {
+    lod: [0, 2000],
+    model: '',
+    libraries: BAND_LIBRARIES,
+    environment: 'envmapbasic',
+  },
   dyson_door_shield: {
     lod: [0, 50000],
     model: 'SOLAR/MISC/dyson_door_shield.3db',
@@ -77,19 +85,25 @@ export const loadScene = async (
   const assets = ASSETS[definition.model.archetype]
   if (!assets) throw new Error(`No assets listed for ${definition.model.archetype}`)
 
-  const root = Directory.read(await read(assets.model))
+  const root = definition.generated
+    ? Directory.read(generateBands(BANDS, BAND_ANIMATIONS).model)
+    : Directory.read(await read(assets.model))
   const libraries = await Promise.all(
     assets.libraries.map(async (path) => Directory.read(await read(path))),
   )
   const meshes = readVMeshLibrary(root)
-  const materials = [root, ...libraries].flatMap((library) => [...readMaterialLibrary(library)])
+  const materials = [
+    ...(definition.generated ? BANDS : []),
+    ...[root, ...libraries].flatMap((library) => [...readMaterialLibrary(library)]),
+  ]
   const textures = [root, ...libraries].flatMap((library) => [...readTextureLibrary(library)])
   const texture = (name: string) =>
     textures.find((entry) => entry.name.toLowerCase() === name.toLowerCase())
 
-  const materialAnimations = [root, ...libraries].flatMap((library) => [
-    ...readMaterialAnimLibrary(library),
-  ])
+  const materialAnimations = [
+    ...(definition.generated ? BAND_ANIMATIONS : []),
+    ...[root, ...libraries].flatMap((library) => [...readMaterialAnimLibrary(library)]),
+  ]
 
   const model: RigidModel = readRigidModel(root)
   return {

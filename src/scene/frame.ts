@@ -24,7 +24,7 @@ import {
   type VMeshData,
   type VMeshRef,
 } from '@treewyrm/freelancer/vmesh'
-import { mapMaterialType, REGISTERED_TYPES } from '#/material/map.js'
+import { mapMaterialType, REGISTERED_TYPES, type MaterialMapRule } from '#/material/map.js'
 import { DEFAULT_SAMPLER, type SamplerState, type TextureWrap } from '#/texture/texture.js'
 import { projectionMatrix, viewMatrix, type Camera } from './camera.js'
 import { partTransforms } from './hierarchy.js'
@@ -56,6 +56,13 @@ export interface SceneModel {
   cloaked?: boolean
   /** UV animations, found by material name as the game does. */
   materialAnimations?: MaterialAnimLibrary
+  /** `[MaterialMap]` from the host's own `dacom.ini`, in file order. Retail's when absent. */
+  materialMap?: readonly MaterialMapRule[]
+  /**
+   * The instance's user data, which HUD icons and exclusion zones read: over `Ac` and `Oc`. The engine
+   * sets it, so without it they use the material's own.
+   */
+  instance?: { ambient: Vector3; alpha: number }
 }
 
 export interface PlaceOptions {
@@ -92,11 +99,17 @@ export interface DrawTexture {
   uvSet: number
 }
 
-/** Texture stage 1, in the classes that use it. No texture reads as white. */
+/**
+ * Texture stage 1, in the classes that use it. With no texture the rig's picture is as if the stage were
+ * off (`bands`), so that's what draws, though a real D3D8 driver may read it as white: see VALIDATION.md.
+ */
 export interface DrawStage {
   operation: 'add' | 'modulate2x'
   texture?: DrawTexture
 }
+
+/** Source and destination: `SRCALPHA / INVSRCALPHA`, `ONE / ONE`, `SRCALPHA / ONE`, `DESTCOLOR / ZERO`. */
+export type BlendMode = 'alpha' | 'add' | 'alphaAdd' | 'multiply'
 
 export interface Draw {
   mesh: VMeshData
@@ -123,9 +136,17 @@ export interface Draw {
 
   cull: 'back' | 'front' | 'none'
   depthWrite: boolean
+  /** `D3DCMP_LESS` for most. */
+  depthFunc: 'less' | 'lequal'
+  /** Scene ambient in place of the frame's, for this draw. */
+  sceneAmbient?: Vector3
   negateNormals: boolean
   normalizeNormals: boolean
   blend: boolean
+  /** `alpha` unless a class sets its own (`bands`). */
+  blendMode: BlendMode
+  /** Lighting off: white, or the vertex colour, at `diffuse`'s alpha. */
+  unlit: boolean
   /** Discards at or below this, of 255. */
   alphaReference: number
 }
@@ -157,7 +178,21 @@ export interface Frame {
 }
 
 type MaterialClass =
-  'single' | 'singleTwo' | 'glass' | 'emission' | 'detail' | 'detailTwo' | 'nomad'
+  | 'single'
+  | 'singleTwo'
+  | 'glass'
+  | 'emission'
+  | 'detail'
+  | 'detailTwo'
+  | 'nomad'
+  | 'hudIcon'
+  | 'hudAnim'
+  | 'exclusion'
+  | 'water'
+  | 'emissive'
+  | 'lightMap'
+  | 'glow'
+  | 'nebula'
 
 // What M3 has built so far. Other registered types are reported, not drawn. The eight single-pass
 // names share one bind and submit (`kMaterialTypes`, `src/Shading/Material.cpp`), and `Ec` and `OcOt`
@@ -174,6 +209,16 @@ const CLASSES: Readonly<Record<string, MaterialClass>> = {
   DcDtEt: 'emission',
   BtDetailMapMaterial: 'detail',
   BtDetailMapTwoMaterial: 'detailTwo',
+  EcEt: 'emissive',
+  EcEtTwo: 'emissive',
+  LightMap: 'lightMap',
+  EngineGlowMaterial: 'glow',
+  Nebula: 'nebula',
+  NebulaTwo: 'nebula',
+  HUDIconMaterial: 'hudIcon',
+  HUDAnimMaterial: 'hudAnim',
+  ExclusionZoneMaterial: 'exclusion',
+  PlanetWaterMaterial: 'water',
   // One class for the two names: the clock that sets them apart is read by nothing (`0x66f88bd`).
   NomadMaterial: 'nomad',
   NomadMaterialNoBendy: 'nomad',
@@ -231,12 +276,23 @@ const CUT_ALPHA_REFERENCE = 0x80
 const GLASS_LEAST_ALPHA = 0.8
 
 const WHITE: Vector3 = { x: 1, y: 1, z: 1 }
+
+// These declare no `Dc`, so the material block stays white (`bands`).
+const FIXED_COLOUR: ReadonlySet<MaterialClass> = new Set(['emissive', 'lightMap', 'nebula'])
+
+// `bands`: what a `EngineGlowMaterial` with no `Ec` draws with. Whether `Ec` can replace it is read.
+const ENGINE_GLOW: Vector3 = { x: 0.75, y: 0.7, z: 0.7 }
 const BLACK: Vector3 = { x: 0, y: 0, z: 0 }
 
 type Pass = Pick<
   Draw,
   'cull' | 'negateNormals' | 'normalizeNormals' | 'blend' | 'alphaReference' | 'environment'
-> & { alpha?: number; depthWrite?: boolean }
+> & {
+  alpha?: number
+  depthWrite?: boolean
+  depthFunc?: 'less' | 'lequal'
+  blendMode?: BlendMode
+}
 
 const NO_ENVIRONMENT: Pick<Pass, 'normalizeNormals'> = { normalizeNormals: false }
 
@@ -291,6 +347,47 @@ const passesOf = (
   material: Material,
   model: SceneModel,
 ): Pass[] => {
+  // The fixed classes, whose tables `bands` captured. Each leaves stage 1 free. Two names draw twice.
+  if (kind === 'emissive' || kind === 'lightMap' || kind === 'glow' || kind === 'nebula') {
+    const front: Pass = {
+      cull: 'back',
+      negateNormals: false,
+      blend: kind !== 'glow',
+      alphaReference: DEVICE_ALPHA_REFERENCE,
+      alpha: 1,
+      ...(kind === 'emissive' ? { blendMode: 'add' as const } : {}),
+      ...(kind === 'nebula' ? { blendMode: 'alphaAdd' as const } : {}),
+      // `Submit`'s temporary `ZFUNC` 4.
+      ...(kind === 'lightMap'
+        ? { blendMode: 'multiply' as const, depthFunc: 'lequal' as const }
+        : {}),
+      ...withEnvironment(model.environment),
+    }
+    return type.endsWith('Two')
+      ? [front, { ...front, cull: 'front', negateNormals: true }]
+      : [front]
+  }
+
+  if (kind === 'hudIcon' || kind === 'hudAnim' || kind === 'exclusion' || kind === 'water') {
+    const entry = material.diffuseTexture && model.texture(material.diffuseTexture.name)
+    const alpha =
+      (kind !== 'hudAnim' && kind !== 'water' && model.instance?.alpha) || material.opacity
+    return [
+      {
+        // None sets an alpha test, and all leave stage 1 free for a reflection. `kExclusionRs` always
+        // blends, and the others by `RecomputeOpacityFlags`: alpha below 1, or more than one bit.
+        cull: 'back',
+        negateNormals: false,
+        blend: kind === 'exclusion' || (alpha ?? 1) < 1 || alphaBits(entry) > 1,
+        alphaReference: DEVICE_ALPHA_REFERENCE,
+        ...(alpha === undefined ? {} : { alpha }),
+        // `SubmitPlanetWaterGeometry`.
+        ...(kind === 'water' ? { depthWrite: false, depthFunc: 'lequal' as const } : {}),
+        ...withEnvironment(model.environment),
+      },
+    ]
+  }
+
   if (kind === 'nomad')
     return [
       {
@@ -300,7 +397,11 @@ const passesOf = (
         negateNormals: false,
         blend: true,
         alphaReference: DEVICE_ALPHA_REFERENCE,
-        alpha: nomadAlpha(model.fade ?? 1),
+        // The object's value is one slot, and an environment override keeps a pointer to its cube's
+        // name there (`SetAppearanceInstanceValue`). Read as a float it's near 0, and so is the fade:
+        // retail's surface is invisible on an environment-mapped object (`bands`). A cloaked object
+        // doesn't pass that override, so keeps its fade.
+        alpha: model.environment && !model.cloaked ? 0 : nomadAlpha(model.fade ?? 1),
         ...NO_ENVIRONMENT,
       },
     ]
@@ -496,7 +597,7 @@ const collectModel = (
         unsupported.add(`material ${materialId}`)
         continue
       }
-      const type = mapMaterialType(material)
+      const type = mapMaterialType(material, model.materialMap)
       // `SubmitNull` draws nothing, and an unregistered type has no fallback (`0x6ecc47e`).
       if (type === 'NullMaterial') continue
       if (!REGISTERED_TYPES.has(type)) {
@@ -510,12 +611,19 @@ const collectModel = (
       }
 
       const { x, y, z } = material.diffuse ?? WHITE
-      const slot = material.diffuseTexture
+      // `EcEt` draws its `Et` on stage 0, and engine glow has no texture at all.
+      const slot =
+        kind === 'emissive'
+          ? material.emissionTexture
+          : kind === 'glow'
+            ? undefined
+            : material.diffuseTexture
       const entry = slot && entryOf(slot.name, model, unsupported)
       const second = secondStage(kind, material, mesh, model, unsupported)
       // Only the single-pass family asks for an instance (`ApplyVerifyMatAnim`) among those built.
       const anim =
-        (kind === 'single' || kind === 'singleTwo') && model.materialAnimations
+        (kind === 'single' || kind === 'singleTwo' || kind === 'hudAnim' || kind === 'water') &&
+        model.materialAnimations
           ? getMaterialAnim(model.materialAnimations, material.name)
           : undefined
       const animated = anim && sampleUvAnimation(anim, time)
@@ -531,7 +639,7 @@ const collectModel = (
       if (queuedHere)
         queued.push({ depth: batchDepth(mesh, reference, world, view), draws: target })
 
-      for (const { alpha, depthWrite, ...pass } of passes) {
+      for (const { alpha, depthWrite, depthFunc, blendMode, ...pass } of passes) {
         const cube = pass.environment ? entryOf(pass.environment, model, unsupported) : undefined
         ;(queuedHere ? target : draws).push({
           mesh,
@@ -541,13 +649,39 @@ const collectModel = (
           world,
           materialName: material.name,
           // `Dc` is never read by the nomad class.
-          diffuse: kind === 'nomad' ? [1, 1, 1, alpha!] : [x, y, z, alpha ?? material.opacity ?? 1],
+          diffuse:
+            kind === 'nomad' || FIXED_COLOUR.has(kind)
+              ? [1, 1, 1, alpha!]
+              : kind === 'glow'
+                ? [0, 0, 0, 1]
+                : [x, y, z, alpha ?? material.opacity ?? 1],
           // Setting `Dc` overwrites `Ac` (`0x6eb2439`), and both start white. 37 retail materials differ.
-          ambient: material.diffuse ?? material.ambient ?? WHITE,
-          emissive: (kind !== 'emission' && material.emission) || BLACK,
+          ambient: FIXED_COLOUR.has(kind)
+            ? WHITE
+            : kind === 'glow'
+              ? BLACK
+              : ((kind === 'hudIcon' || kind === 'exclusion'
+                  ? model.instance?.ambient
+                  : undefined) ??
+                material.diffuse ??
+                material.ambient ??
+                WHITE),
+          emissive:
+            kind === 'glow'
+              ? (material.emission ?? ENGINE_GLOW)
+              : (kind !== 'emission' &&
+                  kind !== 'lightMap' &&
+                  kind !== 'nebula' &&
+                  material.emission) ||
+                BLACK,
           colorVertex: (mesh.format & VertexFormat.Diffuse) !== 0,
           nomad: kind === 'nomad',
           depthWrite: depthWrite ?? true,
+          depthFunc: depthFunc ?? 'less',
+          blendMode: blendMode ?? 'alpha',
+          unlit: kind === 'lightMap' || kind === 'nebula',
+          // `SubmitExclusionGeometry` draws with `D3DRS_AMBIENT` white, so `Ac` arrives unscaled.
+          ...(kind === 'exclusion' ? { sceneAmbient: WHITE } : {}),
           // A slot with no texture draws as an empty stage, which reads as white.
           ...(slot && entry ? { texture: drawTexture(slot, entry, mesh) } : {}),
           ...(second ? { second } : {}),

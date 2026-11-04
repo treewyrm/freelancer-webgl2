@@ -64,6 +64,7 @@ for (const name of [
   'dyson_door_shield',
   'no_fighter',
   'lair',
+  'bands',
 ])
   test(`${name} is retail draw for draw, in retail order`, { skip: skipFor(name) }, async () => {
     const frame = await load(name)
@@ -102,7 +103,7 @@ test(
 )
 
 /** What `NomadWriteVert` wrote, vertex by vertex, against what the vertex shader computes. */
-for (const name of ['dyson_door_shield', 'no_fighter'])
+for (const name of ['dyson_door_shield', 'no_fighter', 'bands'])
   test(
     `${name}'s written vertices are what the shader computes`,
     { skip: skipFor(name) },
@@ -123,22 +124,22 @@ for (const name of ['dyson_door_shield', 'no_fighter'])
         const axis = [-modelView.x.z, -modelView.y.z, -modelView.z.z]
 
         const logged = retail.vertexData!
-        const first = logged[0]!.p
+        // The whole run, as neighbouring groups can share an edge's positions.
+        const matches = (at: number) =>
+          logged.every(({ p }, k) =>
+            p.every((value, c) => Math.abs(float((at + k) * stride + c * 4) - value) < 1e-3),
+          )
         let start = -1
         for (
           let at = reference.vertexStart;
           at < reference.vertexStart + reference.vertexCount;
           at++
         )
-          if (
-            Math.abs(float(at * stride) - first[0]!) < 1e-3 &&
-            Math.abs(float(at * stride + 4) - first[1]!) < 1e-3 &&
-            Math.abs(float(at * stride + 8) - first[2]!) < 1e-3
-          ) {
+          if (matches(at)) {
             start = at
             break
           }
-        assert.notEqual(start, -1, 'first vertex not found')
+        assert.notEqual(start, -1, 'run of vertices not found')
 
         logged.forEach((vertex, k) => {
           const from = (start + k) * stride
@@ -149,7 +150,8 @@ for (const name of ['dyson_door_shield', 'no_fighter'])
             Math.abs(vertex.t1![0]! - ratio) < 1e-4,
             `${n}/${k}: ${vertex.t1![0]} against ${ratio}`,
           )
-          assert.equal(vertex.d, '0xffffffff')
+          // White, at the draw's alpha: 0 on an environment-mapped object.
+          assert.equal(vertex.d, ours.diffuse[3] === 0 ? '0x00ffffff' : '0xffffffff')
           assert.equal(vertex.t1![1], 1)
           compared++
         })

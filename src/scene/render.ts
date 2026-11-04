@@ -180,6 +180,7 @@ export const createRenderer = (gl: WebGL2RenderingContext): Renderer => {
     gl.clearDepth(1)
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
 
+    let previousAmbient = false
     frame.draws.forEach((draw, at) => {
       runHooks(at)
       setDrawUniforms(gl, active, draw)
@@ -189,8 +190,23 @@ export const createRenderer = (gl: WebGL2RenderingContext): Renderer => {
         gl.cullFace(draw.cull === 'back' ? gl.BACK : gl.FRONT)
       }
       gl.depthMask(draw.depthWrite)
-      if (draw.blend) gl.enable(gl.BLEND)
-      else gl.disable(gl.BLEND)
+      gl.depthFunc(draw.depthFunc === 'lequal' ? gl.LEQUAL : gl.LESS)
+      // A draw's own ambient lasts only for that draw.
+      if (previousAmbient && !draw.sceneAmbient) {
+        const { x, y, z } = frame.ambient
+        gl.uniform3f(active.uniforms.sceneAmbient, x, y, z)
+      }
+      previousAmbient = draw.sceneAmbient !== undefined
+      if (draw.blend) {
+        gl.enable(gl.BLEND)
+        const [source, destination] = {
+          alpha: [gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA],
+          add: [gl.ONE, gl.ONE],
+          alphaAdd: [gl.SRC_ALPHA, gl.ONE],
+          multiply: [gl.DST_COLOR, gl.ZERO],
+        }[draw.blendMode]
+        gl.blendFuncSeparate(source!, destination!, gl.ZERO, gl.ONE)
+      } else gl.disable(gl.BLEND)
 
       gl.activeTexture(gl.TEXTURE0 + DIFFUSE_UNIT)
       gl.bindTexture(gl.TEXTURE_2D, draw.texture ? textureOf(draw.texture.entry) : null)

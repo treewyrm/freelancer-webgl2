@@ -49,7 +49,11 @@ const MISSING: Record<string, string[]> = {
 }
 
 // `lair`'s last frame has its membrane's v offset at -0.334144, on a velocity of -0.296931.
-const MOMENT: Record<string, number> = { lair: 0.334143966 / 0.296931267 }
+// `bands`: its bands' u offset at $T, on a velocity of 0.25.
+const MOMENT: Record<string, number> = {
+  lair: 0.334143966 / 0.296931267,
+  bands: 0.53348726 / 0.25,
+}
 
 const inside = (x: number, y: number, { left, top, right, bottom }: Box) =>
   x >= left && x < right && y >= top && y < bottom
@@ -87,6 +91,7 @@ for (const [name, draws] of [
   ['no_fighter', 2],
   ['ku_dragon_pair', 25],
   ['lair', 13],
+  ['bands', 28],
 ] as const)
   test(
     `${name} matches retail's screenshot, outside its menu and canopy`,

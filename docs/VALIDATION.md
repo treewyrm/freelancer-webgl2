@@ -59,6 +59,7 @@ Models chosen because the earlier projects already found them useful for these f
 | M3 | `dyson_door_shield` | A nomad surface whose ramp didn't resolve |
 | M3 | `no_fighter` | A nomad surface with its ramp, preloaded on the lab install |
 | M3 | `lair` | A material UV animation, on the one archetype in retail with any |
+| M3 | `bands` | A generated sphere, a band per material: what retail barely uses, and mods can name |
 | M3 | `lair_core` | A queued `DcDtOcOtTwo`, and `DcDtEt` and `BtDetailMapMaterial` with no environment map |
 | M3 | Rheinland fighter cockpit | Batching, translucency |
 | M3 | Nomad fighter | Nomad material |
@@ -157,10 +158,18 @@ vertex at frame 633. `rendcomp`, `flmaterials`, `dalib` and `engbase` have no fl
 The owner's memory of retail agrees. The corpus copy of `Freelancer.exe` is encrypted, so this reads the
 lab's, a later build. A flight capture would be the last word.
 
-**What does an empty stage do?** On the rig, `ADD` with no texture on stage 1 leaves the picture as stage
-0 made it (`dyson_door_shield`), and glass with no stage 0 shows its colour and no reflection from a
-bound stage 1. Both would follow if the rig's translator stopped at the first empty stage, which is a
-lead for the canopy question above and not a finding. A real D3D8 driver may differ.
+**What does an empty stage do?** On the rig, a stage with no texture acts as if it were off: `ADD` with no
+ramp leaves the picture as stage 0 made it (`dyson_door_shield`), and `MODULATE2X` with no `Bt` doesn't
+double (`bands`, exactly half of what doubling gives). So the renderer draws it that way, as the only
+measurement there is. Glass with an empty stage 0 ignoring a bound stage 1 would follow if the rig's
+translator stopped at the first empty stage, which is a lead for the canopy above and not a finding. A
+real D3D8 driver may read an empty stage as white, in which case all of these change together.
+
+**A nomad surface on an environment-mapped object is invisible.** Its fade and the override's cube name
+share one per-object slot, so the pointer is read as a float (`bands`: vertices written `0x00ffffff`, and
+none of it on screen). On the rig's install the pointer lands near 0. It stays a pointer, so a value
+that reads otherwise can't be ruled out. None of the 178 environment-mapped ship, solar, asteroid, loot
+crate and gun archetypes in retail has a nomad material, so this only reaches mods.
 
 ## Checking a reading in the retail binary
 

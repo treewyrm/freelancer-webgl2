@@ -22,6 +22,8 @@ import {
 import { homedir } from 'node:os'
 import { dirname, join, relative } from 'node:path'
 import { readCapture } from '#/capture/capture.js'
+import { BAND_ANIMATIONS, BAND_LIBRARIES, BANDS } from './bands.js'
+import { generateBands } from './generate.js'
 import { sceneScript } from './scene.js'
 import { Document } from '@treewyrm/freelancer/ini'
 import { scenes } from './scenes.js'
@@ -38,6 +40,7 @@ const ROOMS = ['intro1_cityscape', 'intro2_volcano', 'intro3_planetchunks'].map(
 )
 const SCRIPTS = join(game, 'SCRIPTS/REFERENCE')
 const EFFECT_SHAPES = join(game, 'FX/effect_shapes.ini')
+const SOLAR_ARCH = join(game, 'SOLAR/solararch.ini')
 
 /** The corpus is measured by other suites. A stray file there reads as their readers drifting. */
 const assertNotCorpus = (): void => {
@@ -73,12 +76,40 @@ const mount = (name: string): void => {
     )
     writeFileSync(EFFECT_SHAPES, text + added.join(''), 'latin1')
   }
-  console.log(`menu now plays ${name}${scene.preload?.length ? ', with preloads' : ''}`)
+
+  const solars = `${SOLAR_ARCH}.retail`
+  if (existsSync(solars)) renameSync(solars, SOLAR_ARCH)
+  if (scene.generated) {
+    const { model, library } = generateBands(BANDS, BAND_ANIMATIONS)
+    writeFileSync(join(SCRIPTS, 'bands.3db'), model)
+    writeFileSync(join(SCRIPTS, 'bands.mat'), library)
+    copyFileSync(SOLAR_ARCH, solars)
+    const text = Buffer.from(Document.read(readFileSync(solars)).write('text')).toString('latin1')
+    const libraries = BAND_LIBRARIES.map((path) => path.replaceAll('/', '\\'))
+    const lines = [
+      '[Solar]',
+      `nickname = ${scene.model.archetype}`,
+      'ids_name = 1',
+      'ids_info = 1',
+      'type = SATELLITE',
+      'DA_archetype = scripts\\reference\\bands.3db',
+      ...libraries.map((path) => `material_library = ${path}`),
+      'material_library = scripts\\reference\\bands.mat',
+      'envmap_material = envmapbasic',
+      'LODranges = 0, 2000',
+      'mass = 1000',
+      'solar_radius = 10',
+    ]
+    writeFileSync(SOLAR_ARCH, `${text}\r\n${lines.join('\r\n')}\r\n`, 'latin1')
+  }
+  const extras = [scene.preload?.length && 'preloads', scene.generated && 'a generated model']
+  const also = extras.filter(Boolean).join(' and ')
+  console.log(`menu now plays ${name}${also ? `, with ${also}` : ''}`)
 }
 
 const restore = (): void => {
   assertNotCorpus()
-  for (const file of [...ROOMS, EFFECT_SHAPES])
+  for (const file of [...ROOMS, EFFECT_SHAPES, SOLAR_ARCH])
     if (existsSync(`${file}.retail`)) renameSync(`${file}.retail`, file)
   rmSync(SCRIPTS, { recursive: true, force: true })
   console.log('menu restored')

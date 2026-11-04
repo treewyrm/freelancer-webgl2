@@ -33,7 +33,7 @@ export const assertFrameMatches = (
 
     // D3DCULL_NONE 1, CW 2, CCW 3.
     assert.equal(retail.states['CULLMODE'], { none: 1, back: 2, front: 3 }[ours.cull], what)
-    assert.equal(retail.states['LIGHTING'], ours.nomad ? 0 : 1, what)
+    assert.equal(retail.states['LIGHTING'], ours.nomad || ours.unlit ? 0 : 1, what)
     assert.equal(retail.states['ALPHABLENDENABLE'], ours.blend ? 1 : 0, what)
     assert.equal(retail.states['ALPHAREF'], ours.alphaReference, what)
     assert.equal(retail.states['NORMALIZENORMALS'], ours.normalizeNormals ? 1 : 0, what)
@@ -46,23 +46,44 @@ export const assertFrameMatches = (
       )
       const ambient = [ours.ambient.x, ours.ambient.y, ours.ambient.z]
       ambient.forEach((value, c) => close(value, retail.material!.ambient[c]!, `${what} ambient`))
-      assert.deepEqual(retail.material!.emissive.slice(0, 3), [
-        ours.emissive.x,
-        ours.emissive.y,
-        ours.emissive.z,
-      ])
+      const emissive = [ours.emissive.x, ours.emissive.y, ours.emissive.z]
+      emissive.forEach((value, c) =>
+        close(value, retail.material!.emissive[c]!, `${what} emissive`),
+      )
     }
 
     const stageNames = (stage: number) =>
       namesOf(index, retail.stages[stage]!.texture!).map(({ name }) => name.toLowerCase())
     if (ours.texture) assert.ok(stageNames(0).includes(ours.texture.name.toLowerCase()), what)
-    else assert.equal(retail.stages[0]!.texture, undefined, what)
+    // With stage 0 empty and off, `BindEnvMap` takes it. Engine glow is the one with no stage 0 table.
+    else if (retail.stages[0]!.states['COLOROP'] !== 5)
+      assert.equal(retail.stages[0]!.texture, undefined, what)
+
+    // D3DBLEND: ZERO 1, ONE 2, SRCALPHA 5, INVSRCALPHA 6, DESTCOLOR 9.
+    if (ours.blend) {
+      const [source, destination] = {
+        alpha: [5, 6],
+        add: [2, 2],
+        alphaAdd: [5, 2],
+        multiply: [9, 1],
+      }[ours.blendMode]
+      assert.deepEqual(
+        [retail.states['SRCBLEND'], retail.states['DESTBLEND']],
+        [source, destination],
+        what,
+      )
+    }
+
+    // D3DCMP_LESS 2, LESSEQUAL 4.
+    assert.equal(retail.states['ZFUNC'], ours.depthFunc === 'lequal' ? 4 : 2, what)
+    if (ours.sceneAmbient) assert.equal(retail.states['AMBIENT'], 0xffffffff, what)
 
     // Stage 0's transform is on when ours is.
     assert.equal(retail.stages[0]!.transform !== undefined, ours.uvTransform !== undefined, what)
 
     // Stage 1's operation is ours. Draw 12 of `li_elite` leaves a stale cube bound, off.
-    const operation = retail.stages[1]!.states['COLOROP']
+    const onStageZero = !ours.texture && retail.stages[0]!.states['COLOROP'] === 5
+    const operation = retail.stages[onStageZero ? 0 : 1]!.states['COLOROP']
     // D3DTOP_DISABLE 1, MODULATE2X 5, ADD 7.
     // A nomad surface keeps its stage on whether or not the ramp resolved.
     const stage =
@@ -77,8 +98,9 @@ export const assertFrameMatches = (
       assert.equal(retail.stages[1]!.states['TEXCOORDINDEX'], ours.second.texture.uvSet, what)
     }
     if (ours.environment) {
-      assert.ok(stageNames(1).includes(ours.environment), what)
-      assert.equal(retail.stages[1]!.states['TEXCOORDINDEX'], 0x30000, what)
+      const stage = onStageZero ? 0 : 1
+      assert.ok(stageNames(stage).includes(ours.environment), what)
+      assert.equal(retail.stages[stage]!.states['TEXCOORDINDEX'], 0x30000, what)
     }
 
     if (ours.texture)

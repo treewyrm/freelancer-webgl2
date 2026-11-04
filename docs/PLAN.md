@@ -147,8 +147,12 @@ closing and losing the context all work. Then revise the API with what was learn
 - [x] Engine overrides, where the game reaches them on a rigid model: `CloakMaterial`, set by the host.
       Read from `flmaterials.dll` and pinned by tests, **uncaptured**, as only flight has a cloak.
       `WireMaterial` and `ColorizeMaterial` are asked for by the interface controls, so M10's.
-- [ ] Every other type the DLLs register, used in retail or not, since a mod can name any of them:
-      `EngineGlowMaterial`, `EcEt`, `EcEtTwo`, `LightMap` and the like. Checked on generated spheres.
+- [x] What retail barely uses and mods can name, on the generated `bands` sphere, where every band
+      scores 99.4 to 100% against the screenshot: `EcEt`, `EcEtTwo`, `LightMap`, `EngineGlowMaterial`,
+      `Nebula`, `NebulaTwo`, `BtDetailMapTwoMaterial`, `GlassMaterial`, `GFGlassMaterial`, and `DcDt` kin.
+- [ ] Still to try on a sphere: the override types as a material's `Type` (`ColorizeMaterial`,
+      `CloakMaterial`, `WireMaterial`, `WireMaterial2`, `ShadowMaterial` and the rest), the planet
+      types, and a `Bt` asking for a UV set the mesh hasn't got.
 - [x] LOD selection: `placeParts` with a camera and the archetype's lists, or `levelAt` for a host
       posing its own. `ku_dragon_pair`'s far ship matches at its lower level, in state and picture.
 - [x] Material UV animation, from the host's clock on `Scene.time`. Live in retail (`0x41b2e0` passes the
@@ -160,8 +164,10 @@ closing and losing the context all work. Then revise the API with what was learn
 - [x] Corpus suite: all 1,852 retail models plan a frame at every level, and what's left is pinned by
       type (`src/reference/corpus.test.ts`): `HUDIconMaterial`, `HUDAnimMaterial`,
       `ExclusionZoneMaterial` and `PlanetWaterMaterial` to build, `Nebula` for M4, four animated
-      textures for M8, and 7 materials no retail file defines.
-- [ ] `HUDIconMaterial`, `HUDAnimMaterial`, `ExclusionZoneMaterial`, `PlanetWaterMaterial`.
+      textures for M8, and 7 materials no retail file defines. Since built: only the last two remain.
+- [x] `HUDIconMaterial`, `HUDAnimMaterial`, `ExclusionZoneMaterial`, `PlanetWaterMaterial`, on `bands`.
+      **Read only:** the per-object colour they take from `SceneModel.instance`, which needs the engine.
+- [x] `[MaterialMap]` from the host: `SceneModel.materialMap`, for a mod's `dacom.ini`.
 - [ ] **You:** reference scenes for each new family.
       A material retail barely uses, or no spawnable model has, can still be checked: generate a small
       UV sphere carrying it, give it a lab-only archetype, and capture how the game draws it.

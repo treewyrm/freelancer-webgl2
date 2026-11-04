@@ -27,6 +27,8 @@ export interface ReferenceScene {
     near: number
     far: number
   }
+  /** A generated model of this scene's bands, given a lab-only archetype, in place of a retail one. */
+  generated?: true
   /**
    * Libraries for the lab install to load at startup, through `FX/effect_shapes.ini`: what the game
    * would have loaded by the time it needs them, where a menu scene alone hasn't.
