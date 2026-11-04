@@ -9,6 +9,7 @@ import { Directory } from '@treewyrm/freelancer/utf'
 import { getMesh, getMeshDraw, readVMeshLibrary, type VMeshPart } from '@treewyrm/freelancer/vmesh'
 import { readCapture, type CaptureDraw } from '#/capture/capture.js'
 import { indexTextures, namesOf } from '#/capture/texture-names.js'
+import { planReference, vertexLayout } from '#/mesh/plan.js'
 
 const data = process.env['FREELANCER_DATA'] ?? join(homedir(), 'Downloads/Freelancer/DATA')
 const references = process.env['FREELANCER_REFERENCES'] ?? 'references'
@@ -112,4 +113,45 @@ test('a hull draw reads end to end', { skip }, () => {
   // `fovh` is half the horizontal angle: cot(30 degrees), and 4:3.
   assert.ok(Math.abs(draw.projection![0]! - 1 / Math.tan(Math.PI / 6)) < 1e-5)
   assert.ok(Math.abs(draw.projection![5]! / draw.projection![0]! - 4 / 3) < 1e-5)
+})
+
+test('planned indices and vertices are what retail drew', { skip }, () => {
+  const draws = lastFrame()
+  const file = readFileSync(join(data, 'SHIPS/LIBERTY/LI_ELITE/li_elite.cmp'))
+  const root = Directory.read(new Uint8Array(file.buffer, file.byteOffset, file.byteLength))
+  const meshes = readVMeshLibrary(root)
+
+  let checked = 0
+  let vertices = 0
+  for (const part of topLevels(readRigidModel(root) as never)) {
+    const mesh = getMesh(meshes, part.reference.meshId)!
+    const { indices, groups } = planReference(mesh, part.reference)
+    const view = new DataView(mesh.vertices.buffer, mesh.vertices.byteOffset)
+    const { stride } = vertexLayout(mesh.format)
+
+    groups.forEach(({ byteOffset, count }, at) => {
+      const { startIndex } = [...getMeshDraw(mesh, part.reference)][at]!
+      const draw = draws.find((candidate) => candidate.startIndex === startIndex)!
+      const planned = indices.subarray(byteOffset / 2, byteOffset / 2 + count)
+
+      // The log keeps the first 1024 of a draw's indices.
+      draw.indexData!.forEach((index, n) =>
+        assert.equal(planned[n], draw.baseVertex! + index, `index ${n} at ${startIndex}`),
+      )
+
+      // Small draws also log their vertices, in buffer order from `minIndex`.
+      draw.vertexData?.forEach(({ p, t0 }, n) => {
+        const from = (draw.baseVertex! + draw.minIndex! + n) * stride
+        const position = [0, 4, 8].map((offset) => view.getFloat32(from + offset, true))
+        const uv = [24, 28].map((offset) => view.getFloat32(from + offset, true))
+        // The log's nine significant digits round-trip a 32-bit float exactly.
+        assert.deepEqual(position, p.map(Math.fround))
+        assert.deepEqual(uv, t0!.map(Math.fround))
+        vertices++
+      })
+      checked++
+    })
+  }
+  assert.equal(checked, 19)
+  assert.ok(vertices > 100, `only ${vertices} vertices compared`)
 })

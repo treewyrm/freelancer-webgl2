@@ -69,7 +69,9 @@ end: its texture by name, stage setup, material, lights and matrices. Pinned by
       hash the same as both captures. Retail narrows 24-bit to R5G6B5 by rounding, and D3DX gives a
       cube's generated levels a rounded 2x2 box. **Not yet captured:** top-left Targas (the source
       and the library agree on reversing them), DXT3, 16-bit Targas, the two 24-bit surfaces.
-- [ ] VMesh buffers, including the base-vertex scheme (library `RENDERER.md` §3).
+- [x] VMesh buffers, including the base-vertex scheme (library `RENDERER.md` §3). Indices rebased per
+      reference. They and the logged vertices match `li_elite` exactly; all 9,322 retail references
+      stay in range. **Not captured:** normals, which `d3d8log` doesn't log. Add them for lighting.
 - [ ] Camera: THN `cameraprops` to matrices, with the mirrored projection and `CCW` (`RENDERER.md` §2).
 - [ ] Static `Cmpnd` hierarchy to world transforms (§5).
 - [ ] Frame as data: a pure function from scene to ordered draw list ([ARCHITECTURE.md](ARCHITECTURE.md)).
