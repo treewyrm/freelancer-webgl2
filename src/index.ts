@@ -21,6 +21,12 @@ export {
 export { projectionMatrix, viewMatrix, type Camera } from '#/scene/camera.js'
 export { partTransforms } from '#/scene/hierarchy.js'
 export {
+  adjustedDistance,
+  costumeLevel,
+  switchDistance,
+  type SwitchTable,
+} from '#/deformable/level.js'
+export {
   boneTable,
   MAX_BONES,
   placeCostume,

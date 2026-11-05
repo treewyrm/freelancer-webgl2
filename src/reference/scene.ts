@@ -3,6 +3,7 @@ import { Matrix4, type Vector3 } from '@treewyrm/freelancer/math'
 import { value } from '@treewyrm/freelancer/thn'
 import { write } from '@treewyrm/freelancer/thn/text'
 import type { Camera } from '#/scene/camera.js'
+import type { SwitchTable } from '#/deformable/level.js'
 import type { Generated } from './generate.js'
 
 type Vector = readonly [number, number, number]
@@ -27,6 +28,8 @@ export interface ReferenceScene {
     duration: number
     position: Vector
     orientation: Rows
+    /** Each part's `[DetailSwitchTable]` from `bodyparts.ini`, to choose levels as the game does. */
+    tables?: SwitchTable[]
     /** Aims the eyes at this point, through a `MARKER`, as 1,499 retail `START_IK` events do. */
     gaze?: Vector
   }

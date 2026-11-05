@@ -39,10 +39,12 @@ const CANOPY: Record<string, Box> = {
  * Nomad's ramp, measured at 97.1% and a mean of 0.58. The ramp's pixels hash the same as retail's, any
  * LOD bias is far worse, and the state matches, so what's left is unexplained: see VALIDATION.md.
  */
-const WIDER: Record<string, { close: number; mean: number }> = {
+const WIDER: Record<string, { close: number; mean: number; compared?: number }> = {
   no_fighter: { close: 0.97, mean: 0.6 },
   // Measured at 99.95% and a mean of 0.59, its state matching: see VALIDATION.md.
   starsphere_ew05: { close: 0.995, mean: 0.65 },
+  // Far off, so small: 792 pixels, measured at 99.1% and a mean of 0.56, and its vertices all match.
+  character_far: { close: 0.98, mean: 0.75, compared: 500 },
 }
 
 // The door shield's ramp isn't bound in retail's capture either.
@@ -103,6 +105,7 @@ for (const [name, draws] of [
   ['starsphere_ew06', 2],
   ['character_reed', 9],
   ['character_eyes', 7],
+  ['character_far', 9],
 ] as const)
   test(
     `${name} matches retail's screenshot, outside its menu and canopy`,
@@ -155,12 +158,22 @@ for (const [name, draws] of [
         }
 
       const mean = difference / compared
+      console.log(
+        ((close / compared) * 100).toFixed(3),
+        mean.toFixed(3),
+        oursOnly,
+        theirsOnly,
+        compared,
+      )
       const message = `${close} of ${compared} within 2, mean ${mean.toFixed(3)}, silhouette ${oursOnly}/${theirsOnly}`
       // Stated tolerance: measured 99.9% and a mean of 0.2 on both scenes. The rest is rounding and
       // the rig's own path to the screen, so these leave little room for a real change.
-      assert.ok(compared > 15000, message)
+      assert.ok(compared > (WIDER[name]?.compared ?? 15000), message)
       assert.ok(close / compared >= (WIDER[name]?.close ?? 0.995), message)
       assert.ok(mean <= (WIDER[name]?.mean ?? 0.5), message)
-      assert.ok(Math.max(oursOnly, theirsOnly) / compared <= 0.002, message)
+      assert.ok(
+        Math.max(oursOnly, theirsOnly) / compared <= (WIDER[name]?.compared ? 0.02 : 0.002),
+        message,
+      )
     },
   )

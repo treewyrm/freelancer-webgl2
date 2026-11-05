@@ -229,12 +229,15 @@ Adapted from `freelancer-vscode`'s GPU skinning; see [ADAPTING.md](ADAPTING.md#g
       from `jointState`. `character_eyes` matches retail's matrix in state, and in picture: 99.98% within 2,
       a mean of 0.42. Only one gaze is captured, saturated at both limits, so the scale between them is
       as read. **`START_IK` itself is M8's**: the scene aims the bone's -Z by hand.
-- [ ] A detail level per part, and levels drawn rigid past the skinned count.
+- [x] A detail level per part, and levels drawn rigid past the skinned count: `costumeLevel` over the host's
+      `[DetailSwitchTable]`s, in `placeCostume`. `character_far` matches all nine draws, each part on its own
+      level, with every vertex. With the rigid rule off, 34 to 51 seam vertices a part land elsewhere, so
+      the capture does tell them apart. A room's script takes the base room's rule here, as measured.
+      **Read only:** `low_character_lod`, and a part past its far cutoff, which draws nothing.
 - [x] Costumes joined from four `.dfm` files: `placeCostume`, by shared hardpoint name, roots and seams.
 - [x] **You:** a reference scene with a character. `character_reed`, at the last keyframe of a one-shot
       script, matches in draws, indices, every vertex and normal, each part's root, and picture: 99.92%
-      within 2, a mean of 0.43. **Uncaptured:** frames mid-script and blending, an unseated seam, and the
-      levels below the top.
+      within 2, a mean of 0.43. **Uncaptured:** frames mid-script and blending, and an unseated seam.
 
 **Done when** the character editor runs on this renderer behind its switch and the eye and skin rows
 are state matched.

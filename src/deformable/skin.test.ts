@@ -14,6 +14,8 @@ import {
 import { Matrix3, Matrix4, Quat } from '@treewyrm/freelancer/math'
 import { Directory } from '@treewyrm/freelancer/utf'
 import { Primitive } from '@treewyrm/freelancer/vmesh'
+import type { Camera } from '#/scene/camera.js'
+import type { SwitchTable } from './level.js'
 import { boneTable, MAX_BONES, placeCostume, placeSkin, skinMesh } from './skin.js'
 
 const strip = (material: string, ...indices: number[]): FaceGroup => ({
@@ -344,4 +346,48 @@ test('an eye within the dead zone has no offset at all', () => {
 test("the head turning doesn't move the eye, as the offset is in its parent's frame", () => {
   const turned = Matrix3.axisAngle({ x: 0, y: 1, z: 0 }, 1)
   assert.equal(eyed({ x: 0, y: 0, z: 1 }, turned), undefined)
+})
+
+test('a level past what a part may skin draws rigid, a pick out of its table hides it', () => {
+  const twoLevels = () =>
+    ({ ...part({ name: 'root' }), levels: [single(), single(), single()] }) as DeformableModel
+  const worldOf = (model: DeformableModel, skinnedLevels: number[], level: number) =>
+    placeCostume([model], moved(10), { level, skinnedLevels })[0]!.skin!.bones
+  const model = twoLevels()
+  const bound = worldOf(model, [Infinity], 2)
+  const rigid = worldOf(model, [2], 2)
+  assert.deepEqual(applied(rigid, 0, 1, 2, 3), [1, 2, 3])
+  assert.deepEqual(applied(bound, 0, 1, 2, 3), [1, 2, 3])
+  // A bone off its bind shows the difference, with a body that has no limit by default.
+  const off = {
+    ...twoLevels(),
+    bones: [{ ...bone(4), name: 'root', hardpoints: [] }],
+  } as DeformableModel
+  assert.deepEqual(applied(worldOf(off, [Infinity], 2), 0, 0, 0, 0), [4, 0, 0])
+  assert.deepEqual(applied(worldOf(off, [2], 2), 0, 0, 0, 0), [0, 0, 0])
+
+  const tables = [
+    {
+      rows: [
+        [100, 10],
+        [0, 20],
+      ],
+    },
+  ] as SwitchTable[]
+  const camera = (z: number) =>
+    ({
+      position: { x: 0, y: 0, z },
+      orientation: Matrix3.identity,
+      fovh: 20,
+      near: 1,
+      far: 100,
+    }) as Camera
+  assert.equal(
+    placeCostume([model], Matrix4.identity, { lod: { camera: camera(5), tables } }).length,
+    1,
+  )
+  assert.equal(
+    placeCostume([model], Matrix4.identity, { lod: { camera: camera(50), tables } }).length,
+    0,
+  )
 })

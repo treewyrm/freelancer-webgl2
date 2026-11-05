@@ -15,8 +15,10 @@ import {
   type VMeshData,
   type VMeshRef,
 } from '@treewyrm/freelancer/vmesh'
+import type { Camera } from '#/scene/camera.js'
 import { partTransforms } from '#/scene/hierarchy.js'
 import type { DrawSkin, PlacedPart } from '#/scene/frame.js'
+import { costumeLevel, type SwitchTable } from './level.js'
 
 /** The game's table holds this many, and nothing checks it (`0x65f3898`). Retail's largest is 86. */
 export const MAX_BONES = 150
@@ -186,8 +188,12 @@ export const boneTable = (
 }
 
 export interface SkinOptions {
-  /** Clamped to what the model has. The top one when absent. */
+  /** Pinned, clamped to what a part has. The top one when there's neither this nor `lod`. */
   level?: number
+  /** Each part's level as the game chooses it, `tables` in part order. */
+  lod?: { camera: Camera; tables: readonly SwitchTable[] }
+  /** A level at or past this draws rigid, at bind. A costume's default is the builder's: see below. */
+  skinnedLevels?: readonly number[]
   jointState?: (bone: CompoundNode<Bone>) => JointState | undefined
   /**
    * The skin as modelled, ignoring the joints. `chain` is the default and what the game draws: its
@@ -219,6 +225,8 @@ const eyeOffset = (
   return [Math.min(maxU, Math.max(minU, u)), Math.min(maxV, Math.max(minV, v))]
 }
 
+const CHILD_SKINNED_LEVELS = 2
+
 const placement = ({
   orientation,
   position,
@@ -234,7 +242,7 @@ const placement = ({
 export const placeCostume = (
   models: readonly DeformableModel[],
   transform: Matrix4,
-  { level = 0, jointState, pose = 'chain' }: SkinOptions = {},
+  { level, lod, skinnedLevels, jointState, pose = 'chain' }: SkinOptions = {},
 ): PlacedPart[] => {
   const holders = new Map<string, { world: Matrix4; hardpoint: Matrix4 }>()
   const linked = (name: string, hardpoint: Hardpoint): Matrix4 | undefined => {
@@ -251,8 +259,22 @@ export const placeCostume = (
   const parts: PlacedPart[] = []
   models.forEach((model, at) => {
     const root = getBoneModel(model)
-    const chosen = model.levels[Math.min(level, model.levels.length - 1)]
-    if (!root || !chosen) return
+    const table = lod?.tables[at]
+    const chosenAt =
+      level === undefined && lod && table
+        ? costumeLevel(
+            model.levels,
+            table,
+            Math.hypot(
+              lod.camera.position.x - transform.w.x,
+              lod.camera.position.y - transform.w.y,
+              lod.camera.position.z - transform.w.z,
+            ),
+            lod.camera.fovh,
+          )
+        : Math.min(level ?? 0, model.levels.length - 1)
+    const chosen = chosenAt === undefined ? undefined : model.levels[chosenAt]
+    if (!root) return
 
     // A root links by the first of its names already held. No other can join it to a second.
     const place = root.part.hardpoints.flatMap((hardpoint) => {
@@ -287,9 +309,18 @@ export const placeCostume = (
       worlds[index] ??= Matrix4.identity
     }
 
+    // Past its far cutoff a part draws nothing, and its bones still hold for those after it.
+    if (!chosen) return
     const rootWorld = worlds[root.index]!
     const { mesh, reference, influences } = skinMesh(chosen, model.bones.length)
-    const skin: DrawSkin = { influences, bones: boneTable(model.bones, worlds, rootWorld) }
+    // `BuildCharacterDeformable` (`0x443b60`): the body has no limit, and the others skin levels 0 and 1.
+    const skinned = skinnedLevels?.[at] ?? (at === 0 ? Infinity : CHILD_SKINNED_LEVELS)
+    // `Flag70`: every bone the identity (`0x65f6cc6`).
+    const bones =
+      chosenAt! < skinned
+        ? boneTable(model.bones, worlds, rootWorld)
+        : boneTable(model.bones, [], rootWorld)
+    const skin: DrawSkin = { influences, bones }
     // Only the first UV bone drives, and only eye groups read it (`0x65f75ca`).
     const uvBone = chosen.geometry.uvBone
     const parentOf = new Map<number, number>()

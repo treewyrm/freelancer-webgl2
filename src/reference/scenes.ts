@@ -1,4 +1,5 @@
 import { BAND_ANIMATIONS, BANDS, ONE_UV_BANDS, PLANET_BANDS } from './bands.js'
+import type { SwitchTable } from '#/deformable/level.js'
 import { IDENTITY, rotation, type ReferenceScene } from './scene.js'
 
 /** Identity orientation looks down -Z, as in the lab rig's `freelancer-testing/tests/mount.ts`. */
@@ -9,6 +10,38 @@ const CAMERA = {
   near: 1,
   far: 10000,
 } as const
+
+// `CHARACTERS/bodyparts.ini`, the groups `reed`'s parts fall under.
+const BODY_SWITCH: SwitchTable = {
+  rows: [
+    [100, 10],
+    [80, 18],
+    [60, 40],
+    [40, 60],
+    [20, 100],
+    [10, 220],
+  ],
+}
+const HEAD_SWITCH: SwitchTable = {
+  rows: [
+    [100, 10],
+    [80, 18],
+    [60, 30],
+    [40, 45],
+    [20, 80],
+    [10, 190],
+  ],
+}
+const HAND_SWITCH: SwitchTable = {
+  rows: [
+    [100, 10],
+    [80, 18],
+    [60, 30],
+    [40, 45],
+    [20, 60],
+    [10, 150],
+  ],
+}
 
 const starsphere = (name: string, sky: NonNullable<ReferenceScene['sky']>): ReferenceScene => ({
   name,
@@ -263,6 +296,35 @@ export const scenes: ReadonlyMap<string, ReferenceScene> = new Map(
         fovh: 5,
         near: 0.1,
         far: 100,
+      },
+      ambient: [40, 40, 40],
+      lights: [{ color: [255, 255, 255], direction: [0.5, -0.5, -1] }],
+    } satisfies ReferenceScene,
+    {
+      // M5: the same pose far off through a long lens: 35 adjusted, so the body at level 2, and head and
+      // hands at 3, past what the builder lets them skin.
+      name: 'character_far',
+      character: {
+        costume: 'reed',
+        parts: [
+          'CHARACTERS/BODIES/li_rockford_body.dfm',
+          'CHARACTERS/HEADS/li_captain_head.dfm',
+          'CHARACTERS/HANDS/benchmarkmalehandleft.dfm',
+          'CHARACTERS/HANDS/benchmarkmalehandright.dfm',
+        ],
+        animations: 'CHARACTERS/ANIMATIONS/bodygenericmale.anm',
+        script: 'Sc_MLBODY_CHRB_GESTL_WHAT_000LV_XA_03',
+        duration: 1.77,
+        position: [0, 0, 0],
+        orientation: rotation(150, 0),
+        tables: [BODY_SWITCH, HEAD_SWITCH, HAND_SWITCH, HAND_SWITCH],
+      },
+      camera: {
+        position: [0, 0.4, 121.25],
+        orientation: IDENTITY,
+        fovh: 6,
+        near: 1,
+        far: 1000,
       },
       ambient: [40, 40, 40],
       lights: [{ color: [255, 255, 255], direction: [0.5, -0.5, -1] }],

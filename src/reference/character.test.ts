@@ -61,68 +61,73 @@ const skinned = ({ mesh, skin }: Draw, element: number) => {
   return { position, normal: normal.map((value) => value / length) }
 }
 
-test('the costume is retail draw for draw, body first', { skip }, async () => {
-  const { frame, retail } = await load()
-  assert.deepEqual(frame.unsupported, [])
-  assertFrameMatches(frame, retail, indexTextures(data), { streamed: true })
-})
+for (const name of ['character_reed', 'character_far', 'character_eyes']) {
+  test(`${name} is retail draw for draw, body first`, { skip: skipOf(name) }, async () => {
+    const { frame, retail } = await load(name)
+    assert.deepEqual(frame.unsupported, [])
+    assertFrameMatches(frame, retail, indexTextures(data), { streamed: true })
+  })
 
-test(
-  'at the last keyframe every vertex and normal is where retail skinned it',
-  { skip },
-  async () => {
-    const { frame, retail } = await load()
-    let checked = 0
-    let worst = 0
-    frame.draws.forEach((draw, n) => {
-      const { vertexData, minIndex } = retail[n]!
-      assert.ok(vertexData, 'no vertices logged: raise verts_max')
-      vertexData.forEach(({ p, n: normal }, at) => {
-        const ours = skinned(draw, (minIndex ?? 0) + at)
-        p.forEach((value, c) => {
-          worst = Math.max(worst, Math.abs(ours.position[c]! - value))
-          assert.ok(
-            Math.abs(ours.position[c]! - value) < 2e-3,
-            `draw ${n}, vertex ${at}: ${ours.position}, ${p}`,
+  test(
+    `${name}'s vertices and normals are where retail skinned them, or left them rigid`,
+    { skip: skipOf(name) },
+    async () => {
+      const { frame, retail } = await load(name)
+      let checked = 0
+      let worst = 0
+      frame.draws.forEach((draw, n) => {
+        const { vertexData, minIndex } = retail[n]!
+        assert.ok(vertexData, 'no vertices logged: raise verts_max')
+        vertexData.forEach(({ p, n: normal }, at) => {
+          const ours = skinned(draw, (minIndex ?? 0) + at)
+          p.forEach((value, c) => {
+            worst = Math.max(worst, Math.abs(ours.position[c]! - value))
+            assert.ok(
+              Math.abs(ours.position[c]! - value) < 2e-3,
+              `draw ${n}, vertex ${at}: ${ours.position}, ${p}`,
+            )
+          })
+          normal!.forEach((value, c) =>
+            assert.ok(
+              Math.abs(ours.normal[c]! - value) < 2e-3,
+              `draw ${n}, normal ${at}: ${ours.normal}, ${normal}`,
+            ),
           )
+          checked++
         })
-        normal!.forEach((value, c) =>
-          assert.ok(
-            Math.abs(ours.normal[c]! - value) < 2e-3,
-            `draw ${n}, normal ${at}: ${ours.normal}, ${normal}`,
-          ),
-        )
-        checked++
       })
+      assert.ok(checked > 0)
+    },
+  )
+
+  test(`${name}'s indices are the ones retail drew`, { skip: skipOf(name) }, async () => {
+    const { frame, retail } = await load(name)
+    frame.draws.forEach(({ mesh, byteOffset, count }, n) => {
+      const ours = mesh.indices.slice(byteOffset / 2, byteOffset / 2 + count)
+      // The log stops at 1024.
+      assert.deepEqual([...ours.slice(0, 1024)], retail[n]!.indexData, `draw ${n}`)
+      assert.equal(retail[n]!.startIndex, byteOffset / 2, `draw ${n}`)
     })
-    assert.ok(checked > 0)
-  },
-)
-
-test('the indices are the ones retail drew', { skip }, async () => {
-  const { frame, retail } = await load()
-  frame.draws.forEach(({ mesh, byteOffset, count }, n) => {
-    const ours = mesh.indices.slice(byteOffset / 2, byteOffset / 2 + count)
-    // The log stops at 1024.
-    assert.deepEqual([...ours.slice(0, 1024)], retail[n]!.indexData, `draw ${n}`)
-    assert.equal(retail[n]!.startIndex, byteOffset / 2, `draw ${n}`)
   })
-})
 
-test('each part stands where retail joined it', { skip }, async () => {
-  const { frame, retail } = await load()
-  frame.draws.forEach(({ world, materialName }, n) => {
-    const modelView = Matrix4.multiply(frame.view, world)
-    const columns = [modelView.x, modelView.y, modelView.z, modelView.w]
-    // Retail's world is the modelview with Z flipped, written as rows for row vectors.
-    columns.forEach((column, c) =>
-      [column.x, column.y, -column.z].forEach((cell, r) => {
-        const theirs = retail[n]!.world![c * 4 + r]!
-        assert.ok(Math.abs(cell - theirs) < 0.01, `${materialName} ${c}, ${r}: ${cell}, ${theirs}`)
-      }),
-    )
+  test(`each part of ${name} stands where retail joined it`, { skip: skipOf(name) }, async () => {
+    const { frame, retail } = await load(name)
+    frame.draws.forEach(({ world, materialName }, n) => {
+      const modelView = Matrix4.multiply(frame.view, world)
+      const columns = [modelView.x, modelView.y, modelView.z, modelView.w]
+      // Retail's world is the modelview with Z flipped, written as rows for row vectors.
+      columns.forEach((column, c) =>
+        [column.x, column.y, -column.z].forEach((cell, r) => {
+          const theirs = retail[n]!.world![c * 4 + r]!
+          assert.ok(
+            Math.abs(cell - theirs) < 0.01,
+            `${materialName} ${c}, ${r}: ${cell}, ${theirs}`,
+          )
+        }),
+      )
+    })
   })
-})
+}
 
 test('an eye bone at rest leaves the transform off', { skip }, async () => {
   const { frame, retail } = await load()

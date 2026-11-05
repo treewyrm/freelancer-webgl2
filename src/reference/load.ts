@@ -21,6 +21,7 @@ import { getMesh, readVMeshLibrary } from '@treewyrm/freelancer/vmesh'
 import { placeParts, type Scene, type SceneModel } from '#/scene/frame.js'
 import { placeSphere } from '#/scene/sphere.js'
 import { placeCostume } from '#/deformable/skin.js'
+import type { Camera } from '#/scene/camera.js'
 import { BAND_LIBRARIES } from './bands.js'
 import { generateBands } from './generate.js'
 import { cameraOf, modelMatrixOf, orientationMatrix, type ReferenceScene } from './scene.js'
@@ -116,7 +117,9 @@ const loadCharacter = async (
     position,
     orientation,
     gaze,
+    tables,
   }: NonNullable<ReferenceScene['character']>,
+  camera: Camera,
   read: ReadAsset,
 ): Promise<SceneModel[]> => {
   const roots = await Promise.all(parts.map(async (path) => Directory.read(await read(path))))
@@ -145,6 +148,7 @@ const loadCharacter = async (
   const place = () =>
     placeCostume(models, Matrix4.multiply(start, motion), {
       jointState: ({ name }) => states.get(name.toLowerCase()),
+      ...(tables ? { lod: { camera, tables } } : {}),
     })
   // `START_IK`'s solver is M8's. This turns the eye bone to the marker in its head's frame, which is
   // near enough where retail saturates at the bone's limits, as `character_eyes` does. The bone's Z
@@ -214,7 +218,12 @@ export const loadScene = async (
     })),
   }
   if (definition.character)
-    return { scene: { ...shared, models: await loadCharacter(definition.character, read) } }
+    return {
+      scene: {
+        ...shared,
+        models: await loadCharacter(definition.character, cameraOf(definition), read),
+      },
+    }
   const placedModel = definition.model
   if (!placedModel) return { scene: { ...shared, models: skies } }
 

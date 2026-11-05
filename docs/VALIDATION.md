@@ -68,6 +68,7 @@ Models chosen because the earlier projects already found them useful for these f
 | M3 | Dyson platform | Detail map |
 | M4 | `run1-stock-menu` | Two real `.sph` planets and their shells, with no scene to set up, but no normals logged |
 | M4 | `planet_earth` | `planet_earth_3000`: `Masked2DetailMapMaterial`, its shell, terminator and limb |
+| M5 | `character_far` | The same pose through a long lens, far off: a level per part, and rigid levels |
 | M5 | `character_eyes` | The same pose close up, its eyes held on a marker by `START_IK`: the eye bone's UV offset |
 | M5 | `character_reed` | A whole costume at the last keyframe of a one-shot script: skinning, joining, the seated pose |
 | M4 | `starsphere_li01` | Two layers, `DcDtEc` stars, `Nebula`, and a blended `DcDtEcOcOt` under the override |

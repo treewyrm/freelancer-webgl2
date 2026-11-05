@@ -39,7 +39,7 @@ triangles start from another corner: the same triangle, and retail's indices her
 **Missing, confirmed in the decomp:**
 
 - The eye UV bone, and `EyeMaterial`, which the extension has as `DcDt` and so shows the `Et` retail drops.
-- A detail level per part, from `[DetailSwitchTable]`.
+- A detail level per part, from `[DetailSwitchTable]`. The extension shares one across a character.
 - Levels past a part's skinned count draw rigid at bind (`Flag70`). The extension skins every level.
 
 ## Alchemy (M6)
