@@ -209,8 +209,8 @@ renderer**, so the two don't diverge.
       `placeSphere`, behind the same setting. Its thumbnails stay on the old renderer. Its model viewer has a *Draw as*
       dropdown: Model, Starsphere and Backdrop, starting on Starsphere for a `starsphere_*` file or one
       under `STARSPHERE`. Overlays and picking are off for Starsphere, since they keep to the orbit.
-- [ ] **You:** open a `.sph` and a starsphere in VS Code with the setting on, and the material preview on
-      a planet material.
+- [x] **You:** open a `.sph` and a starsphere in VS Code with the setting on, and the material preview on
+      a planet material. All draw. **The switch stays off for now**, by choice.
 - [x] **You:** reference scenes for a planet, `planet_earth`, and starspheres: `starsphere_li01`,
       `starsphere_st03b`, `starsphere_ew05`, `starsphere_ew06`.
 
