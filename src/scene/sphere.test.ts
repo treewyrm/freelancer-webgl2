@@ -42,6 +42,27 @@ test('the level clamps, and what acos cannot take is the lowest', () => {
   assert.equal(sphereLevel(1000, 0), 3)
 })
 
+test('a mod can change the level bounds and the bias', () => {
+  assert.equal(sphereLevel(1000, 1e-6, { minimum: 3, maximum: 12 }), 12)
+  assert.equal(sphereLevel(1000, 1500, { minimum: 1, maximum: 9 }), 1)
+  const camera = {
+    position: { x: 0, y: 0, z: 5000 },
+    orientation: Matrix3.identity,
+    fovh: 20,
+    near: 1,
+    far: 100000,
+  }
+  const levelOf = (levels?: { bias?: number; maximum?: number }) =>
+    placeSphere(sphere(), Matrix4.identity, {
+      camera,
+      width: 512,
+      ...(levels ? { levels } : {}),
+    })[0]!.reference.vertexCount
+  // A smaller bias asks for a finer patch, and a lower maximum caps it.
+  assert.ok(levelOf({ bias: 0.1 }) > levelOf())
+  assert.ok(levelOf({ bias: 0.1, maximum: 3 }) < levelOf({ bias: 0.1 }))
+})
+
 test('straight on, only that face draws, and each side has its own axis', () => {
   const near = 110
   const cases: [number, [number, number, number]][] = [

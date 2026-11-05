@@ -4,11 +4,12 @@ import type { Level } from '@treewyrm/freelancer/deformable'
 /** A `bodyparts.ini` group's table: `switch = percent, distance` rows, the percent descending. */
 export interface SwitchTable {
   rows: readonly (readonly [percent: number, distance: number])[]
-  /** Degrees, the whole angle. 40 when the section writes none. */
+  /** Degrees, the whole angle. `RETAIL_SWITCH_FOVX` when the section writes none. */
   fovx?: number
 }
 
-const DEFAULT_FOVX = 40
+/** What a `[DetailSwitchTable]` with no `fovx` reads. A mod patching it passes its own as `fovx`. */
+export const RETAIL_SWITCH_FOVX = 40
 
 /** `DetailSwitchTable::get_switch_distance`: linear between rows, clamped at both ends. */
 export const switchDistance = ({ rows }: SwitchTable, percent: number): number => {
@@ -28,7 +29,7 @@ const tanDegrees = (degrees: number): number => Math.tan((degrees * Math.PI) / 1
 
 /** `adjust_distance`: a narrow lens counts as closer, against the table's own. `fovh` is half the angle. */
 export const adjustedDistance = (
-  { fovx = DEFAULT_FOVX }: SwitchTable,
+  { fovx = RETAIL_SWITCH_FOVX }: SwitchTable,
   distance: number,
   fovh: number,
 ): number => (tanDegrees(fovh) / tanDegrees(fovx / 2)) * distance

@@ -122,8 +122,25 @@ export interface Scene {
   background?: Vector3
   /** Seconds, the host's clock, for material UV animation. 0 when absent. */
   time?: number
-  /** After the models, in the order given: the game's by type then newest is the host's (M7). */
+  /** After the models, in the order given. `collectSpaceFrame` has the game's order. */
   effects?: readonly SceneEffect[]
+  /** Over `RETAIL_FRAME_LIMITS`, for a mod that patches them. */
+  limits?: Partial<FrameLimits>
+}
+
+/** What the material and appearance DLLs hardcode, and a mod can patch. */
+export interface FrameLimits {
+  /** The least alpha glass draws at, whatever its `Oc` (`FMaterialImpl::BindGlass`). */
+  glassLeastAlpha: number
+  /** A backdrop's own near and far planes (`FFLAppearanceBase::DrawBackdrop`, `BindArg`'s first flag). */
+  backdropNear: number
+  backdropFar: number
+}
+
+export const RETAIL_FRAME_LIMITS: Readonly<FrameLimits> = {
+  glassLeastAlpha: 0.8,
+  backdropNear: 1,
+  backdropFar: 200000,
 }
 
 export interface DrawTexture {
@@ -185,7 +202,7 @@ export interface Draw {
 
   cull: 'back' | 'front' | 'none'
   depthWrite: boolean
-  /** `D3DCMP_LESS` for most. `always` is a sky's `ZENABLE 0`, which comes to the same pixels. */
+  /** `D3DCMP_LESS` for most. `always` is `ZENABLE 0`, a sky's or the far list's: the same pixels. */
   depthFunc: 'less' | 'lequal' | 'always'
   /** Scene ambient in place of the frame's, for this draw. */
   sceneAmbient?: Vector3
@@ -344,9 +361,6 @@ const alphaBits = (entry: TextureEntry | undefined): number => {
 const DEVICE_ALPHA_REFERENCE = 0
 const CUT_ALPHA_REFERENCE = 0x80
 
-// `FMaterialImpl::BindGlass`.
-const GLASS_LEAST_ALPHA = 0.8
-
 const WHITE: Vector3 = { x: 1, y: 1, z: 1 }
 
 // These declare no `Dc`, so the material block stays white (`bands`).
@@ -490,6 +504,7 @@ const passesOf = (
   type: string,
   material: Material,
   model: SceneModel,
+  { glassLeastAlpha }: FrameLimits,
 ): Pass[] => {
   if (kind === 'detailMap' || kind === 'masked' || kind === 'illum')
     return planetPasses(kind, type, material, model)
@@ -572,7 +587,7 @@ const passesOf = (
 
   if (kind === 'glass') {
     // `SubmitGlassGeometry`: inner faces opaque, then outer faces blended. Only those reflect.
-    const alpha = Math.max(opacity, GLASS_LEAST_ALPHA)
+    const alpha = Math.max(opacity, glassLeastAlpha)
     const shared = { negateNormals: false, alphaReference: DEVICE_ALPHA_REFERENCE, alpha }
     return [
       { ...shared, cull: 'front', blend: false, ...NO_ENVIRONMENT },
@@ -754,10 +769,6 @@ const secondStage = (
   return { operation, texture: drawTexture(slot, entry) }
 }
 
-// `FFLAppearanceBase::DrawBackdrop`'s planes, from `BindArg`'s first flag.
-const BACKDROP_NEAR = 1
-const BACKDROP_FAR = 200000
-
 /**
  * `DrawBackdrop`, `DrawStarsphere` and the draw they share. A starsphere's zeroed view translation is
  * a world moved to the camera, as one view serves a frame. Which lights a room leaves on for it
@@ -768,12 +779,13 @@ const skyState = (
   world: Matrix4,
   camera: Camera,
   aspect: number,
+  { backdropNear, backdropFar }: FrameLimits,
 ): Partial<Draw> => ({
   depthWrite: false,
   depthFunc: 'always',
   ...(sky === 'backdrop'
     ? {
-        projection: projectionMatrix({ ...camera, near: BACKDROP_NEAR, far: BACKDROP_FAR }, aspect),
+        projection: projectionMatrix({ ...camera, near: backdropNear, far: backdropFar }, aspect),
       }
     : {
         world: Matrix4.multiply(Matrix4.translation(camera.position), world),
@@ -782,7 +794,7 @@ const skyState = (
       }),
 })
 
-interface Queued {
+export interface Queued {
   depth: number
   draws: Draw[]
 }
@@ -812,8 +824,15 @@ const batchDepth = (
   return sum / reference.vertexCount
 }
 
+/** The batcher's bin 1, far before near. Stable, where retail's qsort leaves equal keys in no set order. */
+export const flushQueued = (queued: Queued[], draws: Draw[]): void => {
+  queued.sort((a, b) => a.depth - b.depth)
+  for (const queue of queued) draws.push(...queue.draws)
+  queued.length = 0
+}
+
 /** Lists a model's draws, its parts in the order given and each part's groups in order. */
-const collectModel = (
+export const collectModel = (
   model: SceneModel,
   camera: Camera,
   aspect: number,
@@ -823,6 +842,9 @@ const collectModel = (
   queued: Queued[],
   unsupported: Set<string>,
   unregistered: Set<string>,
+  limits: FrameLimits = RETAIL_FRAME_LIMITS,
+  /** `kDrawNoCull`: the object was found wholly inside, so its parts aren't tested. */
+  noCull = false,
 ): void => {
   for (const part of model.parts) {
     const {
@@ -846,12 +868,14 @@ const collectModel = (
         ? Matrix4.multiply(Matrix4.translation(camera.position), world)
         : world
     const { center, radius } = reference.boundingSphere
-    const visible = sphereInFrustum(
-      Matrix4.transformPoint(center, Matrix4.multiply(view, placed)),
-      (radius < 0.001 ? 1 : radius) * largestAxis(world),
-      camera,
-      aspect,
-    )
+    const visible =
+      noCull ||
+      sphereInFrustum(
+        Matrix4.transformPoint(center, Matrix4.multiply(view, placed)),
+        (radius < 0.001 ? 1 : radius) * largestAxis(world),
+        camera,
+        aspect,
+      )
 
     for (const { materialId, startIndex, elementCount } of getMeshDraw(mesh, reference)) {
       const material = model.material(faceMaterial ?? materialId)
@@ -896,7 +920,7 @@ const collectModel = (
       if (!visible) continue
 
       // A queued material's passes stay together, being one submission (`ProcessQueuedBin`).
-      const passes = passesOf(kind, type, material, model).map((pass) =>
+      const passes = passesOf(kind, type, material, model, limits).map((pass) =>
         model.cloaked && kind !== 'nomad'
           ? cloak(pass, kind, type, material, model.fade ?? 1)
           : pass,
@@ -974,16 +998,16 @@ const collectModel = (
           ...pass,
           ...(cube?.type === 'cube' ? { environmentTexture: cube } : {}),
           ...(part.skin ? { skin: part.skin } : {}),
-          ...(model.sky ? skyState(model.sky, world, camera, aspect) : {}),
+          ...(model.sky ? skyState(model.sky, world, camera, aspect, limits) : {}),
         })
       }
     }
   }
 }
 
-const BLACK_BACKGROUND: Vector3 = { x: 0, y: 0, z: 0 }
+export const BLACK_BACKGROUND: Vector3 = { x: 0, y: 0, z: 0 }
 
-const hooksOf = (draws: Draw[]): FrameHook[] => {
+export const hooksOf = (draws: Draw[]): FrameHook[] => {
   // A sky blends before anything opaque, and isn't what this hook waits for.
   const firstBlended = draws.findIndex(({ blend, depthFunc }) => blend && depthFunc !== 'always')
   return [
@@ -1002,18 +1026,29 @@ export const collectFrame = ({
   background,
   time = 0,
   effects = [],
+  limits,
 }: Scene): Frame => {
+  const resolved = { ...RETAIL_FRAME_LIMITS, ...limits }
   const draws: Draw[] = []
   const unsupported = new Set<string>()
   const unregistered = new Set<string>()
   const view = viewMatrix(camera)
   const queued: Queued[] = []
   for (const model of models)
-    collectModel(model, camera, aspect, view, time, draws, queued, unsupported, unregistered)
-  // A room flushes its queue once, after all its objects (`RoomBatcherEnd`, `ku_dragon_pair`). Space
-  // does so per object, which M7 will need. Stable, where retail's qsort leaves equal keys in no set order.
-  queued.sort((a, b) => a.depth - b.depth)
-  for (const queue of queued) draws.push(...queue.draws)
+    collectModel(
+      model,
+      camera,
+      aspect,
+      view,
+      time,
+      draws,
+      queued,
+      unsupported,
+      unregistered,
+      resolved,
+    )
+  // A room flushes its queue once, after all its objects (`RoomBatcherEnd`, `ku_dragon_pair`).
+  flushQueued(queued, draws)
   const effectDraws: EffectDraw[] = []
   for (const { instance, texture, visible } of effects)
     collectEffect(instance, view, texture, effectDraws, unsupported, visible)

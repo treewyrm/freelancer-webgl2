@@ -16,21 +16,34 @@ export const viewMatrix = ({ position, orientation }: Camera): Matrix4 =>
   Matrix4.invert(Matrix4.fromRotationTranslation(orientation, position))
 
 /**
- * `ClassifySphere` (`FRoomCamera`, `FSpaceCamera`): whether a sphere in view space can reach the
- * frustum. A room's also drops what covers under a pixel (rank 2), which isn't built: M8's.
+ * `ClassifySphere` (`FSpaceCamera`, `0x40ffe0`) for a sphere in view space: 1 is outside, 3 crosses a
+ * plane, 4 is wholly inside. A room's also drops what covers under a pixel (rank 2), which isn't
+ * built: M8's.
  */
-export const sphereInFrustum = (
+export const classifySphere = (
   { x, y, z }: Vector3,
   radius: number,
   { fovh, near, far }: Camera,
   aspect: number,
-): boolean => {
-  if (radius - near < z || radius + z < -far) return false
+): 1 | 3 | 4 => {
+  const nearEdge = -z - radius
+  const farEdge = radius - z
+  if (farEdge < near || nearEdge > far) return 1
   const tanX = Math.tan((fovh * Math.PI) / 180)
   const tanY = tanX / aspect
-  if ((Math.abs(x) + tanX * z) / Math.hypot(1, tanX) > radius) return false
-  return (Math.abs(y) + tanY * z) / Math.hypot(1, tanY) <= radius
+  const distanceX = (Math.abs(x) + tanX * z) / Math.hypot(1, tanX)
+  const distanceY = (Math.abs(y) + tanY * z) / Math.hypot(1, tanY)
+  if (distanceX > radius || distanceY > radius) return 1
+  return nearEdge < near || farEdge > far || distanceX > -radius || distanceY > -radius ? 3 : 4
 }
+
+/** Whether a sphere in view space can reach the frustum. */
+export const sphereInFrustum = (
+  center: Vector3,
+  radius: number,
+  camera: Camera,
+  aspect: number,
+): boolean => classifySphere(center, radius, camera, aspect) >= 3
 
 /**
  * RP8 flips view Z and applies a left-handed D3D projection (`FDirectX8::SetPerspective`). For a GL

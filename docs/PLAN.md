@@ -27,7 +27,7 @@ An earlier attempt, `freelancer-render`, failed the other way, by transcribing t
 | [M4](#m4-spheres-and-the-sky) | Planets, atmospheres, starspheres | Done, backdrop uncaptured |
 | [M5](#m5-characters) | Skinned characters | Done, mid-script frames uncaptured |
 | [M6](#m6-effects) | Alchemy effects | Done, dust and some fields uncaptured |
-| [M7](#m7-the-space-frame) | A whole system, as the game frames it | **Next** |
+| [M7](#m7-the-space-frame) | A whole system, as the game frames it | **In progress** |
 | [M8](#m8-rooms-and-cutscenes) | Bases and THN playback | |
 | [M9](#m9-retire-the-old-renderer) | Old renderer deleted from the extension | |
 | [M10](#m10-hud-and-2d-interface) | HUD and 2D interface | Later |
@@ -293,15 +293,25 @@ renderer. Random streams need not match retail; each appearance's sizes, colours
 
 ## M7: The space frame
 
-- [ ] The game's frame order: lists sorted back to front, far list, main lists, effects.
-- [ ] Light selection, ambient, fog and nebula state.
+- [x] The game's frame order: `collectSpaceFrame`, from `SpaceObjDrawPass` (`0x51c200`). Five lists sorted far
+      to near, the far list on a plane of 250000 with no depth, the batcher flushed per object, effects by
+      type. Pinned by reading and by pixels (`src/scene/space.*`). The drain order and its three constants were
+      checked in `Freelancer-original.exe`. **Uncaptured.** The host supplies `lodRange`, each object's `field`
+      and the scene's `SpaceField`.
+- [ ] Light selection, ambient, fog and nebula state. Lights are still the frame's, not per object as
+      `StarSysApplyObjectLighting` has them, and picking `SpaceField` (`FUN_0051b730`) belongs here too.
+- [ ] Compute `lodRange` from an archetype's lists (`ComputeLodPickThis`, `ApplyArchLodRanges`), far clamp included.
+- [ ] What `SpaceEffectsDrawFrame` does around effects: `ZFUNC` 4 where the program has `LESS`, the view test
+      and `EXIST_OFFSCREEN` (`EffectTypeBucketWalk`), and the screen quads it flushes last (`ScreenQuadFlush`).
 - [ ] `level_of_detail` on a space solar's sphere: its level bias and maximum, up to 10, from
-      `SolarSpheresApplyDetail`. `placeSphere` has the menu's 1.5 and 9, and a host can pin a level.
+      `SolarSpheresApplyDetail`. `placeSphere` takes them as `levels` over the menu's 1.5 and 9, so
+      what's left is the option's mapping onto them.
 - [ ] Planet rings, asteroid field exteriors and billboards, space dust, gate tunnels.
 - [ ] Projectiles and beams; the cockpit pass with its depth clear.
 - [ ] Measure effects' CPU cost in a whole system. A pushed lane steps on the CPU, by choice: bring back
       transform feedback only if this shows the need. The picture doesn't depend on it ([ADAPTING.md](ADAPTING.md#alchemy-m6)).
-- [ ] **You:** a custom system and a save that places the ship, with screenshots and captures.
+- [ ] **You:** a custom system and a save that places the ship, with screenshots and captures. `assertFrameMatches`
+      will need a change first: it reads `always` as `ZFUNC` 8, which a sky sets and the far list doesn't.
 - [ ] Dust against retail, here: a THN host can't show it (see M8), so `FLDustAppearance`'s kite and fade wait
       for a flying camera.
 

@@ -63,6 +63,8 @@ which the vertex stage carries to now, along with its curves. A pushed one steps
 
 - **Input is explicit.** The host passes time and a random seed; nothing reads a clock or
   `Math.random`. This makes frames reproducible and comparable with captures.
+- **What retail hardcodes is a default, not a constant**, where a mod can patch it: `RETAIL_FRAME_LIMITS`,
+  `RETAIL_SPACE_LIMITS`, `RETAIL_SPHERE_LEVELS`, `RETAIL_SWITCH_FOVX`, `RETAIL_POOLS`. A host passes its own, so an editor's settings can match the mod.
 - **The host owns** canvas size, scheduling, file loading, resolution order and editor state.
 - **Works in a worker**: no DOM use beyond the canvas or context handed in.
 - **GPU caches are keyed on object identity**, so hosts must pass raw objects. A deep Vue proxy is a

@@ -19,13 +19,20 @@ export interface SphereOptions {
   material?: (id: number) => Material | undefined
   /** As on `SceneModel`, for that side's type. */
   materialMap?: readonly MaterialMapRule[]
+  /** Over `RETAIL_SPHERE_LEVELS`, for a mod that patches them. */
+  levels?: Partial<SphereLevels>
 }
 
-// `FSphereAnim::Init`. The `level_of_detail` option changes the last two, on a space solar only
-// (`SolarSpheresApplyDetail`): M7's. The menu's planets, with that option at 1, keep these.
-const LEVEL_MINIMUM = 3
-const LEVEL_MAXIMUM = 9
-const LEVEL_BIAS = 1.5
+/** `FSphereAnim::Init`'s bounds on a sphere's level, and the bias on its pixel size. */
+export interface SphereLevels {
+  minimum: number
+  maximum: number
+  bias: number
+}
+
+// The `level_of_detail` option changes the last two, on a space solar only (`SolarSpheresApplyDetail`):
+// M7's. The menu's planets, with that option at 1, keep these.
+export const RETAIL_SPHERE_LEVELS: Readonly<SphereLevels> = { minimum: 3, maximum: 9, bias: 1.5 }
 
 const K = Math.sqrt(1 / 3)
 
@@ -80,11 +87,15 @@ const dot = (a: Vector3, b: Vector3): number => a.x * b.x + a.y * b.y + a.z * b.
  * `UpdateLevel` (`0x6c2c430`), from `metric`, the world size of a pixel at the sphere times the bias.
  * Out of `acos`'s range, or at no distance, x87's `ftol` gives `INT_MIN`, so the lowest level.
  */
-export const sphereLevel = (radius: number, metric: number): number => {
+export const sphereLevel = (
+  radius: number,
+  metric: number,
+  { minimum, maximum }: Pick<SphereLevels, 'minimum' | 'maximum'> = RETAIL_SPHERE_LEVELS,
+): number => {
   const ratio = Math.PI / 2 / Math.acos(1 - metric / radius)
   const level = Math.trunc(2 * Math.log2(ratio) + 0.5)
-  if (!Number.isFinite(level)) return LEVEL_MINIMUM
-  return Math.min(LEVEL_MAXIMUM, Math.max(LEVEL_MINIMUM, level))
+  if (!Number.isFinite(level)) return minimum
+  return Math.min(maximum, Math.max(minimum, level))
 }
 
 /** Which faces draw, in order, at this radius. A world's rotation turns the cube; its scale isn't read. */
@@ -124,13 +135,17 @@ const visibleFaces = (radius: number, world: Matrix4, position: Vector3): number
 export const placeSphere = (
   { radius, sides }: Sphere,
   world: Matrix4,
-  { camera, width, level, material, materialMap }: SphereOptions,
+  { camera, width, level, material, materialMap, levels }: SphereOptions,
 ): PlacedPart[] => {
   const { x, y, z } = camera.position
   const distance = Math.hypot(x - world.w.x, y - world.w.y, z - world.w.z)
   // `Draw` divides by `ZNear * GetXScaleOverNear()`, which is `HalfWidth / tan(fovx½)` (`space_camera.cpp`).
   const pixel = (Math.tan((camera.fovh * Math.PI) / 180) / (width / 2)) * distance
-  const { mesh, reference } = spherePatch(radius, level ?? sphereLevel(radius, pixel * LEVEL_BIAS))
+  const bounds = { ...RETAIL_SPHERE_LEVELS, ...levels }
+  const { mesh, reference } = spherePatch(
+    radius,
+    level ?? sphereLevel(radius, pixel * bounds.bias, bounds),
+  )
   const part = (face: number, name: string): PlacedPart => ({
     reference,
     mesh,

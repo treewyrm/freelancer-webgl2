@@ -6,10 +6,12 @@ export {
   collectFrame,
   isBuiltType,
   placeParts,
+  RETAIL_FRAME_LIMITS,
   type Draw,
   type DrawSkin,
   type DrawTexture,
   type Frame,
+  type FrameLimits,
   type FrameHook,
   type HookName,
   type PlacedPart,
@@ -19,11 +21,21 @@ export {
   type SceneLight,
   type SceneModel,
 } from '#/scene/frame.js'
+export {
+  collectSpaceFrame,
+  RETAIL_SPACE_LIMITS,
+  type SpaceEffect,
+  type SpaceField,
+  type SpaceLimits,
+  type SpaceObject,
+  type SpaceScene,
+} from '#/scene/space.js'
 export { projectionMatrix, viewMatrix, type Camera } from '#/scene/camera.js'
 export { partTransforms } from '#/scene/hierarchy.js'
 export {
   adjustedDistance,
   costumeLevel,
+  RETAIL_SWITCH_FOVX,
   switchDistance,
   type SwitchTable,
 } from '#/deformable/level.js'
@@ -55,7 +67,13 @@ export {
   type PoolSizes,
 } from '#/alchemy/effect.js'
 export type { TriangleDraw, EffectDraw, SpriteDraw } from '#/alchemy/draw.js'
-export { placeSphere, sphereLevel, type SphereOptions } from '#/scene/sphere.js'
+export {
+  placeSphere,
+  RETAIL_SPHERE_LEVELS,
+  sphereLevel,
+  type SphereLevels,
+  type SphereOptions,
+} from '#/scene/sphere.js'
 export { MATERIAL_MAP, mapMaterialType, type MaterialMapRule } from '#/material/map.js'
 export { sampleUvAnimation, type UvTransform } from '#/scene/uv-animation.js'
 export { levelAt, levelEnds, levelMetric, type LodList } from '#/scene/level.js'

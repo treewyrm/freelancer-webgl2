@@ -6,6 +6,7 @@ import { Matrix3, Matrix4 } from '@treewyrm/freelancer/math'
 import type { MaterialAnim, RigidPart } from '@treewyrm/freelancer/rigid'
 import type { TextureEntry } from '@treewyrm/freelancer/texture'
 import { Primitive, VertexFormat, type VMeshData, type VMeshRef } from '@treewyrm/freelancer/vmesh'
+import { projectionMatrix } from './camera.js'
 import { collectFrame, placeParts, type Scene, type SceneModel } from './frame.js'
 
 const reference: VMeshRef = {
@@ -652,6 +653,27 @@ test('a starsphere stands at the camera and ignores depth, light and the queue',
   assert.equal(sky.draws[1]!.depthFunc, 'less')
   // The opaque hook waits for the first blended draw that isn't sky.
   assert.equal(sky.hooks.find(({ name }) => name === 'opaque')!.before, 1)
+})
+
+test('a mod can change the least alpha of glass and the planes of a backdrop', () => {
+  const glass: Material = { name: 'L_glass', type: 'DcDtOcOt', opacity: 0.5 }
+  const limits = { glassLeastAlpha: 0.3 }
+  const draws = collectFrame({ ...scene(glass), limits }).draws
+  assert.deepEqual(
+    draws.map(({ diffuse }) => diffuse[3]),
+    [0.5, 0.5],
+  )
+
+  const base = scene(skinned({ type: 'DcDt' }))
+  const models = [{ ...base.models[0]!, sky: 'backdrop' as const }]
+  const planes = { backdropNear: 2, backdropFar: 500000 }
+  const [draw] = collectFrame({ ...base, models, limits: planes }).draws
+  assert.deepEqual(draw!.projection, projectionMatrix({ ...base.camera, near: 2, far: 500000 }, 1))
+  const [retail] = collectFrame({ ...base, models }).draws
+  assert.deepEqual(
+    retail!.projection,
+    projectionMatrix({ ...base.camera, near: 1, far: 200000 }, 1),
+  )
 })
 
 test('a backdrop keeps the view, and has planes of its own', () => {
