@@ -38,7 +38,8 @@ triangles start from another corner: the same triangle, and retail's indices her
 
 **Missing, confirmed in the decomp:**
 
-- The eye UV bone, and `EyeMaterial`: eyes are currently still.
+- `EyeMaterial`, which the extension has as `DcDt` and so shows the `Et` retail drops. Eyes are still there,
+  which may be right: see [VALIDATION.md](VALIDATION.md#open-questions).
 - A detail level per part, from `[DetailSwitchTable]`.
 - Levels past a part's skinned count draw rigid at bind (`Flag70`). The extension skins every level.
 

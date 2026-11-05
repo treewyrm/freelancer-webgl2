@@ -1,4 +1,4 @@
-/** A body at the last keyframe of its script, against what the game skinned: the costume's other parts aside. */
+/** A whole costume at the last keyframe of its script, against what the game skinned and joined. */
 import assert from 'node:assert/strict'
 import { existsSync, readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
@@ -29,13 +29,7 @@ const load = async (): Promise<{ frame: Frame; retail: CaptureDraw[] }> => {
   const { scene } = await loadScene(scenes.get('character_reed')!, read)
   const frame = collectFrame(scene)
   const draws = readCapture(readFileSync(run, 'utf8')).frames.at(-1)!.draws
-  // The body's run of draws: its groups' sizes, in order, among the costume's four parts.
-  const sizes = frame.draws.map(({ count }) => count)
-  const at = draws.findIndex((_, start) =>
-    sizes.every((size, n) => draws[start + n]?.indices === size),
-  )
-  assert.ok(at >= 0, `no run of ${sizes} in ${draws.map(({ indices }) => indices)}`)
-  return { frame, retail: draws.slice(at, at + sizes.length) }
+  return { frame, retail: draws.slice(0, frame.draws.length) }
 }
 
 /** `FMeshArchetype::Skin` in JavaScript, for what the capture holds rather than what a shader draws. */
@@ -65,7 +59,7 @@ const skinned = ({ mesh, skin }: Draw, element: number) => {
   return { position, normal: normal.map((value) => value / length) }
 }
 
-test('the body is retail draw for draw', { skip }, async () => {
+test('the costume is retail draw for draw, body first', { skip }, async () => {
   const { frame, retail } = await load()
   assert.deepEqual(frame.unsupported, [])
   assertFrameMatches(frame, retail, indexTextures(data), { streamed: true })
@@ -113,15 +107,17 @@ test('the indices are the ones retail drew', { skip }, async () => {
   })
 })
 
-test('the root stands where retail drew it', { skip }, async () => {
+test('each part stands where retail joined it', { skip }, async () => {
   const { frame, retail } = await load()
-  const modelView = Matrix4.multiply(frame.view, frame.draws[0]!.world)
-  const columns = [modelView.x, modelView.y, modelView.z, modelView.w]
-  // Retail's world is the modelview with Z flipped, written as rows for row vectors.
-  columns.forEach((column, c) =>
-    [column.x, column.y, -column.z].forEach((cell, r) => {
-      const theirs = retail[0]!.world![c * 4 + r]!
-      assert.ok(Math.abs(cell - theirs) < 0.01, `column ${c}, row ${r}: ${cell}, ${theirs}`)
-    }),
-  )
+  frame.draws.forEach(({ world, materialName }, n) => {
+    const modelView = Matrix4.multiply(frame.view, world)
+    const columns = [modelView.x, modelView.y, modelView.z, modelView.w]
+    // Retail's world is the modelview with Z flipped, written as rows for row vectors.
+    columns.forEach((column, c) =>
+      [column.x, column.y, -column.z].forEach((cell, r) => {
+        const theirs = retail[n]!.world![c * 4 + r]!
+        assert.ok(Math.abs(cell - theirs) < 0.01, `${materialName} ${c}, ${r}: ${cell}, ${theirs}`)
+      }),
+    )
+  })
 })

@@ -20,7 +20,7 @@ import { Directory } from '@treewyrm/freelancer/utf'
 import { getMesh, readVMeshLibrary } from '@treewyrm/freelancer/vmesh'
 import { placeParts, type Scene, type SceneModel } from '#/scene/frame.js'
 import { placeSphere } from '#/scene/sphere.js'
-import { placeSkin } from '#/deformable/skin.js'
+import { placeCostume } from '#/deformable/skin.js'
 import { BAND_LIBRARIES } from './bands.js'
 import { generateBands } from './generate.js'
 import { cameraOf, modelMatrixOf, orientationMatrix, type ReferenceScene } from './scene.js'
@@ -107,13 +107,10 @@ const scaled = ([x, y, z]: readonly [number, number, number]) => ({
  * and the root stands at the script's height over its own place and yaw, carried by its object map.
  */
 const loadCharacter = async (
-  { body, animations, script, position, orientation }: NonNullable<ReferenceScene['character']>,
+  { parts, animations, script, position, orientation }: NonNullable<ReferenceScene['character']>,
   read: ReadAsset,
-): Promise<SceneModel> => {
-  const root = Directory.read(await read(body))
-  const model = readDeformableModel(root)
-  const materials = [...readMaterialLibrary(root)]
-  const textures = [...readTextureLibrary(root)]
+): Promise<SceneModel[]> => {
+  const roots = await Promise.all(parts.map(async (path) => Directory.read(await read(path))))
   const library = readAnimationLibrary(Directory.read(await read(animations)))
   const found = getScript(library, script)
   if (!found) throw new Error(`No script ${script}`)
@@ -135,15 +132,20 @@ const loadCharacter = async (
     Matrix4.translation({ x: position[0], y: found.height ?? 0, z: position[2] }),
     orientationMatrix(orientation),
   )
-  const part = placeSkin(model, Matrix4.multiply(start, motion), {
+  const placed = placeCostume(roots.map(readDeformableModel), Matrix4.multiply(start, motion), {
     jointState: ({ name }) => states.get(name.toLowerCase()),
   })
-  return {
-    parts: part ? [part] : [],
-    mesh: () => undefined,
-    material: (id) => getMaterial(materials, id),
-    texture: (name) => textures.find((entry) => entry.name.toLowerCase() === name.toLowerCase()),
-  }
+  return placed.map((part, at) => {
+    const materials = [...readMaterialLibrary(roots[at]!)]
+    const textures = [...readTextureLibrary(roots[at]!)]
+    return {
+      parts: [part],
+      mesh: () => undefined,
+      material: (id: number) => getMaterial(materials, id),
+      texture: (name: string) =>
+        textures.find((entry) => entry.name.toLowerCase() === name.toLowerCase()),
+    }
+  })
 }
 
 const SKY_FOLDER = 'SOLAR/STARSPHERE'
@@ -178,7 +180,7 @@ export const loadScene = async (
     })),
   }
   if (definition.character)
-    return { scene: { ...shared, models: [await loadCharacter(definition.character, read)] } }
+    return { scene: { ...shared, models: await loadCharacter(definition.character, read) } }
   const placedModel = definition.model
   if (!placedModel) return { scene: { ...shared, models: skies } }
 

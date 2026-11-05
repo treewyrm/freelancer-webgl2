@@ -1,6 +1,6 @@
 /** A `.dfm` detail level as a mesh and its bone table: `FMeshArchetype::Skin`, in `Deformable2`. Pure, no GL. */
 import { getResourceId } from '@treewyrm/freelancer'
-import type { CompoundNode, JointState } from '@treewyrm/freelancer/compound'
+import type { CompoundNode, Hardpoint, JointState } from '@treewyrm/freelancer/compound'
 import {
   getBoneModel,
   type Bone,
@@ -196,28 +196,85 @@ export interface SkinOptions {
   pose?: 'chain' | 'bind'
 }
 
-/** A posed model as a part: drawn with its root's world, skinned relative to it. */
+const placement = ({
+  orientation,
+  position,
+}: Pick<Hardpoint, 'orientation' | 'position'>): Matrix4 =>
+  Matrix4.fromRotationTranslation(orientation, position)
+
+/**
+ * A character's parts, body first, each drawn with its root's world and skinned relative to it. Their
+ * skeletons join by shared hardpoint name (`0x65f3540`, library `COSTUME.md`): walking every bone, the
+ * first with a name holds it, and a later one with no parent links to it. That's a part's root, placing
+ * the part, or a detached bone, placing one seam. A part with no root or level is skipped.
+ */
+export const placeCostume = (
+  models: readonly DeformableModel[],
+  transform: Matrix4,
+  { level = 0, jointState, pose = 'chain' }: SkinOptions = {},
+): PlacedPart[] => {
+  const holders = new Map<string, { world: Matrix4; hardpoint: Matrix4 }>()
+  const linked = (name: string, hardpoint: Hardpoint): Matrix4 | undefined => {
+    const holder = holders.get(name.toLowerCase())
+    return (
+      holder &&
+      Matrix4.multiply(
+        Matrix4.multiply(holder.world, holder.hardpoint),
+        Matrix4.invert(placement(hardpoint)),
+      )
+    )
+  }
+
+  const parts: PlacedPart[] = []
+  models.forEach((model, at) => {
+    const root = getBoneModel(model)
+    const chosen = model.levels[Math.min(level, model.levels.length - 1)]
+    if (!root || !chosen) return
+
+    // A root links by the first of its names already held. No other can join it to a second.
+    const place = root.part.hardpoints.flatMap((hardpoint) => {
+      const world = linked(hardpoint.name, hardpoint)
+      return world ? [world] : []
+    })[0]
+    const transforms = partTransforms(root, place ?? transform, jointState)
+
+    const worlds: (Matrix4 | undefined)[] = []
+    for (const [node, world] of transforms) worlds[node.index] = world
+    // The modelled pose is the host's to ask for: a head's and hand's chain already is theirs.
+    if (pose === 'bind' && at === 0)
+      for (const [node] of transforms)
+        worlds[node.index] = Matrix4.multiply(transform, Matrix4.invert(placement(node.part)))
+
+    // Everything stops at the last bone a part claims (`0x65f5a52`), so past it a slot keeps the identity.
+    const cursor = model.bones.reduce(
+      (last, { name }, index) => (name === undefined ? last : index + 1),
+      0,
+    )
+    for (let index = 0; index < cursor; index++) {
+      const bone = model.bones[index]!
+      for (const hardpoint of bone.hardpoints) {
+        const name = hardpoint.name.toLowerCase()
+        const world = worlds[index]
+        if (holders.has(name)) {
+          // The engine refuses a link to a bone with a parent, so only a detached one takes it here.
+          if (!world) worlds[index] = linked(name, hardpoint)
+        } else if (world) holders.set(name, { world, hardpoint: placement(hardpoint) })
+      }
+      // A seam nothing seats is destroyed, and its record keeps the identity (`0x65f3d49`).
+      worlds[index] ??= Matrix4.identity
+    }
+
+    const rootWorld = worlds[root.index]!
+    const { mesh, reference, influences } = skinMesh(chosen, model.bones.length)
+    const skin: DrawSkin = { influences, bones: boneTable(model.bones, worlds, rootWorld) }
+    parts.push({ reference, mesh, world: rootWorld, skin })
+  })
+  return parts
+}
+
+/** One model, as a costume of one part. */
 export const placeSkin = (
   model: DeformableModel,
   transform: Matrix4,
-  { level = 0, jointState, pose = 'chain' }: SkinOptions = {},
-): PlacedPart | undefined => {
-  const root = getBoneModel(model)
-  const chosen = model.levels[Math.min(level, model.levels.length - 1)]
-  if (!root || !chosen) return undefined
-
-  if (pose === 'bind') {
-    const { mesh, reference, influences } = skinMesh(chosen, model.bones.length)
-    const bones = boneTable(model.bones, [], transform)
-    return { reference, mesh, world: transform, skin: { influences, bones } }
-  }
-
-  const transforms = partTransforms(root, transform, jointState)
-  const worlds: (Matrix4 | undefined)[] = []
-  for (const [node, world] of transforms) worlds[node.index] = world
-  const world = transforms.get(root)!
-
-  const { mesh, reference, influences } = skinMesh(chosen, model.bones.length)
-  const skin: DrawSkin = { influences, bones: boneTable(model.bones, worlds, world) }
-  return { reference, mesh, world, skin }
-}
+  options: SkinOptions = {},
+): PlacedPart | undefined => placeCostume([model], transform, options)[0]

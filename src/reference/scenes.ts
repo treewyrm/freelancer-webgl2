@@ -217,7 +217,12 @@ export const scenes: ReadonlyMap<string, ReferenceScene> = new Map(
       name: 'character_reed',
       character: {
         costume: 'reed',
-        body: 'CHARACTERS/BODIES/li_rockford_body.dfm',
+        parts: [
+          'CHARACTERS/BODIES/li_rockford_body.dfm',
+          'CHARACTERS/HEADS/li_captain_head.dfm',
+          'CHARACTERS/HANDS/benchmarkmalehandleft.dfm',
+          'CHARACTERS/HANDS/benchmarkmalehandright.dfm',
+        ],
         animations: 'CHARACTERS/ANIMATIONS/bodygenericmale.anm',
         script: 'Sc_MLBODY_CHRB_GESTL_WHAT_000LV_XA_03',
         duration: 1.77,

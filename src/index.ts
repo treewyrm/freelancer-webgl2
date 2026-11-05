@@ -23,6 +23,7 @@ export { partTransforms } from '#/scene/hierarchy.js'
 export {
   boneTable,
   MAX_BONES,
+  placeCostume,
   placeSkin,
   skinMesh,
   type SkinMesh,

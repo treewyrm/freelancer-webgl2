@@ -43,6 +43,11 @@ export const MATERIAL_MAP: readonly MaterialMapRule[] = [
   name(/^null$/, 'NullMaterial'),
 ]
 
+// `deformable2.dll` adds this itself, in no `dacom.ini` (`BindEyeMaterials`, `0x65fdfbb`). So it reaches
+// rigid models too, 14 retail materials of them. That it outranks the file's is read as it being added
+// later, and nothing retail tells the two apart. As a pattern it means `ey`, then any number of `e`.
+const EYE_RULE = /^eye*/
+
 // `FMaterialLibrary::CreateAfterMap` (`0x6ec9aa0`) copies both into 64 bytes.
 const FIELD_LENGTH = 63
 
@@ -56,6 +61,7 @@ export const mapMaterialType = (
 ): string => {
   const lowered = name.slice(0, FIELD_LENGTH).toLowerCase()
   const original = type.slice(0, FIELD_LENGTH)
+  if (EYE_RULE.test(lowered)) return 'EyeMaterial'
   for (let at = rules.length - 1; at >= 0; at--) {
     const rule = rules[at]!
     if (rule.pattern.test(rule.on === 'name' ? lowered : original)) return rule.to
@@ -63,7 +69,7 @@ export const mapMaterialType = (
   return original
 }
 
-/** The factories of `shading.dll` (`src/Shading/Shading.cpp`) and `flmaterials.dll`. Case matters. */
+/** The factories of `shading.dll` (`src/Shading/Shading.cpp`), `flmaterials.dll` and `deformable2.dll`. Case matters. */
 export const REGISTERED_TYPES: ReadonlySet<string> = new Set([
   'DcDt',
   'DcDtEc',
@@ -106,4 +112,5 @@ export const REGISTERED_TYPES: ReadonlySet<string> = new Set([
   'EngineGlowMaterial',
   'VisibleCounterMaterial',
   'PlanetWaterMaterial',
+  'EyeMaterial',
 ])

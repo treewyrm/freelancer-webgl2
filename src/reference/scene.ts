@@ -18,8 +18,8 @@ export interface ReferenceScene {
   /** A `costumes.ini` costume, playing one script through to its end, where it holds. */
   character?: {
     costume: string
-    /** Its body, which is all the renderer joins so far. */
-    body: string
+    /** Its `.dfm` files, body first, then head and hands, in the order the game lists them. */
+    parts: string[]
     /** The `.anm` holding `script`. */
     animations: string
     script: string

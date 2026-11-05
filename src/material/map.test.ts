@@ -67,7 +67,7 @@ test('the table is the section in the retail dacom.ini', { skip: absent }, () =>
 })
 
 test('every registered type is named in the retail DLLs', { skip: absent }, () => {
-  const held = ['shading.dll', 'flmaterials.dll'].map((dll) =>
+  const held = ['shading.dll', 'flmaterials.dll', 'deformable2.dll'].map((dll) =>
     readFileSync(join(EXE, dll), 'latin1'),
   )
   for (const name of REGISTERED_TYPES)
@@ -103,4 +103,11 @@ test('over retail, the map rescues all but two unregistered materials', { skip: 
     .filter(({ type }) => unregistered(type))
   assert.equal(before.length, 445)
   assert.equal(before.filter((material) => unregistered(mapMaterialType(material))).length, 2)
+})
+
+test('deformable2 maps what starts `ey` to the eye class, ahead of the file, and an `Et` goes with it', () => {
+  for (const name of ['eyebrown_grey', 'EYE_white', 'ey'])
+    assert.equal(mapMaterialType({ name, type: 'DcDtEt' }), 'EyeMaterial', name)
+  assert.equal(mapMaterialType({ name: 'e', type: 'DcDtEt' }), 'DcDtEt')
+  assert.equal(mapMaterialType({ name: 'my_eye', type: 'DcDtEt' }), 'DcDtEt')
 })

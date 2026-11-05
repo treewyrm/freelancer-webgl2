@@ -271,6 +271,9 @@ const CLASSES: Readonly<Record<string, MaterialClass>> = {
   HighGlassMaterial: 'glass',
   GlassMaterial: 'glass',
   GFGlassMaterial: 'glass',
+  // `FEyeMaterial::Bind` and `UpdateTranslucency` come to the same states, leaving stage 1 off. Its other
+  // part, the eye bone's offset, is written where a 2D coordinate never reads it: see VALIDATION.md.
+  EyeMaterial: 'single',
   DetailMapMaterial: 'detailMap',
   // Only which masks they read sets these two apart.
   DetailMap2Dm1Msk2PassMaterial: 'masked',

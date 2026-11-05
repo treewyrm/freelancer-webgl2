@@ -14,7 +14,7 @@ import {
 import { Matrix3, Matrix4 } from '@treewyrm/freelancer/math'
 import { Directory } from '@treewyrm/freelancer/utf'
 import { Primitive } from '@treewyrm/freelancer/vmesh'
-import { boneTable, MAX_BONES, placeSkin, skinMesh } from './skin.js'
+import { boneTable, MAX_BONES, placeCostume, placeSkin, skinMesh } from './skin.js'
 
 const strip = (material: string, ...indices: number[]): FaceGroup => ({
   material,
@@ -187,7 +187,10 @@ test('the chain is the default, and bind draws the skin as modelled whatever the
   const model = {
     levels: [level()],
     // As many as `level` skins to. Only the first has a name, so a joint.
-    bones: [{ ...bone(0), name: 'root' }, ...Array.from({ length: 7 }, () => bone(5))],
+    bones: [
+      { ...bone(0), name: 'root', hardpoints: [] },
+      ...Array.from({ length: 7 }, () => ({ ...bone(5), hardpoints: [] })),
+    ],
     constraints: [],
   } as unknown as DeformableModel
   const transform = moved(10)
@@ -206,4 +209,82 @@ test('the chain is the default, and bind draws the skin as modelled whatever the
 test('a model with no named bone or no level has nothing to place', () => {
   const none = { levels: [], bones: [bone(0)], constraints: [] } as unknown as DeformableModel
   assert.equal(placeSkin(none, Matrix4.identity), undefined)
+})
+
+// One point on bone 0, so a level builds whatever the bones are.
+const single = (): Level =>
+  ({
+    fraction: 1,
+    groups: [strip('skin', 0, 0, 0)],
+    geometry: {
+      indices: new Uint32Array([0]),
+      points: new Float32Array(3),
+      normals: new Float32Array(3),
+      uv0: { indices: new Uint32Array([0]), coordinates: new Float32Array(2) },
+      boneFirst: new Uint32Array(1),
+      boneCount: new Uint32Array([1]),
+      boneIds: new Uint32Array([0]),
+      boneWeights: new Float32Array([1]),
+    },
+  }) as unknown as Level
+
+const hardpoint = (name: string, x = 0) => ({
+  type: 'fixed' as const,
+  name,
+  orientation: Matrix3.identity,
+  position: { x, y: 0, z: 0 },
+})
+
+const part = (...bones: Partial<Bone>[]) =>
+  ({
+    levels: [single()],
+    bones: bones.map((fields) => ({ ...bone(0), hardpoints: [], ...fields })),
+    constraints: [],
+  }) as unknown as DeformableModel
+
+const origin = (matrix: Matrix4) => matrix.w.x
+
+test('a part joins its first holder by shared name, whatever the name, and ignoring case', () => {
+  const body = part({ name: 'root', hardpoints: [hardpoint('hp_anything', 3)] })
+  const head = part({ name: 'skull', hardpoints: [hardpoint('HP_ANYTHING', 1)] })
+  const parts = placeCostume([body, head], moved(10))
+  // W(later) = W(first) · H(first) · H(later)⁻¹
+  assert.deepEqual(
+    parts.map(({ world }) => origin(world)),
+    [10, 12],
+  )
+})
+
+test('body first makes the body the host, and an unmatched part stands at the transform', () => {
+  const body = part({ name: 'root', hardpoints: [hardpoint('a', 3)] })
+  const prop = part({ name: 'loose', hardpoints: [hardpoint('b', 1)] })
+  assert.deepEqual(
+    placeCostume([body, prop], moved(10)).map(({ world }) => origin(world)),
+    [10, 10],
+  )
+})
+
+test('a seam is one detached bone, linked by its own name, into its own slot', () => {
+  const body = part({ name: 'root', hardpoints: [hardpoint('neck', 2)] })
+  const head = part(
+    { name: 'skull' },
+    { hardpoints: [hardpoint('neck', 0)], position: { x: 0, y: 0, z: 0 } },
+    { name: 'jaw' },
+  )
+  const [, placed] = placeCostume([body, head], moved(10))
+  // In the head's root space, at 10: the seam stands at the body's 12.
+  assert.deepEqual(applied(placed!.skin!.bones, 1, 0, 0, 0), [2, 0, 0])
+})
+
+test('a seam nothing seats keeps the identity as its world, and past the cursor its slot is', () => {
+  const head = part(
+    { name: 'skull' },
+    { hardpoints: [hardpoint('nothing')], position: { x: 4, y: 0, z: 0 } },
+    { name: 'jaw' },
+    { hardpoints: [hardpoint('after')], position: { x: 4, y: 0, z: 0 } },
+  )
+  const [placed] = placeCostume([head], moved(10))
+  // `W(root)⁻¹ · B`: torn towards the world origin.
+  assert.deepEqual(applied(placed!.skin!.bones, 1, 0, 0, 0), [-6, 0, 0])
+  assert.deepEqual(applied(placed!.skin!.bones, 3, 0, 0, 0), [0, 0, 0])
 })

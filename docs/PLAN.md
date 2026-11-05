@@ -223,15 +223,16 @@ Adapted from `freelancer-vscode`'s GPU skinning; see [ADAPTING.md](ADAPTING.md#g
 
 - [x] Adapt skinned geometry and the skinned vertex stage, with a root-relative bone table:
       `placeSkin`, in FVF `0x112` with strips expanded at load as `ExpandTristrip` does. All 204 retail `.dfm` files and
-      1,220 levels plan. `character_reed`'s body matches at a script's last keyframe: draws, indices, every
-      vertex and normal, the root, and the picture it covers, 99.96% within 2 and a mean of 0.42. Its
-      head and hands aren't joined yet. Culling uses the bind pose's bound, where retail's
-      `PartBoundSphere` isn't read.
-- [ ] Add what's missing: `EyeMaterial` and the eye UV bone, a detail level per part, levels drawn
-      rigid past the skinned count.
-- [ ] Costumes joined from four `.dfm` files.
-- [ ] **You:** a reference scene with a character. `character_reed` has the body; the head and hands wait
-      on the costume item above, and the same capture holds them.
+      1,220 levels plan. `character_reed` matches at a script's last keyframe: see below. Culling uses the
+      bind pose's bound, where retail's `PartBoundSphere` isn't read.
+- [x] `EyeMaterial`: `deformable2.dll`'s own `^eye*` rule, and `DcDt`'s states. Its bone's UV offset is
+      read as having no effect: see [VALIDATION.md](VALIDATION.md#open-questions).
+- [ ] A detail level per part, and levels drawn rigid past the skinned count.
+- [x] Costumes joined from four `.dfm` files: `placeCostume`, by shared hardpoint name, roots and seams.
+- [x] **You:** a reference scene with a character. `character_reed`, at the last keyframe of a one-shot
+      script, matches in draws, indices, every vertex and normal, each part's root, and picture: 99.92%
+      within 2, a mean of 0.43. **Uncaptured:** frames mid-script and blending, an unseated seam, and the
+      levels below the top.
 
 **Done when** the character editor runs on this renderer behind its switch and the eye and skin rows
 are state matched.

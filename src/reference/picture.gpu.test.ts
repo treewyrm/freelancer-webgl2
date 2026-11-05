@@ -101,6 +101,7 @@ for (const [name, draws] of [
   ['starsphere_st03b', 4],
   ['starsphere_ew05', 3],
   ['starsphere_ew06', 2],
+  ['character_reed', 9],
 ] as const)
   test(
     `${name} matches retail's screenshot, outside its menu and canopy`,
@@ -162,58 +163,3 @@ for (const [name, draws] of [
       assert.ok(Math.max(oursOnly, theirsOnly) / compared <= 0.002, message)
     },
   )
-
-// The costume's head and hands aren't joined yet, so this reads only what the body covers, outside
-// where retail's stand over it: every pixel more than 6 off, bar a few on silhouettes, is in these.
-const JOINED_OVER: Box[] = [
-  { left: 472, top: 304, right: 520, bottom: 336 },
-  { left: 568, top: 304, right: 600, bottom: 328 },
-  { left: 496, top: 168, right: 536, bottom: 184 },
-]
-
-test(
-  "character_reed's body matches retail's screenshot, inside what it covers",
-  { skip: skipFor('character_reed') },
-  async () => {
-    const { value, png } = await runFixture<PictureReport>(
-      browser,
-      new URL('./picture.fixture.ts', import.meta.url),
-      {
-        width: WIDTH,
-        height: HEIGHT,
-        context: { antialias: false, alpha: false },
-        args: { scene: 'character_reed' },
-        read,
-      },
-    )
-    await saveArtifact('picture-character_reed', png)
-    assert.equal(value.error, 0)
-    assert.deepEqual(value.unsupported, [])
-    assert.equal(value.draws, 3)
-
-    const shot = screenshotOf('character_reed')!
-    const stride = (WIDTH * 3 + 3) & ~3
-    const ours = Buffer.from(value.pixels, 'base64')
-    let compared = 0
-    let close = 0
-    let difference = 0
-    for (let y = 0; y < HEIGHT; y++)
-      for (let x = 0; x < WIDTH; x++) {
-        const at = (y * WIDTH + x) * 4
-        const mine = [ours[at]!, ours[at + 1]!, ours[at + 2]!]
-        if (mine[0]! + mine[1]! + mine[2]! === 0) continue
-        if ([...MENU, ...JOINED_OVER].some((box) => inside(x, y, box))) continue
-        const from = 54 + (HEIGHT - 1 - y) * stride + x * 3
-        const theirs = [shot[from + 2]!, shot[from + 1]!, shot[from]!]
-        const worst = Math.max(...mine.map((channel, c) => Math.abs(channel - theirs[c]!)))
-        compared++
-        difference += worst
-        if (worst <= 2) close++
-      }
-    const mean = difference / compared
-    const message = `${close} of ${compared} within 2, mean ${mean.toFixed(3)}`
-    assert.ok(compared > 15000, message)
-    assert.ok(close / compared >= 0.995, message)
-    assert.ok(mean <= 0.5, message)
-  },
-)
