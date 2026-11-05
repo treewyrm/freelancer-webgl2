@@ -75,4 +75,5 @@ No file names these; the engine applies them.
 | Type | Milestone | Read | Built | State | Picture |
 | ---- | --------- | ---- | ----- | ----- | ------- |
 | `EyeMaterial` | M5 | | | | |
+| Skinned `DcDt` | M5 | Yes | Yes | `character_reed`, body | `character_reed`, what the body covers |
 | Alchemy appearances | M6 | Partly; see [ADAPTING.md](ADAPTING.md#alchemy-m6) | | | |

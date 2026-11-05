@@ -25,7 +25,7 @@ An earlier attempt, `freelancer-render`, failed the other way, by transcribing t
 | [M2](#m2-in-the-model-viewer) | That ship in the real model viewer, with editor overlays | Done |
 | [M3](#m3-every-rigid-model) | All materials on rigid models, with animation and LOD | Done, some override types untested |
 | [M4](#m4-spheres-and-the-sky) | Planets, atmospheres, starspheres | Done, backdrop uncaptured |
-| [M5](#m5-characters) | Skinned characters | **Next** |
+| [M5](#m5-characters) | Skinned characters | **In progress** |
 | [M6](#m6-effects) | Alchemy effects | |
 | [M7](#m7-the-space-frame) | A whole system, as the game frames it | |
 | [M8](#m8-rooms-and-cutscenes) | Bases and THN playback | |
@@ -221,11 +221,17 @@ compare its density-independent results only.
 
 Adapted from `freelancer-vscode`'s GPU skinning; see [ADAPTING.md](ADAPTING.md#gpu-skinning-m5).
 
-- [ ] Adapt skinned geometry and the skinned vertex stage, with a root-relative bone table.
+- [x] Adapt skinned geometry and the skinned vertex stage, with a root-relative bone table:
+      `placeSkin`, in FVF `0x112` with strips expanded at load as `ExpandTristrip` does. All 204 retail `.dfm` files and
+      1,220 levels plan. `character_reed`'s body matches at a script's last keyframe: draws, indices, every
+      vertex and normal, the root, and the picture it covers, 99.96% within 2 and a mean of 0.42. Its
+      head and hands aren't joined yet. Culling uses the bind pose's bound, where retail's
+      `PartBoundSphere` isn't read.
 - [ ] Add what's missing: `EyeMaterial` and the eye UV bone, a detail level per part, levels drawn
       rigid past the skinned count.
 - [ ] Costumes joined from four `.dfm` files.
-- [ ] **You:** a reference scene with a character.
+- [ ] **You:** a reference scene with a character. `character_reed` has the body; the head and hands wait
+      on the costume item above, and the same capture holds them.
 
 **Done when** the character editor runs on this renderer behind its switch and the eye and skin rows
 are state matched.

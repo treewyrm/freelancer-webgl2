@@ -7,6 +7,7 @@ export {
   isBuiltType,
   placeParts,
   type Draw,
+  type DrawSkin,
   type DrawTexture,
   type Frame,
   type FrameHook,
@@ -19,6 +20,14 @@ export {
 } from '#/scene/frame.js'
 export { projectionMatrix, viewMatrix, type Camera } from '#/scene/camera.js'
 export { partTransforms } from '#/scene/hierarchy.js'
+export {
+  boneTable,
+  MAX_BONES,
+  placeSkin,
+  skinMesh,
+  type SkinMesh,
+  type SkinOptions,
+} from '#/deformable/skin.js'
 export { placeSphere, sphereLevel, type SphereOptions } from '#/scene/sphere.js'
 export { MATERIAL_MAP, mapMaterialType, type MaterialMapRule } from '#/material/map.js'
 export { sampleUvAnimation, type UvTransform } from '#/scene/uv-animation.js'

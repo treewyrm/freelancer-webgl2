@@ -212,6 +212,28 @@ export const scenes: ReadonlyMap<string, ReferenceScene> = new Map(
       ambient: [40, 40, 40],
       lights: [{ color: [255, 255, 255], direction: [1, -0.3, -0.6], range: 100000 }],
     } satisfies ReferenceScene,
+    {
+      // M5: a body at the last keyframe of a one-shot gesture, turned to the camera and lit from the side.
+      name: 'character_reed',
+      character: {
+        costume: 'reed',
+        body: 'CHARACTERS/BODIES/li_rockford_body.dfm',
+        animations: 'CHARACTERS/ANIMATIONS/bodygenericmale.anm',
+        script: 'Sc_MLBODY_CHRB_GESTL_WHAT_000LV_XA_03',
+        duration: 1.77,
+        position: [0, 0, 0],
+        orientation: rotation(150, 0),
+      },
+      camera: {
+        position: [0, 0.4, 4],
+        orientation: IDENTITY,
+        fovh: 25,
+        near: 0.1,
+        far: 100,
+      },
+      ambient: [40, 40, 40],
+      lights: [{ color: [255, 255, 255], direction: [0.5, -0.5, -1] }],
+    } satisfies ReferenceScene,
     // M4: the sky, four ways. A camera away from the origin, turned, shows it stays locked to it.
     starsphere('starsphere_li01', [
       { archetype: 'starsphere_Li01_stars', category: 'Prop', file: 'starsphere_li01_stars.cmp' },

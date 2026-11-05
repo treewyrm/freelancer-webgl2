@@ -155,7 +155,7 @@ test('faces become draws, by their own materials, with no mesh library', () => {
   }
 })
 
-test('a face whose material the host lacks is reported, by id', () => {
+test('a face whose material the host lacks is reported, by the name its file writes', () => {
   const frame = collectFrame({
     camera: camera(0, 0, 110),
     aspect: 4 / 3,
@@ -171,5 +171,5 @@ test('a face whose material the host lacks is reported, by id', () => {
     ],
   })
   assert.deepEqual(frame.draws, [])
-  assert.deepEqual(frame.unsupported, [`material ${getResourceId('m0')}`])
+  assert.deepEqual(frame.unsupported, ['material m0'])
 })

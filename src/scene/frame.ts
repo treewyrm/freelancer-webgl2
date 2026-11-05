@@ -36,6 +36,12 @@ export interface SceneLight {
   direction: Vector3
 }
 
+/** What a skinned mesh adds: `skinMesh`'s influences and `boneTable`'s matrices, column-major. */
+export interface DrawSkin {
+  influences: Float32Array
+  bones: Float32Array
+}
+
 /** One piece of geometry where the host has posed it, at the detail level it chose. */
 export interface PlacedPart {
   reference: VMeshRef
@@ -44,6 +50,9 @@ export interface PlacedPart {
   mesh?: VMeshData
   /** Over each group's own, as a sphere's face names its material and its patch can't. */
   materialId?: number
+  /** That material's name, as the file writes it, for a report: an id can't be read back. */
+  materialName?: string
+  skin?: DrawSkin
   /** What the engine tells a sphere's shell of its size. Anything else reads 1 (`Field20` unset). */
   extent?: number
 }
@@ -180,6 +189,7 @@ export interface Draw {
   alphaReference: number
   alphaFunction: 'greater' | 'less' | 'always'
   atmosphere?: DrawAtmosphere
+  skin?: DrawSkin
 }
 
 /**
@@ -795,7 +805,14 @@ const collectModel = (
   unregistered: Set<string>,
 ): void => {
   for (const part of model.parts) {
-    const { reference, world, mesh: generated, materialId: faceMaterial, extent } = part
+    const {
+      reference,
+      world,
+      mesh: generated,
+      materialId: faceMaterial,
+      materialName,
+      extent,
+    } = part
     const mesh = generated ?? model.mesh(reference.meshId)
     if (!mesh) {
       unsupported.add(`mesh ${reference.meshId}`)
@@ -819,7 +836,7 @@ const collectModel = (
     for (const { materialId, startIndex, elementCount } of getMeshDraw(mesh, reference)) {
       const material = model.material(faceMaterial ?? materialId)
       if (!material) {
-        unsupported.add(`material ${faceMaterial ?? materialId}`)
+        unsupported.add(`material ${materialName ?? faceMaterial ?? materialId}`)
         continue
       }
       const type = mapMaterialType(material, model.materialMap)
@@ -933,6 +950,7 @@ const collectModel = (
           ...(animated ? { uvTransform: animated } : {}),
           ...pass,
           ...(cube?.type === 'cube' ? { environmentTexture: cube } : {}),
+          ...(part.skin ? { skin: part.skin } : {}),
           ...(model.sky ? skyState(model.sky, world, camera, aspect) : {}),
         })
       }

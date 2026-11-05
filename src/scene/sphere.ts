@@ -136,6 +136,7 @@ export const placeSphere = (
     mesh,
     world: Matrix4.multiply(world, FACES[face]!),
     materialId: getResourceId(name),
+    materialName: name,
   })
   const parts = visibleFaces(radius, world, camera.position).map((face) =>
     part(face, sides[face % sides.length]!),

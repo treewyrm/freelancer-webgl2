@@ -2,7 +2,9 @@
 import { Matrix4 } from '@treewyrm/freelancer/math'
 import type { CubeTexture, Texture } from '@treewyrm/freelancer/texture'
 import type { VMeshData, VMeshRef } from '@treewyrm/freelancer/vmesh'
+import { INFLUENCE_FLOATS } from '#/deformable/skin.js'
 import {
+  BONES_BINDING,
   createDcDtProgram,
   DIFFUSE_UNIT,
   ENVIRONMENT_UNIT,
@@ -47,6 +49,7 @@ export interface Renderer {
 
 interface MeshResources {
   vertices: WebGLBuffer
+  influences?: WebGLBuffer
   references: Map<VMeshRef, ReferenceArray>
 }
 
@@ -74,15 +77,20 @@ export const createRenderer = (gl: WebGL2RenderingContext): Renderer => {
   gl.canvas.addEventListener('webglcontextlost', onLost)
   gl.canvas.addEventListener('webglcontextrestored', onRestored)
 
-  const freeMesh = ({ vertices, references }: MeshResources) => {
+  const freeMesh = ({ vertices, influences, references }: MeshResources) => {
     gl.deleteBuffer(vertices)
+    if (influences) gl.deleteBuffer(influences)
     for (const { array, elements } of references.values()) {
       gl.deleteVertexArray(array)
       gl.deleteBuffer(elements)
     }
   }
 
-  const arrayOf = (mesh: VMeshData, reference: VMeshRef): WebGLVertexArrayObject => {
+  const arrayOf = (
+    mesh: VMeshData,
+    reference: VMeshRef,
+    influences?: Float32Array,
+  ): WebGLVertexArrayObject => {
     let resources = meshes.get(mesh)
     if (!resources) {
       resources = { vertices: createVertexBuffer(gl, mesh), references: new Map() }
@@ -91,6 +99,19 @@ export const createRenderer = (gl: WebGL2RenderingContext): Renderer => {
     let array = resources.references.get(reference)
     if (!array) {
       array = createReferenceArray(gl, mesh, resources.vertices, planReference(mesh, reference))
+      if (influences) {
+        resources.influences ??= gl.createBuffer()
+        gl.bindVertexArray(array.array)
+        gl.bindBuffer(gl.ARRAY_BUFFER, resources.influences)
+        gl.bufferData(gl.ARRAY_BUFFER, influences, gl.STATIC_DRAW)
+        const stride = INFLUENCE_FLOATS * 4
+        gl.enableVertexAttribArray(ATTRIBUTE_LOCATIONS.boneIndex)
+        gl.vertexAttribPointer(ATTRIBUTE_LOCATIONS.boneIndex, 4, gl.FLOAT, false, stride, 0)
+        gl.enableVertexAttribArray(ATTRIBUTE_LOCATIONS.boneWeight)
+        gl.vertexAttribPointer(ATTRIBUTE_LOCATIONS.boneWeight, 4, gl.FLOAT, false, stride, 16)
+        gl.bindVertexArray(null)
+        gl.bindBuffer(gl.ARRAY_BUFFER, null)
+      }
       resources.references.set(reference, array)
     }
     return array.array
@@ -135,6 +156,7 @@ export const createRenderer = (gl: WebGL2RenderingContext): Renderer => {
       gl.bindFramebuffer(gl.FRAMEBUFFER, target)
       gl.viewport(0, 0, width, height)
       gl.useProgram(active.handle)
+      gl.bindBufferBase(gl.UNIFORM_BUFFER, BONES_BINDING, active.boneBuffer)
       setFrameUniforms(gl, active, { ...frame, projection })
 
       // Retail's device: DITHERENABLE 0, D3DCMP_LESS, and a target with no alpha to keep (`li_elite`).
@@ -185,6 +207,7 @@ export const createRenderer = (gl: WebGL2RenderingContext): Renderer => {
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
 
     let previousAmbient = false
+    let uploaded: Float32Array | undefined
     frame.draws.forEach((draw, at) => {
       runHooks(at)
       setDrawUniforms(gl, active, draw)
@@ -234,7 +257,13 @@ export const createRenderer = (gl: WebGL2RenderingContext): Renderer => {
       gl.bindTexture(gl.TEXTURE_2D, second ? textureOf(second.entry) : null)
       gl.bindSampler(SECOND_UNIT, samplerOf(second?.sampler ?? DEFAULT_SAMPLER))
 
-      gl.bindVertexArray(arrayOf(draw.mesh, draw.reference))
+      if (draw.skin && draw.skin.bones !== uploaded) {
+        gl.bindBuffer(gl.UNIFORM_BUFFER, active.boneBuffer)
+        gl.bufferSubData(gl.UNIFORM_BUFFER, 0, draw.skin.bones)
+        gl.bindBuffer(gl.UNIFORM_BUFFER, null)
+        uploaded = draw.skin.bones
+      }
+      gl.bindVertexArray(arrayOf(draw.mesh, draw.reference, draw.skin?.influences))
       gl.drawElements(drawMode(draw.mesh.primitive), draw.count, gl.UNSIGNED_SHORT, draw.byteOffset)
     })
 
@@ -264,7 +293,10 @@ export const createRenderer = (gl: WebGL2RenderingContext): Renderer => {
       for (const resources of meshes.values()) freeMesh(resources)
       for (const texture of textures.values()) gl.deleteTexture(texture)
       for (const sampler of samplers.values()) gl.deleteSampler(sampler)
-      if (program) gl.deleteProgram(program.handle)
+      if (program) {
+        gl.deleteProgram(program.handle)
+        gl.deleteBuffer(program.boneBuffer)
+      }
     }
     forget()
   }

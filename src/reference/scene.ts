@@ -15,6 +15,19 @@ export interface ReferenceScene {
    * for a file no retail table names.
    */
   sky?: { archetype: string; category: 'Prop' | 'Solar'; file: string }[]
+  /** A `costumes.ini` costume, playing one script through to its end, where it holds. */
+  character?: {
+    costume: string
+    /** Its body, which is all the renderer joins so far. */
+    body: string
+    /** The `.anm` holding `script`. */
+    animations: string
+    script: string
+    /** In seconds: the script's length, at which the game stops it and keeps its last values. */
+    duration: number
+    position: Vector
+    orientation: Rows
+  }
   model?: {
     /** Nickname in the table `category` selects. */
     archetype: string
@@ -85,7 +98,7 @@ const LIGHT_GROUP = 1
 
 /** Shapes and field order follow retail's `SCRIPTS/INTRO/gasminer3.thn`. */
 export const sceneScript = (scene: ReferenceScene): string => {
-  const { model, sky, camera, ambient, lights } = scene
+  const { model, sky, character, camera, ambient, lights } = scene
 
   const entities = [
     value.table({
@@ -117,6 +130,16 @@ export const sceneScript = (scene: ReferenceScene): string => {
         userprops: value.table({ category }),
       }),
     ),
+    ...(character
+      ? [
+          value.table({
+            ...common('Char_Reference', 'DEFORMABLE', character.costume, LIGHT_GROUP),
+            flags: value.identifier('LIT_DYNAMIC', 'LIT_AMBIENT'),
+            spatialprops: spatial(character.position, character.orientation),
+            compoundprops: value.table({ floor_height: 0 }),
+          }),
+        ]
+      : []),
     ...(model
       ? [
           value.table({
@@ -162,6 +185,23 @@ export const sceneScript = (scene: ReferenceScene): string => {
       value.identifier('SET_CAMERA'),
       value.list('Monitor_Reference', 'Camera_Reference'),
     ),
+    // Shaped as `SCRIPTS/STORY/s002xe_nrml_sinclair_li_01_cityscape_01.thn` writes them.
+    ...(character
+      ? [
+          value.list(
+            0,
+            value.identifier('START_MOTION'),
+            value.list('Char_Reference'),
+            value.table({
+              animation: character.script,
+              duration: character.duration,
+              time_scale: 1,
+              weight: 1,
+              heading: -1,
+            }),
+          ),
+        ]
+      : []),
   ]
 
   return write([
@@ -190,6 +230,10 @@ export const cameraOf = ({ camera }: ReferenceScene): Camera => ({
   near: camera.near,
   far: camera.far,
 })
+
+/** A THN `orient`, as a matrix. */
+export const orientationMatrix = (orientation: Rows): Matrix4 =>
+  Matrix4.fromRotationTranslation(toRows(orientation), { x: 0, y: 0, z: 0 })
 
 /** Where the scene stands its model. */
 export const modelMatrixOf = ({ model }: ReferenceScene): Matrix4 =>

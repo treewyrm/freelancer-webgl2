@@ -5,6 +5,7 @@
 import { Matrix4 } from '@treewyrm/freelancer/math'
 import { createProgram, type Program } from '#/gl/program.js'
 import { ATTRIBUTE_LOCATIONS } from '#/mesh/plan.js'
+import { MAX_BONES } from '#/deformable/skin.js'
 import type { Draw, Frame } from '#/scene/frame.js'
 
 /** Retail lights a model with at most four (library `THORN.md`, `lt_grp`). */
@@ -21,6 +22,13 @@ layout(location = ${ATTRIBUTE_LOCATIONS.normal}) in vec3 normal;
 layout(location = ${ATTRIBUTE_LOCATIONS.diffuse}) in vec4 diffuse;
 layout(location = ${ATTRIBUTE_LOCATIONS.uv0}) in vec2 uv0;
 layout(location = ${ATTRIBUTE_LOCATIONS.uv1}) in vec2 uv1;
+layout(location = ${ATTRIBUTE_LOCATIONS.boneIndex}) in vec4 boneIndex;
+layout(location = ${ATTRIBUTE_LOCATIONS.boneWeight}) in vec4 boneWeight;
+
+layout(std140) uniform Bones {
+  mat4 bones[${MAX_BONES}];
+};
+uniform bool skinned;
 
 uniform mat4 world;
 uniform mat4 view;
@@ -57,7 +65,18 @@ out vec3 reflection;
 
 void main() {
   mat4 modelView = view * world;
-  vec4 eyePosition = modelView * vec4(position, 1.0);
+  vec3 place = position;
+  vec3 facing = normal;
+  // What FMeshArchetype::Skin writes to locked memory when a bone moves. A lone influence is not
+  // renormalized, and a blend is.
+  if (skinned) {
+    mat4 skin = bones[int(boneIndex.x)] * boneWeight.x + bones[int(boneIndex.y)] * boneWeight.y
+              + bones[int(boneIndex.z)] * boneWeight.z + bones[int(boneIndex.w)] * boneWeight.w;
+    place = (skin * vec4(position, 1.0)).xyz;
+    facing = (skin * vec4(normal, 0.0)).xyz;
+    if (boneWeight != vec4(1.0, 0.0, 0.0, 0.0)) facing = normalize(facing);
+  }
+  vec4 eyePosition = modelView * vec4(place, 1.0);
   gl_Position = projection * eyePosition;
   uv = (uvSet == 1 ? uv1 : uv0) * uvTransform.zw + uvTransform.xy;
   secondUv = (secondUvSet == 1 ? uv1 : uv0) * secondTile;
@@ -82,7 +101,7 @@ void main() {
   }
 
   // A normal goes through the inverse transpose, and keeps its length unless asked otherwise.
-  vec3 eyeNormal = transpose(inverse(mat3(modelView))) * (normal * normalSign);
+  vec3 eyeNormal = transpose(inverse(mat3(modelView))) * (facing * normalSign);
   if (normalizeNormals) eyeNormal = normalize(eyeNormal);
 
   // D3DMCS_COLOR1 under COLORVERTEX (\`BindMaterialAndContext\`; captured source states, \`li_elite\`).
@@ -174,6 +193,7 @@ const UNIFORMS = [
   'atmosphereView',
   'atmosphereFade',
   'alphaFunction',
+  'skinned',
   'secondStage',
   'secondTextured',
   'secondMap',
@@ -183,7 +203,10 @@ const UNIFORMS = [
   'alphaReference',
 ] as const
 
-export type DcDtProgram = Program<(typeof UNIFORMS)[number]>
+export type DcDtProgram = Program<(typeof UNIFORMS)[number]> & { boneBuffer: WebGLBuffer }
+
+/** The `Bones` block's binding point, which needs a buffer whether or not this draw skins. */
+export const BONES_BINDING = 0
 
 export const DIFFUSE_UNIT = 0
 export const ENVIRONMENT_UNIT = 1
@@ -195,7 +218,18 @@ export const createDcDtProgram = (gl: WebGL2RenderingContext): DcDtProgram => {
   gl.uniform1i(program.uniforms.diffuseMap, DIFFUSE_UNIT)
   gl.uniform1i(program.uniforms.environmentMap, ENVIRONMENT_UNIT)
   gl.uniform1i(program.uniforms.secondMap, SECOND_UNIT)
-  return program
+
+  gl.uniformBlockBinding(
+    program.handle,
+    gl.getUniformBlockIndex(program.handle, 'Bones'),
+    BONES_BINDING,
+  )
+  const boneBuffer = gl.createBuffer()
+  gl.bindBuffer(gl.UNIFORM_BUFFER, boneBuffer)
+  gl.bufferData(gl.UNIFORM_BUFFER, MAX_BONES * 64, gl.DYNAMIC_DRAW)
+  gl.bindBuffer(gl.UNIFORM_BUFFER, null)
+  gl.bindBufferBase(gl.UNIFORM_BUFFER, BONES_BINDING, boneBuffer)
+  return { ...program, boneBuffer }
 }
 
 const vectors = (values: { x: number; y: number; z: number }[]): Float32Array =>
@@ -236,6 +270,7 @@ export const setDrawUniforms = (
     | 'alphaReference'
     | 'alphaFunction'
     | 'atmosphere'
+    | 'skin'
     | 'texture'
     | 'environment'
     | 'second'
@@ -257,6 +292,7 @@ export const setDrawUniforms = (
   gl.uniform1i(uniforms.normalizeNormals, draw.normalizeNormals ? 1 : 0)
   gl.uniform1f(uniforms.alphaReference, draw.alphaReference)
   gl.uniform1i(uniforms.alphaFunction, ALPHA_FUNCTION[draw.alphaFunction])
+  gl.uniform1i(uniforms.skinned, draw.skin ? 1 : 0)
   gl.uniform1i(uniforms.atmosphere, draw.atmosphere ? 1 : 0)
   if (draw.atmosphere) {
     const { direction, threshold, gain, v } = draw.atmosphere

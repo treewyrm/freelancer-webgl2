@@ -1,6 +1,15 @@
 /** Loads a reference scene's assets into a renderer scene, from whatever reads bytes. */
+import {
+  getMapDuration,
+  getScript,
+  readAnimationLibrary,
+  sampleChannel,
+  sampleObjectMap,
+} from '@treewyrm/freelancer/animation'
+import type { JointState } from '@treewyrm/freelancer/compound'
+import { readDeformableModel } from '@treewyrm/freelancer/deformable'
 import { getMaterial, readMaterialLibrary } from '@treewyrm/freelancer/material'
-import { Matrix4 } from '@treewyrm/freelancer/math'
+import { Matrix3, Matrix4 } from '@treewyrm/freelancer/math'
 import {
   readMaterialAnimLibrary,
   readRigidModel,
@@ -11,9 +20,10 @@ import { Directory } from '@treewyrm/freelancer/utf'
 import { getMesh, readVMeshLibrary } from '@treewyrm/freelancer/vmesh'
 import { placeParts, type Scene, type SceneModel } from '#/scene/frame.js'
 import { placeSphere } from '#/scene/sphere.js'
+import { placeSkin } from '#/deformable/skin.js'
 import { BAND_LIBRARIES } from './bands.js'
 import { generateBands } from './generate.js'
-import { cameraOf, modelMatrixOf, type ReferenceScene } from './scene.js'
+import { cameraOf, modelMatrixOf, orientationMatrix, type ReferenceScene } from './scene.js'
 
 export type ReadAsset = (path: string) => Promise<Uint8Array>
 
@@ -92,6 +102,50 @@ const scaled = ([x, y, z]: readonly [number, number, number]) => ({
   z: z / 255,
 })
 
+/**
+ * A character where its script ends. A joint map's last sample is its joint's state (`DEFORMABLE.md`),
+ * and the root stands at the script's height over its own place and yaw, carried by its object map.
+ */
+const loadCharacter = async (
+  { body, animations, script, position, orientation }: NonNullable<ReferenceScene['character']>,
+  read: ReadAsset,
+): Promise<SceneModel> => {
+  const root = Directory.read(await read(body))
+  const model = readDeformableModel(root)
+  const materials = [...readMaterialLibrary(root)]
+  const textures = [...readTextureLibrary(root)]
+  const library = readAnimationLibrary(Directory.read(await read(animations)))
+  const found = getScript(library, script)
+  if (!found) throw new Error(`No script ${script}`)
+
+  const states = new Map<string, JointState>()
+  let motion: Matrix4 = Matrix4.identity
+  for (const map of found.maps) {
+    const end = getMapDuration(map)
+    if (map.type === 'joint') states.set(map.child.toLowerCase(), sampleChannel(map.channel, end))
+    else {
+      const sample = sampleObjectMap(map, end)
+      motion = Matrix4.fromRotationTranslation(
+        Matrix3.fromQuaternion(sample.orientation),
+        sample.position,
+      )
+    }
+  }
+  const start = Matrix4.multiply(
+    Matrix4.translation({ x: position[0], y: found.height ?? 0, z: position[2] }),
+    orientationMatrix(orientation),
+  )
+  const part = placeSkin(model, Matrix4.multiply(start, motion), {
+    jointState: ({ name }) => states.get(name.toLowerCase()),
+  })
+  return {
+    parts: part ? [part] : [],
+    mesh: () => undefined,
+    material: (id) => getMaterial(materials, id),
+    texture: (name) => textures.find((entry) => entry.name.toLowerCase() === name.toLowerCase()),
+  }
+}
+
 const SKY_FOLDER = 'SOLAR/STARSPHERE'
 
 /** A sky file as a model of its own: the libraries are inside it. */
@@ -123,6 +177,8 @@ export const loadScene = async (
       direction: { x, y, z },
     })),
   }
+  if (definition.character)
+    return { scene: { ...shared, models: [await loadCharacter(definition.character, read)] } }
   const placedModel = definition.model
   if (!placedModel) return { scene: { ...shared, models: skies } }
 

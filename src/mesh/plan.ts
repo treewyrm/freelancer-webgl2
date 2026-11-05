@@ -10,7 +10,15 @@ import {
 } from '@treewyrm/freelancer/vmesh'
 
 /** Fixed attribute locations, so every program fits every mesh. */
-export const ATTRIBUTE_LOCATIONS = { position: 0, normal: 1, diffuse: 2, uv0: 3, uv1: 4 } as const
+export const ATTRIBUTE_LOCATIONS = {
+  position: 0,
+  normal: 1,
+  diffuse: 2,
+  uv0: 3,
+  uv1: 4,
+  boneIndex: 5,
+  boneWeight: 6,
+} as const
 
 export type AttributeName = keyof typeof ATTRIBUTE_LOCATIONS
 

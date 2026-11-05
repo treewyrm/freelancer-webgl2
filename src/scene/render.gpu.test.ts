@@ -44,7 +44,7 @@ test('a hook, and the host after a frame, find no sampler object overriding thei
 
 test('models on one mesh share its vertex buffer', () => {
   // One vertex buffer and two index buffers, one array per reference.
-  assert.deepEqual(report.sharedBuffers, { vertexBuffers: 3, arrays: 2 })
+  assert.deepEqual(report.sharedBuffers, { vertexBuffers: 4, arrays: 2 })
 })
 
 test('invalidating an asset rebuilds it alone', () => {

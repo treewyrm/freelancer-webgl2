@@ -249,7 +249,7 @@ void main() { color = vec4(0.0, 0.0, 1.0, 1.0); }`,
   const sharing = createRenderer(gl)
   const shared = collectFrame(sceneOf([modelOf(opaqueMesh, OPAQUE), modelOf(opaqueMesh, OPAQUE)]))
   sharing.render(shared)
-  // Each reference also has an index buffer, so buffers are one plus the two of those.
+  // Each reference also has an index buffer, and the program its bone table: one, two, and one.
   const sharedBuffers = { vertexBuffers, arrays }
   sharing.dispose()
 

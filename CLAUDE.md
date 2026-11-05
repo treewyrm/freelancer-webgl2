@@ -4,7 +4,7 @@
 `@treewyrm/freelancer-webgl2`. Its first consumer is [freelancer-vscode](../freelancer-vscode),
 whose webviews will move onto it.
 
-**Status: M4 done, M5 next.** Rigid models, planets and starspheres render and match retail; rigid models are in a model viewer and material preview behind a setting. The canopy glass is deferred; see [VALIDATION.md](docs/VALIDATION.md#open-questions).
+**Status: M4 done, M5 in progress.** Rigid models, planets and starspheres render and match retail; rigid models are in a model viewer and material preview behind a setting. The canopy glass is deferred; see [VALIDATION.md](docs/VALIDATION.md#open-questions).
 
 | Doc | Covers |
 | --- | ------ |
@@ -104,6 +104,7 @@ Flat, one directory per subsystem, added when there is code for it. A subsystem 
 | `mesh/`         | VMesh buffers and index plans         | `src/RendComp/`                       |
 | `scene/`        | Camera; next, frame order and lights  | `src/freelancer/`, `src/Shading/MaterialBatcher.cpp` |
 | `material/`     | One program per material type         | `src/Shading/`, `src/flmaterials/`    |
+| `deformable/`   | Skinned meshes and bone tables        | `src/Deformable2/`                    |
 | `harness.ts`    | GPU test runner, never shipped        |                                       |
 | `capture/`      | Capture reader and texture names, never shipped |                             |
 | `reference/`    | Reference scenes and their install, never shipped |                           |
@@ -113,7 +114,6 @@ Expected next, as a guide and not a commitment:
 
 | Directory       | Holds                                 | Decomp source                         |
 | --------------- | ------------------------------------- | ------------------------------------- |
-| `deformable/`   | Skinned characters                    | `src/Deformable2/`                    |
 | `alchemy/`      | Particle effects                      | `src/alchemy/`                        |
 | `thorn/`        | THN scene playback                    | `src/Thorn/`                          |
 

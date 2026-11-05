@@ -22,6 +22,10 @@ for all retail data. Checked against `FMeshArchetype::Skin` in `Deformable2.cpp`
 | One skinned normal per point, shared by its elements | Matches |
 | Influence slices cumulative from `Point_bone_count` | Matches the library's `DEFORMABLE.md` |
 
+**Adapted** into `src/deformable/skin.ts`, with the two changes below, and matched against
+`character_reed`. The strips expand at load as `ExpandTristrip` writes them, where the extension's odd
+triangles start from another corner: the same triangle, and retail's indices here.
+
 **Change when adapting:**
 
 - **Make the bone table root-relative.** Retail computes `K = W(root)⁻¹ · W(bone) · B` and draws with

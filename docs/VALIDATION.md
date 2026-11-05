@@ -68,6 +68,7 @@ Models chosen because the earlier projects already found them useful for these f
 | M3 | Dyson platform | Detail map |
 | M4 | `run1-stock-menu` | Two real `.sph` planets and their shells, with no scene to set up, but no normals logged |
 | M4 | `planet_earth` | `planet_earth_3000`: `Masked2DetailMapMaterial`, its shell, terminator and limb |
+| M5 | `character_reed` | A costume's body at the last keyframe of a one-shot script: skinning, the root, the seated pose |
 | M4 | `starsphere_li01` | Two layers, `DcDtEc` stars, `Nebula`, and a blended `DcDtEcOcOt` under the override |
 | M4 | `starsphere_st03b` | `DcDt` alone, with no normals |
 | M4 | `starsphere_ew05` | `Nebula`, two bright layers of one texture |
