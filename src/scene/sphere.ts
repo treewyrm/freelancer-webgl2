@@ -1,0 +1,134 @@
+/** A `.sph` where a camera sees it: `FSphereAnim::Draw` and `UpdateLevel`, in `RendComp`. Pure, no GL. */
+import { getResourceId } from '@treewyrm/freelancer'
+import { Matrix4, type Vector3 } from '@treewyrm/freelancer/math'
+import type { Sphere } from '@treewyrm/freelancer/rigid'
+import { spherePatch } from '#/mesh/sphere.js'
+import type { Camera } from './camera.js'
+import type { PlacedPart } from './frame.js'
+
+export interface SphereOptions {
+  /** Decides the level and which faces draw. */
+  camera: Camera
+  /** Of the viewport, in pixels: the level bounds the sphere's error on screen. */
+  width: number
+  /** Pins a level, for a host choosing its own density. Faces still cull. */
+  level?: number
+}
+
+// `FSphereAnim::Init`. The `level_of_detail` option changes the last two, on a space solar only
+// (`SolarSpheresApplyDetail`): M7's. The menu's planets, with that option at 1, keep these.
+const LEVEL_MINIMUM = 3
+const LEVEL_MAXIMUM = 9
+const LEVEL_BIAS = 1.5
+
+const K = Math.sqrt(1 / 3)
+
+const axes = (x: Vector3, y: Vector3, z: Vector3): Matrix4 => ({
+  x: { ...x, w: 0 },
+  y: { ...y, w: 0 },
+  z: { ...z, w: 0 },
+  w: { x: 0, y: 0, z: 0, w: 1 },
+})
+
+const X = { x: 1, y: 0, z: 0 }
+const Y = { x: 0, y: 1, z: 0 }
+const Z = { x: 0, y: 0, z: 1 }
+const NEGATIVE_X = { x: -1, y: 0, z: 0 }
+const NEGATIVE_Y = { x: 0, y: -1, z: 0 }
+const NEGATIVE_Z = { x: 0, y: 0, z: -1 }
+
+// `SphereFaceRotation`, turning the `+Z` patch: `M0..M5` are +Z, +X, -Z, -X, +Y, -Y.
+const FACES: readonly Matrix4[] = [
+  axes(X, Y, Z),
+  axes(NEGATIVE_Z, Y, X),
+  axes(NEGATIVE_X, Y, NEGATIVE_Z),
+  axes(Z, Y, NEGATIVE_X),
+  axes(X, NEGATIVE_Z, Y),
+  axes(X, Z, NEGATIVE_Y),
+]
+
+// Each face's cube corners, by `Draw`'s numbering. Only those of the face nearest the camera are
+// tested, so a face draws by sharing a visible corner with it, and the one opposite never draws.
+const FACE_CORNERS: readonly (readonly number[])[] = [
+  [0, 3, 4, 7],
+  [0, 1, 4, 5],
+  [1, 2, 5, 6],
+  [2, 3, 6, 7],
+  [0, 1, 2, 3],
+  [4, 5, 6, 7],
+]
+const CORNERS: readonly Vector3[] = [
+  { x: K, y: K, z: K },
+  { x: K, y: K, z: -K },
+  { x: -K, y: K, z: -K },
+  { x: -K, y: K, z: K },
+  { x: K, y: -K, z: K },
+  { x: K, y: -K, z: -K },
+  { x: -K, y: -K, z: -K },
+  { x: -K, y: -K, z: K },
+]
+
+const dot = (a: Vector3, b: Vector3): number => a.x * b.x + a.y * b.y + a.z * b.z
+
+/**
+ * `UpdateLevel` (`0x6c2c430`), from `metric`, the world size of a pixel at the sphere times the bias.
+ * Out of `acos`'s range, or at no distance, x87's `ftol` gives `INT_MIN`, so the lowest level.
+ */
+export const sphereLevel = (radius: number, metric: number): number => {
+  const ratio = Math.PI / 2 / Math.acos(1 - metric / radius)
+  const level = Math.trunc(2 * Math.log2(ratio) + 0.5)
+  if (!Number.isFinite(level)) return LEVEL_MINIMUM
+  return Math.min(LEVEL_MAXIMUM, Math.max(LEVEL_MINIMUM, level))
+}
+
+/** Which faces draw, in order. A sphere's world rotation turns the cube; its scale isn't read. */
+const visibleFaces = (radius: number, world: Matrix4, position: Vector3): number[] => {
+  const turn = ({ x, y, z }: Vector3): Vector3 => ({
+    x: world.x.x * x + world.y.x * y + world.z.x * z,
+    y: world.x.y * x + world.y.y * y + world.z.y * z,
+    z: world.x.z * x + world.y.z * y + world.z.z * z,
+  })
+  const away = { x: position.x - world.w.x, y: position.y - world.w.y, z: position.z - world.w.z }
+  const distance = Math.hypot(away.x, away.y, away.z)
+  const toCamera = { x: away.x / distance, y: away.y / distance, z: away.z / distance }
+
+  let best = 0
+  let most = -1
+  FACES.forEach(({ z: normal }, face) => {
+    const facing = dot(toCamera, turn(normal))
+    if (facing > most) {
+      most = facing
+      best = face
+    }
+  })
+
+  const threshold = Math.min(radius / distance, K)
+  const visible = FACE_CORNERS[best]!.filter(
+    (corner) => dot(toCamera, turn(CORNERS[corner]!)) > threshold,
+  )
+  return FACES.flatMap((_, face) =>
+    face === best || FACE_CORNERS[face]!.some((corner) => visible.includes(corner)) ? [face] : [],
+  )
+}
+
+/**
+ * A sphere's visible faces, as parts. Materials repeat by `Sides`, a retail sun naming just one.
+ * The seventh, an atmosphere, comes in its own pass, which isn't built yet.
+ */
+export const placeSphere = (
+  { radius, sides }: Sphere,
+  world: Matrix4,
+  { camera, width, level }: SphereOptions,
+): PlacedPart[] => {
+  const { x, y, z } = camera.position
+  const distance = Math.hypot(x - world.w.x, y - world.w.y, z - world.w.z)
+  // `Draw` divides by `ZNear * GetXScaleOverNear()`, which is `HalfWidth / tan(fovx½)` (`space_camera.cpp`).
+  const pixel = (Math.tan((camera.fovh * Math.PI) / 180) / (width / 2)) * distance
+  const { mesh, reference } = spherePatch(radius, level ?? sphereLevel(radius, pixel * LEVEL_BIAS))
+  return visibleFaces(radius, world, camera.position).map((face) => ({
+    reference,
+    mesh,
+    world: Matrix4.multiply(world, FACES[face]!),
+    materialId: getResourceId(sides[face % sides.length]!),
+  }))
+}

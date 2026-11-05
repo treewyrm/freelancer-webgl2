@@ -23,8 +23,8 @@ An earlier attempt, `freelancer-render`, failed the other way, by transcribing t
 | [M0](#m0-retail-evidence) | Captures and screenshots from retail, on demand | Done |
 | [M1](#m1-first-picture) | One static ship, matched against retail | Done, canopy deferred |
 | [M2](#m2-in-the-model-viewer) | That ship in the real model viewer, with editor overlays | Done |
-| [M3](#m3-every-rigid-model) | All materials on rigid models, with animation and LOD | **Next** |
-| [M4](#m4-spheres-and-the-sky) | Planets, atmospheres, starspheres | |
+| [M3](#m3-every-rigid-model) | All materials on rigid models, with animation and LOD | Done, some override types untested |
+| [M4](#m4-spheres-and-the-sky) | Planets, atmospheres, starspheres | **Next** |
 | [M5](#m5-characters) | Skinned characters | |
 | [M6](#m6-effects) | Alchemy effects | |
 | [M7](#m7-the-space-frame) | A whole system, as the game frames it | |
@@ -151,7 +151,7 @@ closing and losing the context all work. Then revise the API with what was learn
       scores 99.4 to 100% against the screenshot: `EcEt`, `EcEtTwo`, `LightMap`, `EngineGlowMaterial`,
       `Nebula`, `NebulaTwo`, `BtDetailMapTwoMaterial`, `GlassMaterial`, `GFGlassMaterial`, and `DcDt` kin.
 - [x] A stage asking for a UV set the mesh hasn't got reads (0, 0): `bands_one_uv`.
-- [ ] The override types as a material's `Type`. `VisibleCounterMaterial` and `ShadowMaterial` each crash
+- [ ] **Skipped for now:** the override types as a material's `Type`. `VisibleCounterMaterial` and `ShadowMaterial` each crash
       the game alone, beside a plain band that doesn't. `ColorizeMaterial`, `CloakMaterial`,
       `BackdropMaterial`, `StarsphereMaterial`, `EnvMapMaterial`, `WireMaterial` and `WireMaterial2` are
       untested alone: they're reported as unsupported, and draw nothing.
@@ -170,20 +170,33 @@ closing and losing the context all work. Then revise the API with what was learn
 - [x] `HUDIconMaterial`, `HUDAnimMaterial`, `ExclusionZoneMaterial`, `PlanetWaterMaterial`, on `bands`.
       **Read only:** the per-object colour they take from `SceneModel.instance`, which needs the engine.
 - [x] `[MaterialMap]` from the host: `SceneModel.materialMap`, for a mod's `dacom.ini`.
-- [ ] **You:** reference scenes for each new family.
+- [x] **You:** reference scenes for each new family.
       A material retail barely uses, or no spawnable model has, can still be checked: generate a small
       UV sphere carrying it, give it a lab-only archetype, and capture how the game draws it.
-- [ ] Move the extension's material and texture previews across.
+- [x] Move the extension's material and texture previews across. The material preview draws through
+      the game path behind the same setting, its checkerboard in the `begin` hook. A `.sph`, which its
+      default sphere and the thumbnails are, and the planet classes stay on the old renderer until M4.
+      The texture previews paint a 2D canvas, so never used a renderer.
 
 **Done when** every rigid-model row in [COVERAGE.md](COVERAGE.md) has reached "state matched", and
-the model viewer's switch can default to on. **From here on, stop adding shading features to the old
+the model viewer's switch can default to on. Every rigid-model row has, bar `NomadMaterial`, the class
+`NomadMaterialNoBendy` matched under another name, and `NullMaterial`, which draws nothing. **The switch
+stays off until M4**, as a `.sph` and the planet classes still draw nothing through it. **From here on, stop adding shading features to the old
 renderer**, so the two don't diverge.
 
 ## M4: Spheres and the sky
 
-- [ ] Sphere patch tessellation and the `M0..M5` face order.
+- [x] Sphere patch tessellation and the `M0..M5` face order: `placeSphere`, which also chooses the level
+      and culls faces as the game does. The stock menu's two planets match over all six captured frames:
+      level, faces drawn, their matrices and order, all logged indices at levels 5 and 8, and level 5's
+      vertices (`src/reference/sphere-menu.test.ts`). **Uncaptured:** normals, as that capture predates
+      logging them, and even-level vertices, being over `verts_max`. The level's width is corroborated
+      only by those two planets falling in range. Only the first six sides draw so far.
 - [ ] The four planet surface types and `AtmosphereMaterial`. `references/bands_planet` already has
       their state from a generated sphere: each pass's alpha test, depth and stage 1 tile matrix.
+      `run1-stock-menu` has them on real `.sph` planets, atmosphere included: 5 of its faces, the same
+      patch and its own vertex buffer, and a world scaled by what looks to be its `Scale` (1.025 on
+      the mercury). That shell culls by `Scale × Radius`, so `placeSphere` needs the value.
 - [ ] `Nebula` materials; starsphere and backdrop overrides, with the game's draw order for the layers.
 - [ ] **You:** reference scenes for a planet and a starsphere.
 
@@ -221,6 +234,8 @@ renderer. Random streams need not match retail; each appearance's sizes, colours
 
 - [ ] The game's frame order: lists sorted back to front, far list, main lists, effects.
 - [ ] Light selection, ambient, fog and nebula state.
+- [ ] `level_of_detail` on a space solar's sphere: its level bias and maximum, up to 10, from
+      `SolarSpheresApplyDetail`. `placeSphere` has the menu's 1.5 and 9, and a host can pin a level.
 - [ ] Planet rings, asteroid field exteriors and billboards, space dust, gate tunnels.
 - [ ] Projectiles and beams; the cockpit pass with its depth clear.
 - [ ] **You:** a custom system and a save that places the ship, with screenshots and captures.

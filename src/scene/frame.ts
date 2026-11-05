@@ -40,6 +40,10 @@ export interface SceneLight {
 export interface PlacedPart {
   reference: VMeshRef
   world: Matrix4
+  /** A generated mesh, which no library holds: a sphere's patch. */
+  mesh?: VMeshData
+  /** Over each group's own, as a sphere's face names its material and its patch can't. */
+  materialId?: number
 }
 
 export interface SceneModel {
@@ -226,6 +230,9 @@ const CLASSES: Readonly<Record<string, MaterialClass>> = {
   GlassMaterial: 'glass',
   GFGlassMaterial: 'glass',
 }
+
+/** Whether `collectFrame` draws this type, the one `[MaterialMap]` gives. */
+export const isBuiltType = (type: string): boolean => type in CLASSES
 
 const wrapOf = (address: TextureAddress): TextureWrap => {
   if (address === TextureAddress.Wrap) return 'repeat'
@@ -581,17 +588,17 @@ const collectModel = (
   unsupported: Set<string>,
   unregistered: Set<string>,
 ): void => {
-  for (const { reference, world } of model.parts) {
-    const mesh = model.mesh(reference.meshId)
+  for (const { reference, world, mesh: generated, materialId: faceMaterial } of model.parts) {
+    const mesh = generated ?? model.mesh(reference.meshId)
     if (!mesh) {
       unsupported.add(`mesh ${reference.meshId}`)
       continue
     }
 
     for (const { materialId, startIndex, elementCount } of getMeshDraw(mesh, reference)) {
-      const material = model.material(materialId)
+      const material = model.material(faceMaterial ?? materialId)
       if (!material) {
-        unsupported.add(`material ${materialId}`)
+        unsupported.add(`material ${faceMaterial ?? materialId}`)
         continue
       }
       const type = mapMaterialType(material, model.materialMap)
