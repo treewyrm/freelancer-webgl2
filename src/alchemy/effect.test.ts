@@ -13,6 +13,7 @@ import {
   type AppearanceNode,
 } from './effect.js'
 import { basic, emitter, flat, node, sceneOf } from './fixtures.js'
+import { describeNode } from './nodes.js'
 
 const STEP = 1 / 60
 
@@ -342,4 +343,44 @@ test("a particle under an emitter sharing its appearance's parent drops the path
   // In the frame they share, so at its origin, moving with the bias.
   assert.ok(Math.abs(records[(head - 1) * RECORD + VELOCITY + 2]! - 60) < 0.01)
   assert.equal(records[(head - 1) * RECORD + 2], 0)
+})
+
+test('of a property given twice, the last stands, as the DLL sets each as it comes', () => {
+  const { scene } = sceneOf([
+    {
+      node: node('a', 'FxBasicAppearance', {
+        Node_LifeSpan: Infinity,
+        BasicApp_QuadTexture: true,
+      }),
+    },
+  ])
+  const quad = scene.nodes[0]!.descriptor as { quadTexture: boolean }
+  assert.equal(quad.quadTexture, true)
+  const twice = node('b', 'FxBasicAppearance', { BasicApp_QuadTexture: true })
+  twice.properties.push({ name: 'BasicApp_QuadTexture', type: 'boolean', value: false })
+  assert.equal((describeNode(twice) as { quadTexture: boolean }).quadTexture, false)
+})
+
+test("a THN host's zero-length pass lets a field act once a frame, with the real step's values", () => {
+  const { scene } = sceneOf([
+    { node: basic('a'), targets: ['g'] },
+    {
+      node: node('g', 'FxGravityField', {
+        Node_LifeSpan: Infinity,
+        GravityField_Gravity: flat(60),
+      }),
+    },
+    {
+      node: emitter('e', { Emitter_Frequency: flat(0), Emitter_InitialParticles: 1 }),
+      targets: ['a'],
+    },
+  ])
+  const instance = new EffectInstance(scene)
+  const speed = () => appearance(instance).lane!.records[VELOCITY + 1]!
+  // `0x45404a`, `0x454054`, then the same at 0 ms: what's read is the update before.
+  for (let n = 0; n < 3; n++) {
+    instance.advance(STEP)
+    instance.advance(0)
+  }
+  assert.ok(Math.abs(speed() + 3) < 1e-4, `${speed()}`)
 })

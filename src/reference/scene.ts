@@ -5,6 +5,7 @@ import { write } from '@treewyrm/freelancer/thn/text'
 import type { Camera } from '#/scene/camera.js'
 import type { SwitchTable } from '#/deformable/level.js'
 import type { Generated } from './generate.js'
+import type { GeneratedEffect } from './effects.js'
 
 type Vector = readonly [number, number, number]
 type Rows = readonly [Vector, Vector, Vector]
@@ -58,6 +59,18 @@ export interface ReferenceScene {
    * would have loaded by the time it needs them, where a menu scene alone hasn't.
    */
   preload?: { file: string; texture: string }[]
+  /**
+   * One generated effect, at the origin, through a `PSYS` and a lab-only `[VisEffect]`. `seconds` is
+   * how long it has run when F9 is pressed, which only needs to be right to the nearest clock.
+   */
+  effect?: {
+    kind: GeneratedEffect
+    seconds: number
+    /** Written over `dacom.ini`'s `[Alchemy]` for this run, as retail's pool of an oriented is 0. */
+    pools?: Record<string, number>
+    /** Carries camera and effect along together, at a steady speed, for the dust. */
+    travel?: { by: Vector; duration: number }
+  }
   /** 0 to 255, given to the model through `LIT_AMBIENT`. */
   ambient: Vector
   /** `range` is 2000 unless a scene is too large for that. */
@@ -103,7 +116,7 @@ const LIGHT_GROUP = 1
 
 /** Shapes and field order follow retail's `SCRIPTS/INTRO/gasminer3.thn`. */
 export const sceneScript = (scene: ReferenceScene): string => {
-  const { model, sky, character, camera, ambient, lights } = scene
+  const { model, sky, character, effect, camera, ambient, lights } = scene
 
   const entities = [
     value.table({
@@ -171,6 +184,17 @@ export const sceneScript = (scene: ReferenceScene): string => {
         userprops: value.table({ category: model!.category }),
       }),
     ),
+    // Shaped as `SCRIPTS/INTRO/intro_waterplanet.thn` writes it. A `template_name` is a `[VisEffect]`.
+    ...(effect
+      ? [
+          value.table({
+            ...common('Psys_Reference', 'PSYS', `lab_${effect.kind}`, 0),
+            flags: value.identifier('LIT_DYNAMIC', 'LIT_AMBIENT'),
+            spatialprops: spatial([0, 0, 0], IDENTITY),
+            psysprops: value.table({ sparam: 0 }),
+          }),
+        ]
+      : []),
     ...lights.map((light, index) =>
       value.table({
         ...common(`Light_Reference_${index + 1}`, 'LIGHT', '', LIGHT_GROUP),
@@ -198,6 +222,40 @@ export const sceneScript = (scene: ReferenceScene): string => {
       value.identifier('SET_CAMERA'),
       value.list('Monitor_Reference', 'Camera_Reference'),
     ),
+    ...(effect
+      ? [
+          value.list(
+            0,
+            value.identifier('START_PSYS'),
+            value.list('Psys_Reference'),
+            value.table({ duration: 3600 }),
+          ),
+        ]
+      : []),
+    // Shaped as `SCRIPTS/INTRO/gasminer3.thn` writes it. Alone on an entity, position is a plain lerp.
+    ...(effect?.travel
+      ? [
+          { name: 'Camera_Reference', from: camera.position },
+          { name: 'Psys_Reference', from: [0, 0, 0] as Vector },
+        ].map(({ name, from }) =>
+          value.list(
+            0,
+            value.identifier('START_SPATIAL_PROP_ANIM'),
+            value.list(name),
+            value.table({
+              duration: effect.travel!.duration,
+              target_type: value.identifier('ROOT'),
+              spatialprops: value.table({
+                pos: vector([
+                  from[0] + effect.travel!.by[0],
+                  from[1] + effect.travel!.by[1],
+                  from[2] + effect.travel!.by[2],
+                ]),
+              }),
+            }),
+          ),
+        )
+      : []),
     // Shaped as `SCRIPTS/STORY/s002xe_nrml_sinclair_li_01_cityscape_01.thn` writes them.
     ...(character
       ? [

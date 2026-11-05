@@ -12,8 +12,8 @@ import type { Texture, TextureEntry } from '@treewyrm/freelancer/texture'
 import type { AppearanceNode, EffectInstance, FieldNode, Lane, RunNode } from './effect.js'
 import { AGE, BORN, LIFE, POSITION, RECORD } from './effect.js'
 import type { UVRect } from './curves.js'
-import type { Appearance, BeamAppearance, Sprite } from './nodes.js'
-import { frameInverse } from './transform.js'
+import type { Appearance, BeamAppearance, OrientedAppearance, Sprite } from './nodes.js'
+import { frameInverse, localMatrix } from './transform.js'
 
 export const FACING_CAMERA = 0
 export const FACING_TRAVEL = 1
@@ -71,14 +71,14 @@ export interface SpriteDraw extends EffectDrawCommon {
   dust?: { previous: Matrix4; step: number; fade: number }
 }
 
-/** Interleaved `position, colour, uv` triangles, already in the appearance's frame. */
-export interface BeamDraw extends EffectDrawCommon {
-  type: 'beam'
+/** Interleaved `position, colour, uv` triangles, already in the appearance's frame: a beam, or what the vertex stage can't key. */
+export interface TriangleDraw extends EffectDrawCommon {
+  type: 'triangles'
   vertices: Float32Array
   count: number
 }
 
-export type EffectDraw = SpriteDraw | BeamDraw
+export type EffectDraw = SpriteDraw | TriangleDraw
 
 const GREY: Vector3 = { x: 0.8, y: 0.8, z: 0.8 }
 
@@ -377,6 +377,75 @@ const beamVertices = (
   return { vertices, count: v / FLOATS }
 }
 
+/**
+ * Oriented sprites whose `MeshApp_ParticleTransform` has curves: each corner along that matrix's columns,
+ * about the particle plus its translation (`0x622c6dd`). Nine Hermite curves per particle are the CPU's.
+ */
+const orientedVertices = (
+  node: AppearanceNode,
+  descriptor: OrientedAppearance,
+  instance: EffectInstance,
+  rect: UVRect,
+  eye: Vector3,
+): { vertices: Float32Array; count: number } | undefined => {
+  const lane = node.lane!
+  const { sparam, lod } = instance.context
+  const extent = descriptor.lodCurve ? floatAt(descriptor.lodCurve, sparam, lod) : 1
+  const out: number[] = []
+  const list = (property: AnimatedFloat | undefined, key: number) =>
+    property ? floatAt(property, sparam, key) : 1
+  for (let i = lane.tail; i < lane.head; i++) {
+    const o = i * RECORD
+    const elapsed = lane.clock - lane.records[o + BORN]!
+    const age = lane.records[o + AGE]! + elapsed
+    const life = lane.records[o + LIFE]!
+    if (age > life) continue
+    const key = life > 0 ? Math.min(1, Math.max(0, age / life)) : 0
+    let alpha = list(descriptor.alpha, key)
+    const scale = list(descriptor.scale, key) * extent
+    if (alpha === 0 || scale < 1e-11) continue
+    const matrix = localMatrix(descriptor.particleTransform, sparam, key) ?? Matrix4.identity
+    const p = {
+      x: lane.records[o]! + lane.records[o + 3]! * elapsed + matrix.w.x,
+      y: lane.records[o + 1]! + lane.records[o + 4]! * elapsed + matrix.w.y,
+      z: lane.records[o + 2]! + lane.records[o + 5]! * elapsed + matrix.w.z,
+    }
+    const width = list(descriptor.width, key) * scale
+    const height = list(descriptor.height, key) * scale
+    if (descriptor.viewingAngleFade) {
+      const a = matrix.x
+      const b = matrix.y
+      const n = { x: a.y * b.z - a.z * b.y, y: a.z * b.x - a.x * b.z, z: a.x * b.y - a.y * b.x }
+      const e = { x: eye.x - p.x, y: eye.y - p.y, z: eye.z - p.z }
+      const length = Math.hypot(e.x, e.y, e.z)
+      const c = 1 - Math.abs(length > 1e-6 ? (e.x * n.x + e.y * n.y + e.z * n.z) / length : n.y)
+      if (c > 0.984808) continue
+      if (c > 0.866025) alpha *= ((0.984808 - c) * 8.41876) ** 2
+      if (alpha === 0) continue
+    }
+    const { x: r, y: g, z: b } = descriptor.color ? colorAt(descriptor.color, sparam, key) : GREY
+    const corner = (cx: number, cy: number) =>
+      out.push(
+        p.x + matrix.x.x * width * cx + matrix.y.x * height * cy,
+        p.y + matrix.x.y * width * cx + matrix.y.y * height * cy,
+        p.z + matrix.x.z * width * cx + matrix.y.z * height * cy,
+        r,
+        g,
+        b,
+        packed(alpha),
+        cx < 0 ? rect.u1 : rect.u2,
+        cy > 0 ? rect.v1 : rect.v2,
+      )
+    corner(-1, 1)
+    corner(1, 1)
+    corner(1, -1)
+    corner(-1, 1)
+    corner(1, -1)
+    corner(-1, -1)
+  }
+  return out.length ? { vertices: new Float32Array(out), count: out.length / FLOATS } : undefined
+}
+
 export const collectEffect = (
   instance: EffectInstance,
   view: Matrix4,
@@ -410,7 +479,14 @@ export const collectEffect = (
       // `S · W`'s first two columns, added in the frame, so `W` reaches them twice (`0x620592d`).
       const axes = Matrix4.multiply(camera, node.world)
       const beam = beamVertices(node, descriptor, instance, frames[0] ?? FULL, [axes.x, axes.y])
-      if (beam) draws.push({ ...common, type: 'beam', ...beam })
+      if (beam) draws.push({ ...common, type: 'triangles', ...beam })
+      return
+    }
+
+    if (descriptor.kind === 'oriented-appearance' && descriptor.particleTransform?.curves) {
+      const eye = Matrix4.transformPoint(camera.w, frameInverse(node.world))
+      const quads = orientedVertices(node, descriptor, instance, frames[0] ?? FULL, eye)
+      if (quads) draws.push({ ...common, type: 'triangles', ...quads })
       return
     }
 

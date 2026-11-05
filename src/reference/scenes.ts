@@ -43,6 +43,19 @@ const HAND_SWITCH: SwitchTable = {
   ],
 }
 
+const effect = (
+  name: string,
+  kind: NonNullable<ReferenceScene['effect']>['kind'],
+  seconds: number,
+  extra: Partial<NonNullable<ReferenceScene['effect']>> = {},
+): ReferenceScene => ({
+  name,
+  effect: { kind, seconds, ...extra },
+  camera: { position: [0, 0, 60], orientation: IDENTITY, fovh: 30, near: 1, far: 10000 },
+  ambient: [0, 0, 0],
+  lights: [],
+})
+
 const starsphere = (name: string, sky: NonNullable<ReferenceScene['sky']>): ReferenceScene => ({
   name,
   sky,
@@ -345,5 +358,18 @@ export const scenes: ReadonlyMap<string, ReferenceScene> = new Map(
     starsphere('starsphere_ew06', [
       { archetype: 'reference_sky_ew06', category: 'Solar', file: 'starsphere_ew06.cmp' },
     ]),
+    effect('effect_sprites', 'sprites', 1),
+    // Press F9 past five seconds, when the reading says the left one has gone.
+    effect('effect_folder', 'folder', 10),
+    effect('effect_motion', 'motion', 2),
+    effect('effect_beams', 'beams', 1),
+    // Press F9 past two seconds, when the third parent has died.
+    effect('effect_child', 'child', 5),
+    // Retail's `poolSize` of 0 crashes the game on the first spawn.
+    effect('effect_oriented', 'oriented', 1, { pools: { FxOrientedAppearance: 1000 } }),
+    effect('effect_fields', 'fields', 2),
+    effect('effect_pool', 'pool', 1),
+    // Moving at 50 a second, which a THN host's zero-length pass makes no difference to: it draws nothing.
+    effect('effect_dust', 'dust', 5, { travel: { by: [6000, 0, 0], duration: 120 } }),
   ].map((scene) => [scene.name, scene]),
 )

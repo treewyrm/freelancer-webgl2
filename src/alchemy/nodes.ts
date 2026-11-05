@@ -115,6 +115,8 @@ export interface OrientedAppearance extends AppearanceCommon, Sprite {
   width?: AnimatedFloat
   height?: AnimatedFloat
   viewingAngleFade: boolean
+  /** Keyed on each particle's age, on top of its position (`0x622c6dd`). */
+  particleTransform?: AnimatedTransform
 }
 
 export interface ParticleAppearance extends AppearanceCommon {
@@ -204,7 +206,8 @@ export type Field = Extract<NodeDescriptor, { category: 'field' }>
 
 /** A node's descriptor, or `undefined` for a type no DLL registers. */
 export const describeNode = (node: Node): NodeDescriptor | undefined => {
-  const find = (name: PropertyName) => node.properties.find((one) => one.name === name)
+  // The DLL's reader sets each as it comes (`0x62291d1`), so of two the last stands (`effect_sprites`).
+  const find = (name: PropertyName) => node.properties.filter((one) => one.name === name).at(-1)
   const flag = (name: PropertyName, fallback = false) => {
     const found = find(name)
     return found?.type === 'boolean' ? found.value : fallback
@@ -233,15 +236,15 @@ export const describeNode = (node: Node): NodeDescriptor | undefined => {
     const found = find('BasicApp_BlendInfo')
     return found?.type === 'blending' ? found.value : undefined
   }
-  const transform = () => {
-    const found = find('Node_Transform')
+  const transformOf = (name: PropertyName) => {
+    const found = find(name)
     return found?.type === 'transform' ? found.value : undefined
   }
 
   const common: Common = {
     name: text('Node_Name') ?? '',
     lifeSpan: scalar('Node_LifeSpan', 3),
-    transform: transform(),
+    transform: transformOf('Node_Transform'),
   }
   const emitter = (): EmitterCommon => ({
     ...common,
@@ -355,6 +358,7 @@ export const describeNode = (node: Node): NodeDescriptor | undefined => {
         width: float('OrientedApp_Width'),
         height: float('OrientedApp_Height'),
         viewingAngleFade: flag('RectApp_ViewingAngleFade'),
+        particleTransform: transformOf('MeshApp_ParticleTransform'),
       }
     case 'FxParticleAppearance':
       return {

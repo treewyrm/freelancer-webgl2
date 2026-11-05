@@ -262,11 +262,24 @@ Adapted from `freelancer-vscode`'s Alchemy; see [ADAPTING.md](ADAPTING.md#alchem
 - [x] Settle the fixed step against retail's per-frame `dt`: the host's `dt`, as retail.
 - [x] Effects mounted on model hardpoints: `advance`'s `placement`, the hardpoint's world, as the game's
       override. Pinned: it reaches the control root alone, and leaves a trail. The hardpoint's matrix is the host's.
-- [ ] Reference scene generator for effects: a menu `.thn` holding one camera and one `PSYS`, a `[VisEffect]`
-      and a generated `.ale`, as `freelancer-vscode/docs/renderer/ALCHEMY-LAB.md` describes. And comparing
-      captured quads, whose `dt` the capture must log.
-- [ ] **You:** reference scenes: `gf_explosion_mine01` first, for the folder cut at 3 s, then a perp with a
-      lopsided texture, a beam, and dust.
+- [x] Reference scene generator for effects: `effect_sprites`, `effect_folder` and `effect_motion`, one
+      `PSYS` each, a generated `.ale`, and a lab-only `[VisEffect]`. Built so no capture needs the game's
+      `dt`: what holds still under constant curves, or a moving particle's shape read relative to it. The
+      comparison waits in `src/reference/effects.test.ts`, skipping until there's a capture.
+- [x] **You:** `effect_sprites`, `effect_folder` and `effect_motion`. Each matches its capture in draws, states,
+      and every corner and UV the scene pins; `effect_motion` by shape, as the game's `dt` is unknown. The folder
+      cut is confirmed: both sprites early, only the control past 5 s. Pictures: `effect_sprites` 99.40% within
+      2, a mean of 0.37, `effect_folder` 99.91%, 0.36. They also found a clamp and an alpha test the audit
+      hadn't, and that the last of a repeated property stands.
+- [x] Reference scenes for what's left: `effect_beams`, `effect_child`, `effect_oriented`, `effect_fields`,
+      `effect_pool` and `effect_dust`. Its camera travels, since dust fades to nothing under a still one.
+      `FxOrientedAppearance`'s `MeshApp_ParticleTransform` is built, on the CPU, for its scene to test.
+- [x] **You:** those six. `effect_beams` matches its capture at every vertex of all five chains, parity and
+      anchors included, and in picture: 99.72%, a mean of 0.43. `effect_child` in draws, order and place, and
+      picture: 98.90%, 0.38. `effect_fields` in age by depth and air velocity. `effect_pool` in the eviction:
+      1,800 and 200 triangles. `effect_oriented` crashed the game. `effect_dust` draws nothing, as below.
+- [ ] **You:** `effect_oriented` again, now with `poolSize = 1000` written over `dacom.ini` for the run. Running
+      would pin the crash on retail's 0, and capture the sprites.
 - [ ] The extension's effect editor on this renderer, behind the same setting. It scrubs, so it replays by
       making a new instance, and needs hidden nodes, which `EffectInstance` doesn't take yet.
 
@@ -284,6 +297,8 @@ renderer. Random streams need not match retail; each appearance's sizes, colours
 - [ ] Measure effects' CPU cost in a whole system. A pushed lane steps on the CPU, by choice: bring back
       transform feedback only if this shows the need. The picture doesn't depend on it ([ADAPTING.md](ADAPTING.md#alchemy-m6)).
 - [ ] **You:** a custom system and a save that places the ship, with screenshots and captures.
+- [ ] Dust against retail, here: a THN host can't show it (see M8), so `FLDustAppearance`'s kite and fade wait
+      for a flying camera.
 
 **Done when** a reference system matches in draw order and state, and the system editor runs on this
 renderer.
@@ -294,6 +309,8 @@ renderer.
 - [ ] A room camera's rank 2 in `ClassifySphere`, which drops a part covering under a pixel.
 - [ ] A `BackdropMaterial` reference scene, with a `skydome_*` at `usr_flg` 2.
 - [ ] Thorn playback: clock, attachments, THN cameras and letterbox.
+- [ ] A `PSYS` steps as `Thorn_Psys` does: `advance(dt)`, then `advance(0)`. It's what makes its fields act once a
+      frame with the real step's values, and its dust draw nothing (`effect_fields`, `effect_dust`).
 - [ ] Texture animation, moved here from M3: `TickAllPlayback`, and base interiors to test it on.
 
 `freelancer-vscode/docs/renderer/CUTSCENES.md` is a specification to check against the source.

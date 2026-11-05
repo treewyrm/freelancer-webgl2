@@ -22,7 +22,13 @@ import { placeParts, type Scene, type SceneModel } from '#/scene/frame.js'
 import { placeSphere } from '#/scene/sphere.js'
 import { placeCostume } from '#/deformable/skin.js'
 import type { Camera } from '#/scene/camera.js'
+import { getResourceId } from '@treewyrm/freelancer'
+import { getNodeName, type Node } from '@treewyrm/freelancer/alchemy'
+import { EffectInstance } from '#/alchemy/effect.js'
+import { buildEffect, lookupOver } from '#/alchemy/tree.js'
+import { viewMatrix } from '#/scene/camera.js'
 import { BAND_LIBRARIES } from './bands.js'
+import { EFFECT_TEXTURES, GENERATED_EFFECTS } from './effects.js'
 import { generateBands } from './generate.js'
 import { cameraOf, modelMatrixOf, orientationMatrix, type ReferenceScene } from './scene.js'
 
@@ -224,6 +230,29 @@ export const loadScene = async (
         models: await loadCharacter(definition.character, cameraOf(definition), read),
       },
     }
+  if (definition.effect) {
+    const { kind, seconds } = definition.effect
+    const alchemy = GENERATED_EFFECTS[kind]()
+    const nodes = new Map<number, Node>()
+    for (const node of alchemy.nodes.nodes)
+      nodes.set(getResourceId(getNodeName(node) ?? '', true), node)
+    const resolve = (crc: number) => nodes.get(crc)
+    const [effect] = alchemy.effects.effects
+    const instance = new EffectInstance(buildEffect(effect!, resolve), {
+      lookup: lookupOver(alchemy.effects.effects, resolve),
+    })
+    const view = viewMatrix(shared.camera)
+    // As `Thorn_Psys` steps it: each tick, then the tick's pass at 0 ms (`0x453ff0`).
+    for (let step = 0; step < seconds * 60; step++) {
+      instance.advance(1 / 60, { view })
+      instance.advance(0, { view })
+    }
+    const library = Directory.read(await read(EFFECT_TEXTURES.replaceAll('\\', '/')))
+    const textures = [...readTextureLibrary(library)]
+    const texture = (name: string) =>
+      textures.find((entry) => entry.name.toLowerCase() === name.toLowerCase())
+    return { scene: { ...shared, models: skies, effects: [{ instance, texture }] } }
+  }
   const placedModel = definition.model
   if (!placedModel) return { scene: { ...shared, models: skies } }
 

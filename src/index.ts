@@ -53,7 +53,7 @@ export {
   type EffectPools,
   type PoolSizes,
 } from '#/alchemy/effect.js'
-export type { BeamDraw, EffectDraw, SpriteDraw } from '#/alchemy/draw.js'
+export type { TriangleDraw, EffectDraw, SpriteDraw } from '#/alchemy/draw.js'
 export { placeSphere, sphereLevel, type SphereOptions } from '#/scene/sphere.js'
 export { MATERIAL_MAP, mapMaterialType, type MaterialMapRule } from '#/material/map.js'
 export { sampleUvAnimation, type UvTransform } from '#/scene/uv-animation.js'

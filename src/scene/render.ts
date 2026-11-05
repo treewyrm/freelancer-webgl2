@@ -25,6 +25,8 @@ import {
 import { planUpload } from '#/texture/upload.js'
 import type { Frame, HookName } from './frame.js'
 
+const EFFECT_SAMPLER: SamplerState = { ...DEFAULT_SAMPLER, wrapU: 'clamp', wrapV: 'clamp' }
+
 export interface HookContext {
   gl: WebGL2RenderingContext
   frame: Frame
@@ -281,8 +283,8 @@ export const createRenderer = (gl: WebGL2RenderingContext): Renderer => {
         bindTexture: ({ texture }) => {
           gl.activeTexture(gl.TEXTURE0 + DIFFUSE_UNIT)
           gl.bindTexture(gl.TEXTURE_2D, texture ? textureOf(texture.entry) : null)
-          // **Uncaptured:** the game leaves whatever sampler state was last set.
-          gl.bindSampler(DIFFUSE_UNIT, samplerOf(DEFAULT_SAMPLER))
+          // Alchemy's begin-draw clamps (`src/alchemy/alchemy_alchemy.cpp`), and `effect_sprites` shows it.
+          gl.bindSampler(DIFFUSE_UNIT, samplerOf(EFFECT_SAMPLER))
           return texture !== undefined
         },
       })

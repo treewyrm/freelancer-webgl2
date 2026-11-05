@@ -23,9 +23,13 @@ import { homedir } from 'node:os'
 import { dirname, join, relative } from 'node:path'
 import { readCapture } from '#/capture/capture.js'
 import { BAND_LIBRARIES } from './bands.js'
+import { EFFECT_TEXTURES, GENERATED_EFFECTS } from './effects.js'
 import { generateBands } from './generate.js'
 import { sceneScript } from './scene.js'
+import { getResourceId } from '@treewyrm/freelancer'
+import { writeAlchemy } from '@treewyrm/freelancer/alchemy'
 import { Document } from '@treewyrm/freelancer/ini'
+import { Directory } from '@treewyrm/freelancer/utf'
 import { scenes } from './scenes.js'
 
 const GUEST = '/Volumes/[C] Windows 11'
@@ -41,6 +45,8 @@ const ROOMS = ['intro1_cityscape', 'intro2_volcano', 'intro3_planetchunks'].map(
 const SCRIPTS = join(game, 'SCRIPTS/REFERENCE')
 const EFFECT_SHAPES = join(game, 'FX/effect_shapes.ini')
 const SOLAR_ARCH = join(game, 'SOLAR/solararch.ini')
+const MISC_ALE = join(game, 'FX/MISC/misc_ale.ini')
+const DACOM = join(dirname(game), 'EXE/dacom.ini')
 
 /** The corpus is measured by other suites. A stray file there reads as their readers drifting. */
 const assertNotCorpus = (): void => {
@@ -118,14 +124,53 @@ const mount = (name: string): void => {
     ]
     writeFileSync(SOLAR_ARCH, `${text}\r\n${lines.join('\r\n')}\r\n`, 'latin1')
   }
-  const extras = [scene.preload?.length && 'preloads', scene.generated && 'a generated model']
+  // Any `*_ale.ini` will do: the `[VisEffect]` table is global.
+  const visEffects = `${MISC_ALE}.retail`
+  if (existsSync(visEffects)) renameSync(visEffects, MISC_ALE)
+  if (scene.effect) {
+    const nickname = `lab_${scene.effect.kind}`
+    const alchemy = GENERATED_EFFECTS[scene.effect.kind]()
+    writeFileSync(
+      join(SCRIPTS, `${nickname}.ale`),
+      new Directory('\\', writeAlchemy(alchemy)).write(),
+    )
+    copyFileSync(MISC_ALE, visEffects)
+    const text = Buffer.from(Document.read(readFileSync(visEffects)).write('text')).toString(
+      'latin1',
+    )
+    const section = [
+      '[VisEffect]',
+      `nickname = ${nickname}`,
+      `alchemy = scripts\\reference\\${nickname}.ale`,
+      `effect_crc = ${getResourceId(nickname, true) | 0}`,
+      `textures = ${EFFECT_TEXTURES}`,
+    ]
+    writeFileSync(MISC_ALE, `${text}\r\n${section.join('\r\n')}\r\n`, 'latin1')
+  }
+  const dacom = `${DACOM}.retail`
+  if (existsSync(dacom)) renameSync(dacom, DACOM)
+  if (scene.effect?.pools) {
+    copyFileSync(DACOM, dacom)
+    let text = readFileSync(dacom, 'latin1')
+    for (const [type, size] of Object.entries(scene.effect.pools)) {
+      const line = new RegExp(`^(${type}\\.poolSize\\s*=\\s*)\\d+`, 'm')
+      if (!line.test(text)) throw new Error(`no ${type}.poolSize in ${DACOM}`)
+      text = text.replace(line, `$1${size}`)
+    }
+    writeFileSync(DACOM, text, 'latin1')
+  }
+  const extras = [
+    scene.preload?.length && 'preloads',
+    scene.generated && 'a generated model',
+    scene.effect && 'a generated effect',
+  ]
   const also = extras.filter(Boolean).join(' and ')
   console.log(`menu now plays ${name}${also ? `, with ${also}` : ''}`)
 }
 
 const restore = (): void => {
   assertNotCorpus()
-  for (const file of [...ROOMS, EFFECT_SHAPES, SOLAR_ARCH])
+  for (const file of [...ROOMS, EFFECT_SHAPES, SOLAR_ARCH, MISC_ALE, DACOM])
     if (existsSync(`${file}.retail`)) renameSync(`${file}.retail`, file)
   rmSync(SCRIPTS, { recursive: true, force: true })
   console.log('menu restored')

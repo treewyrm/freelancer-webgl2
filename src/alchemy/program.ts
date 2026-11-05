@@ -262,7 +262,8 @@ void main() {
         float squared = dot(v, v);
         bool still = squared * inverseLength(squared) <= TINY;
         bool onY = all(lessThanEqual(abs(a_axis - vec3(0.0, 1.0, 0.0)), vec3(1e-4)));
-        n = still ? (onY ? vec3(1.0, 0.0, 0.0) : vec3(0.0, 1.0, 0.0)) : unit(v);
+        // Divided by its fast length, then crossed, so the extents run up to 0.2% short (\`effect_sprites\`).
+        n = still ? (onY ? vec3(1.0, 0.0, 0.0) : vec3(0.0, 1.0, 0.0)) : v / (squared * inverseLength(squared));
         vec3 across = unit(cross(a_axis, n));
         x = cross(n, across);
         y = -across;
@@ -325,6 +326,8 @@ out vec4 fragColor;
 
 void main() {
   fragColor = u_hasTexture ? v_color * texture(u_texture, v_uv) : v_color;
+  // D3DRS_ALPHAREF 0, GREATER (\`effect_sprites\`), compared at 8 bits.
+  if (!(floor(fragColor.a * 255.0 + 0.5) > 0.0)) discard;
 }
 `
 

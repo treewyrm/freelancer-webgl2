@@ -48,8 +48,8 @@ triangles start from another corner: the same triangle, and retail's indices her
 readings hold up: emission, every field's arithmetic, the sprite routines' geometry and skips, curves,
 blending and draw order within a tree all match the decomp, and retail where they were checked. What
 fails is the structure around them. Checked against `src/alchemy/` and `alchemy.dll` (2026-11-05). The
-beam's chain and the dust's kite were read against the ledger's addresses and pinned by tests, without a
-term-by-term pass over their decomp; a capture is what checks them.
+beam's chain was read against the ledger's addresses, and matches `effect_motion` by shape. The dust's kite
+was too, and stays uncaptured.
 
 **Where the extension's ledger is wrong or open, now settled:**
 
@@ -70,6 +70,18 @@ term-by-term pass over their decomp; a capture is what checks them.
 | Pools | One 8,192 budget of its own | One per kind, from `dacom.ini`, a full one evicting its oldest, across effects | `0x6234ab0`, `createPools` |
 | Properties absent | 0 on emitters and fields | The constructors' own: a cube's 5 and 15, a dust's 60.1, gravity's 9.8 | `0x62455b0`, and on |
 
+**Captured.** `effect_folder`, `effect_sprites` and `effect_motion` confirm the folder cut and its tree order,
+the later of two appearances, each routine's corners and UVs, the triangle, the perp's roll from both seeds,
+the alpha wrap, and fast-normalize's small errors. The extension's EXP-03 is settled by `lab_two`.
+`effect_beams` matches at every vertex, mirror parity and anchors included. `effect_child`, `effect_fields`
+and `effect_pool` confirm sub-effect placement and turn, a death effect, a dust field's age by depth, an air
+field's velocity, and eviction across appearances.
+
+**Two more findings from the captures.** Under a THN host dust never draws: `Thorn_Psys` follows each tick with
+a pass at 0 ms (`0x453ff0`), so the routine's speed is a distance over a step of 0 and its fade is 0. That same
+pass is when an appearance applies its fields, reading the real step's values. And retail's
+`FxOrientedAppearance.poolSize = 0` crashes the game (`effect_oriented`), against the ledger's "works".
+
 **Left out on purpose.** Replay and fixed steps belong to a scrubbing host, which can make a new
 `EffectInstance` and step it. The affine closed form needs a fixed step, and transform feedback paid for
 17.7% of particle-steps at the extension's measure. A pushed lane steps on the CPU and uploads each frame.
@@ -82,12 +94,16 @@ needs its own frame's `dt` to compare against.
 
 **Still open:**
 
-- **Uncaptured, all of it.** No effect has a reference scene, so every reading above stands on the source.
-- `FxOrientedAppearance`'s per-particle `MeshApp_ParticleTransform` isn't applied (`0x622c6dd`). A mod can set it.
+- **Uncaptured:** `FLDustAppearance`'s kite and fade, which a THN host can't show, so M7's;
+  `FxOrientedAppearance`, which crashes at retail's `poolSize` of 0; and gravity, radial, turbulence and
+  collide fields. A field's frame of lag stands on the source, with `effect_fields` consistent with it.
+- **The green sprites:** `effect_sprites` and `effect_child` are off by up to 5 on pure green, about one step of
+  a 16-bit texture's green. That the rig filters it otherwise is a guess.
 - An animated texture's own playback, which picks the atlas when `UseCommonTexFrame` is off (`0x6244ef0`). M8's.
 - The beam's wireframe flag `0x1C65B7B9` isn't drawn. D3D's fill mode has no GL equivalent, but lines could do.
 - A present `BlendInfo` of `None` (22 retail nodes) is no D3D value, and draws as the default here.
-- Fog waits for M7, and the sampler a particle's texture gets is whatever the game last left.
+- Fog waits for M7. The alpha test `GREATER 0` is as captured in the menu, and the begin-draw as read doesn't
+  set it, so another frame may leave it otherwise. M7 and M8 should check. The clamp is its own to set.
 - A non-positive `Emitter_InitLifeSpan` births nothing here, by this library's rule, not read.
 - **`FxMeshAppearance` stays out**, and is reported. The game's factory fails on every one and the DLL calls
   through the null mesh on spawn (`0x6224ed9`), so no data can draw one.

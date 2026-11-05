@@ -45,6 +45,13 @@ const WIDER: Record<string, { close: number; mean: number; compared?: number }> 
   starsphere_ew05: { close: 0.995, mean: 0.65 },
   // Far off, so small: 792 pixels, measured at 99.1% and a mean of 0.56, and its vertices all match.
   character_far: { close: 0.98, mean: 0.75, compared: 500 },
+  // Measured at 99.40% and a mean of 0.37. Most of what's left is the pure green sprite, off by up to 5:
+  // about one step of a 16-bit texture's green, which the rig may filter otherwise. Not settled.
+  effect_sprites: { close: 0.99, mean: 0.45 },
+  // A green sprite again, as `effect_sprites`. Measured at 98.90% and a mean of 0.38.
+  effect_child: { close: 0.985, mean: 0.45, compared: 4000 },
+  // Few pixels to compare: two sprites, then one. Measured at 99.91% and a mean of 0.36.
+  effect_folder: { close: 0.995, mean: 0.45, compared: 4000 },
 }
 
 // The door shield's ramp isn't bound in retail's capture either.
@@ -106,6 +113,11 @@ for (const [name, draws] of [
   ['character_reed', 9],
   ['character_eyes', 7],
   ['character_far', 9],
+  ['effect_sprites', 0],
+  ['effect_folder', 0],
+  ['effect_beams', 0],
+  ['effect_child', 0],
+  ['effect_oriented', 0],
 ] as const)
   test(
     `${name} matches retail's screenshot, outside its menu and canopy`,

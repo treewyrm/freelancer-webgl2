@@ -34,7 +34,7 @@ export const RETAIL_POOLS: PoolSizes = {
   'basic-appearance': 1000,
   'rect-appearance': 400,
   'perp-appearance': 250,
-  // Retail's `0` here is the default, the file says 1000, and the type is confirmed to run: as read.
+  // Not retail's: its `0` crashes the game on the first spawn (`effect_oriented`). So a mod has set this.
   'oriented-appearance': 1000,
   'beam-appearance': 680,
   'dust-appearance': 250,
