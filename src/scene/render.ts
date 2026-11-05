@@ -12,6 +12,7 @@ import {
   SECOND_UNIT,
   setDrawUniforms,
   setFrameUniforms,
+  setLights,
   type DcDtProgram,
 } from '#/material/dcdt.js'
 import { createReferenceArray, createVertexBuffer, type ReferenceArray } from '#/mesh/mesh.js'
@@ -213,6 +214,7 @@ export const createRenderer = (gl: WebGL2RenderingContext): Renderer => {
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
 
     let previousAmbient = false
+    let ownLights = false
     let uploaded: Float32Array | undefined
     frame.draws.forEach((draw, at) => {
       runHooks(at)
@@ -230,7 +232,13 @@ export const createRenderer = (gl: WebGL2RenderingContext): Renderer => {
         gl.uniform3f(active.uniforms.sceneAmbient, x, y, z)
       }
       previousAmbient = draw.sceneAmbient !== undefined
-      gl.uniform1i(active.uniforms.lightCount, draw.lightless ? 0 : frame.lights.length)
+      // A draw's own lights last only for that draw, as its ambient does.
+      if (draw.lightless) gl.uniform1i(active.uniforms.lightCount, 0)
+      else if (draw.lights) setLights(gl, active.uniforms, draw.lights)
+      else if (ownLights) setLights(gl, active.uniforms, frame.lights)
+      else gl.uniform1i(active.uniforms.lightCount, frame.lights.length)
+      if (draw.lights) ownLights = true
+      else if (!draw.lightless) ownLights = false
       gl.uniformMatrix4fv(
         active.uniforms.projection,
         false,

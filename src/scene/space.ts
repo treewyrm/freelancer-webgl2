@@ -5,6 +5,7 @@
  */
 import { Matrix4, type Vector3 } from '@treewyrm/freelancer/math'
 import { collectEffect, type EffectDraw } from '#/alchemy/draw.js'
+import { lightObject, lightSet, systemAmbient, type SpaceLight } from './light.js'
 import { classifySphere, projectionMatrix, viewMatrix, type Camera } from './camera.js'
 import {
   BLACK_BACKGROUND,
@@ -17,7 +18,6 @@ import {
   type Frame,
   type Queued,
   type SceneEffect,
-  type SceneLight,
   type SceneModel,
 } from './frame.js'
 
@@ -65,8 +65,10 @@ export interface SpaceScene {
   /** Its `far` is ignored: the frame's comes from `farClip`, or the field's. */
   camera: Camera
   aspect: number
+  /** `[Ambient] color`, as written: 0 to 255. */
   ambient: Vector3
-  lights: SceneLight[]
+  /** Its `[LightSource]`s, in file order. */
+  lights: readonly SpaceLight[]
   objects: readonly SpaceObject[]
   /** The star sphere's layers, in the order to draw them: basic stars, complex stars, nebulae. */
   sky?: readonly SceneModel[]
@@ -270,6 +272,7 @@ export const collectSpaceFrame = ({
     }
 
   const farProjection = projectionMatrix(farCamera, aspect)
+  const lighting = lightSet(lights)
   for (const at of !field || field.enclosure === 0 ? OUTSIDE_ORDER : INSIDE_ORDER) {
     const onFarList = at === FAR
     const passCamera = onFarList ? farCamera : camera
@@ -290,6 +293,17 @@ export const collectSpaceFrame = ({
         picked.rank === 4 && picked.tier === 0,
       )
       flushQueued(queued, draws)
+      // `GameobjUpdateDrawLighting`, from where it stands and its sphere's radius. A draw with an
+      // ambient of its own, an exclusion zone's, keeps it.
+      const lit = lightObject(lighting, object.position, object.sphere.radius, ambient, time)
+      for (let index = first; index < draws.length; index++) {
+        const draw = draws[index]!
+        draws[index] = {
+          ...draw,
+          lights: lit.lights,
+          sceneAmbient: draw.sceneAmbient ?? lit.ambient,
+        }
+      }
       // `ZENABLE 0` around each node (`DrainBucket`), so it neither reads depth nor leaves any.
       if (onFarList)
         for (let index = first; index < draws.length; index++)
@@ -315,8 +329,9 @@ export const collectSpaceFrame = ({
     hooks: hooksOf(draws),
     view,
     projection: projectionMatrix(camera, aspect),
-    ambient,
-    lights,
+    // Each object has its own. What's left over is the sky's: white, and no lights.
+    ambient: systemAmbient(ambient),
+    lights: [],
     draws,
     effects: effectDraws,
     unsupported: [...unsupported],

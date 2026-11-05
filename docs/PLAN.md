@@ -298,8 +298,14 @@ renderer. Random streams need not match retail; each appearance's sizes, colours
       type. Pinned by reading and by pixels (`src/scene/space.*`). The drain order and its three constants were
       checked in `Freelancer-original.exe`. **Uncaptured.** The host supplies `lodRange`, each object's `field`
       and the scene's `SpaceField`.
-- [ ] Light selection, ambient, fog and nebula state. Lights are still the frame's, not per object as
-      `StarSysApplyObjectLighting` has them, and picking `SpaceField` (`FUN_0051b730`) belongs here too.
+- [x] Light selection and ambient, per object: `lightObject`, from `StarSysApplyObjectLighting` and
+      `engine_light.cpp`. Retail's XZ grid, four lights at most, the widest first and the file breaking ties,
+      `atten_curve` turning a sun at each object, `color_curve` on the host's clock, ambient lights, and D3D8
+      point lights in the shader. Pinned by reading and by pixels. **Uncaptured.** The host reads `[IGraph]`
+      and `[LightSource]` into `Graph` and `SpaceLight`.
+- [ ] Fog and nebula state: picking `SpaceField` (`FUN_0051b730`), a nebula's ambient over the system's,
+      the fog per object and over effects (`FogApplyColorAndRange`), and the clear colour in a nebula.
+- [ ] Lights beyond a system file's: a nebula's own `[LightSource]`s, and the ones equipment carries.
 - [ ] Compute `lodRange` from an archetype's lists (`ComputeLodPickThis`, `ApplyArchLodRanges`), far clamp included.
 - [ ] What `SpaceEffectsDrawFrame` does around effects: `ZFUNC` 4 where the program has `LESS`, the view test
       and `EXIST_OFFSCREEN` (`EffectTypeBucketWalk`), and the screen quads it flushes last (`ScreenQuadFlush`).

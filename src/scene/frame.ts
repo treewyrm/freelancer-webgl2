@@ -35,8 +35,13 @@ import { largestAxis, levelAt, levelEnds, levelMetric, type LodList } from './le
 
 export interface SceneLight {
   color: Vector3
-  /** World space, the way the light shines. */
+  /** World space, the way the light shines. A point light's is unused. */
   direction: Vector3
+  /** In world space, which makes it a point light: D3D8's, with no light past `range`. */
+  position?: Vector3
+  range?: number
+  /** Constant, linear and quadratic, of the distance. */
+  attenuation?: Vector3
 }
 
 /** What a skinned mesh adds: `skinMesh`'s influences and `boneTable`'s matrices, column-major. */
@@ -208,6 +213,8 @@ export interface Draw {
   sceneAmbient?: Vector3
   /** The frame's lights don't reach it. */
   lightless?: boolean
+  /** In place of the frame's, for this draw: space lights each object by its own. */
+  lights?: SceneLight[]
   /** In place of the frame's, for this draw. */
   projection?: Matrix4
   negateNormals: boolean

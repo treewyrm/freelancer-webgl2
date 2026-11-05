@@ -6,7 +6,7 @@ import { Matrix4 } from '@treewyrm/freelancer/math'
 import { createProgram, type Program } from '#/gl/program.js'
 import { ATTRIBUTE_LOCATIONS } from '#/mesh/plan.js'
 import { MAX_BONES } from '#/deformable/skin.js'
-import type { Draw, Frame } from '#/scene/frame.js'
+import type { Draw, Frame, SceneLight } from '#/scene/frame.js'
 
 /** Retail lights a model with at most four (library `THORN.md`, `lt_grp`). */
 export const MAX_LIGHTS = 4
@@ -41,6 +41,10 @@ uniform vec3 materialEmissive;
 uniform int lightCount;
 uniform vec3 lightColor[${MAX_LIGHTS}];
 uniform vec3 lightDirection[${MAX_LIGHTS}];
+// A point light's world position, with w 1. A directional light has w 0.
+uniform vec4 lightPosition[${MAX_LIGHTS}];
+uniform float lightRange[${MAX_LIGHTS}];
+uniform vec3 lightAttenuation[${MAX_LIGHTS}];
 
 uniform bool colorVertex;
 uniform bool nomad;
@@ -112,7 +116,17 @@ void main() {
   vec3 sum = materialEmissive + materialAmbient * sceneAmbient;
   for (int i = 0; i < lightCount; i++) {
     vec3 toLight = -normalize(mat3(view) * lightDirection[i]);
-    sum += source.rgb * lightColor[i] * max(dot(eyeNormal, toLight), 0.0);
+    float attenuation = 1.0;
+    // D3D8's point light: nothing past its range, and \`1 / (a0 + a1 d + a2 d²)\` within it.
+    if (lightPosition[i].w > 0.5) {
+      vec3 offset = (view * vec4(lightPosition[i].xyz, 1.0)).xyz - eyePosition.xyz;
+      float d = length(offset);
+      if (d > lightRange[i]) continue;
+      toLight = offset / d;
+      vec3 a = lightAttenuation[i];
+      attenuation = 1.0 / (a.x + a.y * d + a.z * d * d);
+    }
+    sum += source.rgb * lightColor[i] * attenuation * max(dot(eyeNormal, toLight), 0.0);
   }
   // Saturated here, per vertex, before it is interpolated or meets a texture.
   lit = clamp(vec4(sum, source.a), 0.0, 1.0);
@@ -179,6 +193,9 @@ const UNIFORMS = [
   'lightCount',
   'lightColor',
   'lightDirection',
+  'lightPosition',
+  'lightRange',
+  'lightAttenuation',
   'colorVertex',
   'nomad',
   'unlit',
@@ -245,10 +262,36 @@ export const setFrameUniforms = (
   gl.uniformMatrix4fv(uniforms.view, false, Matrix4.toArray(view))
   gl.uniformMatrix4fv(uniforms.projection, false, Matrix4.toArray(projection))
   gl.uniform3f(uniforms.sceneAmbient, ambient.x, ambient.y, ambient.z)
+  setLights(gl, uniforms, lights)
+}
+
+const ORIGIN = { x: 0, y: 0, z: 0 }
+
+/** A frame's lights, or one draw's in their place. */
+export const setLights = (
+  gl: WebGL2RenderingContext,
+  uniforms: DcDtProgram['uniforms'],
+  lights: readonly SceneLight[],
+): void => {
+  if (lights.length > MAX_LIGHTS) throw new RangeError(`More than ${MAX_LIGHTS} lights`)
   gl.uniform1i(uniforms.lightCount, lights.length)
   if (!lights.length) return
   gl.uniform3fv(uniforms.lightColor, vectors(lights.map(({ color }) => color)))
   gl.uniform3fv(uniforms.lightDirection, vectors(lights.map(({ direction }) => direction)))
+  gl.uniform4fv(
+    uniforms.lightPosition,
+    new Float32Array(
+      lights.flatMap(({ position }) => {
+        const { x, y, z } = position ?? ORIGIN
+        return [x, y, z, position ? 1 : 0]
+      }),
+    ),
+  )
+  gl.uniform1fv(uniforms.lightRange, new Float32Array(lights.map(({ range }) => range ?? 0)))
+  gl.uniform3fv(
+    uniforms.lightAttenuation,
+    vectors(lights.map(({ attenuation }) => attenuation ?? ORIGIN)),
+  )
 }
 
 /** What one draw changes. The textures themselves are the caller's to bind. */

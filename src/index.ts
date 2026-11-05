@@ -30,6 +30,17 @@ export {
   type SpaceObject,
   type SpaceScene,
 } from '#/scene/space.js'
+export {
+  evaluateColorGraph,
+  evaluateGraph,
+  lightObject,
+  lightSet,
+  systemAmbient,
+  type Graph,
+  type LightSet,
+  type ObjectLighting,
+  type SpaceLight,
+} from '#/scene/light.js'
 export { projectionMatrix, viewMatrix, type Camera } from '#/scene/camera.js'
 export { partTransforms } from '#/scene/hierarchy.js'
 export {

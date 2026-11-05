@@ -35,3 +35,14 @@ test('the far list leaves no depth: the ship draws over a square in front of it'
 test('on the main list the same square hides the ship', () => {
   assert.deepEqual(report.withDepth, [RED, RED])
 })
+
+test('a point light attenuates by distance and stops at its range, per vertex', () => {
+  const [full, half, none] = report.pointLit
+  const d = Math.sqrt(43)
+  // With `NORMALIZENORMALS` off, the world's scale of 3 leaves the normal a third as long, as in D3D8.
+  const facing = 5 / d / 3
+  assert.ok(Math.abs(full! - 255 * facing) <= 1, `${full}`)
+  assert.ok(Math.abs(half! - (255 * facing) / (0.4 * d)) <= 1, `${half}`)
+  // Its range reaches the middle, but no corner, and D3D8 lights the corners.
+  assert.equal(none, 0)
+})

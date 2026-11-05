@@ -238,6 +238,27 @@ test('a space frame passes the frame limits on to its models', () => {
   )
 })
 
+test('each object is lit by the lights that reach it, and the frame keeps the system ambient', () => {
+  const light = {
+    type: 'point' as const,
+    position: { x: 0, y: 0, z: -100 },
+    color: { x: 255, y: 255, z: 255 },
+    range: 50,
+  }
+  const frame = collectSpaceFrame(
+    sceneOf([objectOf('near', 100), objectOf('far', 900)], {
+      lights: [light],
+      ambient: { x: 51, y: 102, z: 153 },
+    }),
+  )
+  const [far, near] = frame.draws
+  assert.deepEqual(far!.lights, [])
+  assert.equal(near!.lights!.length, 1)
+  assert.deepEqual(near!.sceneAmbient, { x: 0.2, y: 0.4, z: 0.6 })
+  assert.deepEqual(frame.ambient, { x: 0.2, y: 0.4, z: 0.6 })
+  assert.deepEqual(frame.lights, [])
+})
+
 const NEBULA = {}
 const fieldOf = (enclosure: 0 | 1 | 2, fields: Partial<SpaceField> = {}): SpaceField => ({
   nebula: NEBULA,

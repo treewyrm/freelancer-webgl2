@@ -8,7 +8,7 @@ import {
 } from '@treewyrm/freelancer/vmesh'
 import type { Fixture } from '#/harness.js'
 import { createRenderer } from './render.js'
-import { collectSpaceFrame, type SpaceObject } from './space.js'
+import { collectSpaceFrame, type SpaceObject, type SpaceScene } from './space.js'
 
 export interface SpaceReport {
   error: number
@@ -16,6 +16,8 @@ export interface SpaceReport {
   beyondFar: number[][]
   noDepth: number[][]
   withDepth: number[][]
+  /** The middle, lit by a point light at full, half and no strength. */
+  pointLit: number[]
 }
 
 // A square of half-size 1 facing +Z: FVF 0x112.
@@ -93,7 +95,10 @@ export default (async (gl) => {
     gl.readPixels(x, y, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixel)
     return [...pixel.subarray(0, 3)]
   }
-  const shot = (objects: SpaceObject[]): number[][] => {
+  const shot = (
+    objects: SpaceObject[],
+    lighting?: Pick<SpaceScene, 'ambient' | 'lights'>,
+  ): number[][] => {
     renderer.render(
       collectSpaceFrame({
         camera: {
@@ -105,8 +110,9 @@ export default (async (gl) => {
         },
         aspect: width / height,
         // Ambient alone, so a square reads as its `Dc`.
-        ambient: { x: 1, y: 1, z: 1 },
+        ambient: { x: 255, y: 255, z: 255 },
         lights: [],
+        ...lighting,
         objects,
       }),
     )
@@ -123,6 +129,27 @@ export default (async (gl) => {
   // The same two squares on the main list: now depth decides.
   const withDepth = shot([square(RED, 600, 50, 1000), square(GREEN, 500, 500, 100)])
 
+  // A point light 5 in front of a white square 6 wide, 10 away: each corner is lit, by
+  // `N·L / (a0 + a1 d)` at its own d of √43, and the middle blends four equal corners.
+  const lightAt = (attenuation: { x: number; y: number; z: number }, range: number) =>
+    shot([square([1, 1, 1], 10, 10, 3)], {
+      ambient: { x: 0, y: 0, z: 0 },
+      lights: [
+        {
+          type: 'point',
+          position: { x: 0, y: 0, z: -5 },
+          color: { x: 255, y: 255, z: 255 },
+          range,
+          attenuation,
+        },
+      ],
+    })[0]![0]!
+  const pointLit = [
+    lightAt({ x: 1, y: 0, z: 0 }, 50),
+    lightAt({ x: 0, y: 0.4, z: 0 }, 50),
+    lightAt({ x: 1, y: 0, z: 0 }, 6.5),
+  ]
+
   renderer.dispose()
-  return { error: gl.getError(), beyondFar, noDepth, withDepth }
+  return { error: gl.getError(), beyondFar, noDepth, withDepth, pointLit }
 }) satisfies Fixture<SpaceReport>
