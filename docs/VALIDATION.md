@@ -68,7 +68,10 @@ Models chosen because the earlier projects already found them useful for these f
 | M3 | Dyson platform | Detail map |
 | M4 | `run1-stock-menu` | Two real `.sph` planets and their shells, with no scene to set up, but no normals logged |
 | M4 | `planet_earth` | `planet_earth_3000`: `Masked2DetailMapMaterial`, its shell, terminator and limb |
-| M4 | `ew06` starsphere | Nebula, sky order |
+| M4 | `starsphere_li01` | Two layers, `DcDtEc` stars, `Nebula`, and a blended `DcDtEcOcOt` under the override |
+| M4 | `starsphere_st03b` | `DcDt` alone, with no normals |
+| M4 | `starsphere_ew05` | `Nebula`, two bright layers of one texture |
+| M4 | `starsphere_ew06` | `Nebula`, two layers of different textures |
 
 ## The capture
 
@@ -121,6 +124,16 @@ gamma ramp reads a linear 0..255 where D3D's range is 0..65535. That stays unexp
 screenshot shows no sign of it.
 
 ## Open questions
+
+**Why does `starsphere_ew05`'s green read low?** Its picture is 99.95% within 2, and its state matches,
+but its mean of 0.59 is over the usual 0.5, with green at -0.34, red at +0.08 and blue at +0.15 where
+the other three skies stay within 0.1. Nearly every pixel has two additive layers of the same texture,
+so a bias per layer would add and not cancel, and `starsphere_st03b`'s single layer has green at -0.10.
+That fits, and green is the one channel with its own precision in R5G6B5, but `starsphere_ew06` also
+has two R5G6B5 layers, of different textures, and no such bias. A final image can't separate layers, as both cover the same pixels. A lab copy of the
+model with one layer would tell. Its limit is 0.65 until then. Apart from that, 135 pixels differ by
+more than 4, up to 110, mostly on the thin bright streak, in both directions: slivers rasterized
+differently, as far as can be seen, which is too few to move the mean.
 
 **Does retail's glass reflect?** `SubmitEnvMapGeometry` binds `envmapglass` on stage 1 for the outer
 pass, and the capture shows it bound and `MODULATE2X` (draw 13). The rig's screenshot shows no such

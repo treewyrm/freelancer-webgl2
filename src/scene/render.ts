@@ -153,6 +153,7 @@ export const createRenderer = (gl: WebGL2RenderingContext): Renderer => {
       // What a UV set the mesh hasn't got reads (`bands_one_uv`), whatever a hook left here.
       gl.vertexAttrib2f(ATTRIBUTE_LOCATIONS.uv0, 0, 0)
       gl.vertexAttrib2f(ATTRIBUTE_LOCATIONS.uv1, 0, 0)
+      gl.vertexAttrib3f(ATTRIBUTE_LOCATIONS.normal, 0, 0, 0)
       gl.enable(gl.CULL_FACE)
       gl.frontFace(gl.CCW)
       gl.blendEquation(gl.FUNC_ADD)
@@ -193,13 +194,19 @@ export const createRenderer = (gl: WebGL2RenderingContext): Renderer => {
         gl.cullFace(draw.cull === 'back' ? gl.BACK : gl.FRONT)
       }
       gl.depthMask(draw.depthWrite)
-      gl.depthFunc(draw.depthFunc === 'lequal' ? gl.LEQUAL : gl.LESS)
+      gl.depthFunc({ less: gl.LESS, lequal: gl.LEQUAL, always: gl.ALWAYS }[draw.depthFunc])
       // A draw's own ambient lasts only for that draw.
       if (previousAmbient && !draw.sceneAmbient) {
         const { x, y, z } = frame.ambient
         gl.uniform3f(active.uniforms.sceneAmbient, x, y, z)
       }
       previousAmbient = draw.sceneAmbient !== undefined
+      gl.uniform1i(active.uniforms.lightCount, draw.lightless ? 0 : frame.lights.length)
+      gl.uniformMatrix4fv(
+        active.uniforms.projection,
+        false,
+        Matrix4.toArray(draw.projection ? Matrix4.multiply(shift, draw.projection) : projection),
+      )
       if (draw.blend) {
         gl.enable(gl.BLEND)
         const [source, destination] = {

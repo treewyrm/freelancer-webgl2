@@ -52,7 +52,7 @@ test('every retail model plans a frame, and what is left is known', { skip }, ()
     orientation: Matrix3.identity,
     fovh: 30,
     near: 1,
-    far: 10000,
+    far: 10000000,
   }
 
   let models = 0
@@ -78,7 +78,8 @@ test('every retail model plans a frame, and what is left is known', { skip }, ()
     // Every level, since the types can differ between them. The deepest any retail part has is under 8.
     for (let level = 0; level < 8; level++) {
       const model: SceneModel = {
-        parts: placeParts(root, Matrix4.translation({ x: 0, y: 0, z: -40 }), { level }),
+        // Far enough off that every part's bound stays in the frustum, so this counts planning.
+        parts: placeParts(root, Matrix4.translation({ x: 0, y: 0, z: -1000000 }), { level }),
         mesh: (id) => own.get(id) ?? meshes.get(id),
         material: (id) => materials.get(id),
         texture: (name) => textures.get(getResourceId(name)),

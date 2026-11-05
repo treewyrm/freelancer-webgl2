@@ -632,3 +632,40 @@ test('an atmosphere draws scaled, unwritten, with its UVs from the unscaled obje
   assert.equal(draw!.world.x.x, 2)
   assert.ok(draw!.atmosphere)
 })
+
+test('a starsphere stands at the camera and ignores depth, light and the queue', () => {
+  const base = scene(skinned({ type: 'DcDtOcOt', opacity: 0.5 }))
+  const camera = { ...base.camera, position: { x: 0, y: 0, z: 30 } }
+  const sky = collectFrame({
+    ...base,
+    camera,
+    models: [{ ...base.models[0]!, sky: 'starsphere' }, base.models[0]!],
+  })
+  const [first] = sky.draws
+  // Queued glass flushes last, and the sky's copy of it stays first.
+  assert.equal(first!.depthFunc, 'always')
+  assert.equal(first!.depthWrite, false)
+  assert.equal(first!.lightless, true)
+  assert.deepEqual(first!.sceneAmbient, { x: 1, y: 1, z: 1 })
+  const { w } = Matrix4.multiply(sky.view, first!.world)
+  assert.deepEqual([w.x, w.y, w.z], [0, 0, 0])
+  assert.equal(sky.draws[1]!.depthFunc, 'less')
+  // The opaque hook waits for the first blended draw that isn't sky.
+  assert.equal(sky.hooks.find(({ name }) => name === 'opaque')!.before, 1)
+})
+
+test('a backdrop keeps the view, and has planes of its own', () => {
+  const base = scene(skinned({ type: 'DcDt' }))
+  const camera = { ...base.camera, position: { x: 0, y: 0, z: 30 } }
+  const frame = collectFrame({
+    ...base,
+    camera,
+    models: [{ ...base.models[0]!, sky: 'backdrop' }],
+  })
+  const [draw] = frame.draws
+  assert.equal(draw!.depthFunc, 'always')
+  assert.equal(draw!.lightless, undefined)
+  assert.equal(draw!.sceneAmbient, undefined)
+  assert.deepEqual(draw!.world, base.models[0]!.parts[0]!.world)
+  assert.notDeepEqual(draw!.projection, frame.projection)
+})

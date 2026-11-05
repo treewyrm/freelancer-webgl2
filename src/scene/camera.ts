@@ -16,6 +16,23 @@ export const viewMatrix = ({ position, orientation }: Camera): Matrix4 =>
   Matrix4.invert(Matrix4.fromRotationTranslation(orientation, position))
 
 /**
+ * `ClassifySphere` (`FRoomCamera`, `FSpaceCamera`): whether a sphere in view space can reach the
+ * frustum. A room's also drops what covers under a pixel (rank 2), which isn't built: M8's.
+ */
+export const sphereInFrustum = (
+  { x, y, z }: Vector3,
+  radius: number,
+  { fovh, near, far }: Camera,
+  aspect: number,
+): boolean => {
+  if (radius - near < z || radius + z < -far) return false
+  const tanX = Math.tan((fovh * Math.PI) / 180)
+  const tanY = tanX / aspect
+  if ((Math.abs(x) + tanX * z) / Math.hypot(1, tanX) > radius) return false
+  return (Math.abs(y) + tanY * z) / Math.hypot(1, tanY) <= radius
+}
+
+/**
  * RP8 flips view Z and applies a left-handed D3D projection (`FDirectX8::SetPerspective`). For a GL
  * clip space that comes to this plain right-handed perspective: no axis is negated, and z / w maps
  * onto the same window depth as D3D's. `hvaspect` never reaches the screen, so aspect is the viewport's.

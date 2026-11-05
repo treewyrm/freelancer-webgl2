@@ -79,6 +79,22 @@ const mount = (name: string): void => {
 
   const solars = `${SOLAR_ARCH}.retail`
   if (existsSync(solars)) renameSync(solars, SOLAR_ARCH)
+  const labSkies = (scene.sky ?? []).filter(({ category }) => category === 'Solar')
+  if (labSkies.length) {
+    copyFileSync(SOLAR_ARCH, solars)
+    const text = Buffer.from(Document.read(readFileSync(solars)).write('text')).toString('latin1')
+    const sections = labSkies.flatMap(({ archetype, file }) => [
+      '[Solar]',
+      `nickname = ${archetype}`,
+      'ids_name = 1',
+      'ids_info = 1',
+      'type = SATELLITE',
+      `DA_archetype = solar\\starsphere\\${file}`,
+      'mass = 1000',
+      'solar_radius = 10',
+    ])
+    writeFileSync(SOLAR_ARCH, `${text}\r\n${sections.join('\r\n')}\r\n`, 'latin1')
+  }
   if (scene.generated) {
     const { model, library } = generateBands(scene.generated)
     writeFileSync(join(SCRIPTS, 'bands.3db'), model)
@@ -88,7 +104,7 @@ const mount = (name: string): void => {
     const libraries = BAND_LIBRARIES.map((path) => path.replaceAll('/', '\\'))
     const lines = [
       '[Solar]',
-      `nickname = ${scene.model.archetype}`,
+      `nickname = ${scene.model!.archetype}`,
       'ids_name = 1',
       'ids_info = 1',
       'type = SATELLITE',

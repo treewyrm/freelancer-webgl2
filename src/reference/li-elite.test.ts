@@ -175,8 +175,8 @@ const CAMERA: Camera = {
 }
 
 const sceneModel = (): Matrix4 => {
-  const [x, y, z] = scenes.get('li_elite')!.model.orientation
-  const [px, py, pz] = scenes.get('li_elite')!.model.position
+  const [x, y, z] = scenes.get('li_elite')!.model!.orientation
+  const [px, py, pz] = scenes.get('li_elite')!.model!.position
   return Matrix4.fromRotationTranslation(
     {
       x: { x: x[0], y: y[0], z: z[0] },

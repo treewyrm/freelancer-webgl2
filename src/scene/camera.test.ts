@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { Matrix3, Matrix4 } from '@treewyrm/freelancer/math'
-import { projectionMatrix, viewMatrix, type Camera } from './camera.js'
+import { projectionMatrix, sphereInFrustum, viewMatrix, type Camera } from './camera.js'
 
 const camera: Camera = {
   position: { x: 0, y: 0, z: 0 },
@@ -55,4 +55,31 @@ test('the view undoes the camera frame', () => {
   near(ahead.x, 0)
   near(ahead.y, 0)
   near(ahead.z, -3)
+})
+
+test('a sphere is culled only when wholly past one plane', () => {
+  // Half-angles of 45° across, at 4:3 so tan 36.87° up: a side plane is `x + z = 0`, off by √2.
+  const camera = {
+    position: { x: 0, y: 0, z: 0 },
+    orientation: Matrix3.identity,
+    fovh: 45,
+    near: 1,
+    far: 100,
+  }
+  const inside = (x: number, y: number, z: number, radius = 1) =>
+    sphereInFrustum({ x, y, z }, radius, camera, 4 / 3)
+  assert.equal(inside(0, 0, -10), true)
+  // Behind, and past the far plane, with their edges either side of it.
+  assert.equal(inside(0, 0, 1), false)
+  assert.equal(inside(0, 0, 0.5), false)
+  assert.equal(inside(0, 0, -0.5), true)
+  assert.equal(inside(0, 0, -101.5), false)
+  assert.equal(inside(0, 0, -100.5), true)
+  // Across: at depth 10 the plane's at x = 10, and a radius of 1 reaches √2 further.
+  assert.equal(inside(11.4, 0, -10), true)
+  assert.equal(inside(11.5, 0, -10), false)
+  assert.equal(inside(-11.5, 0, -10), false)
+  // Up: at depth 10 the plane's at y = 7.5, and 1 reaches 1.25 further.
+  assert.equal(inside(0, 8.7, -10), true)
+  assert.equal(inside(0, 8.8, -10), false)
 })

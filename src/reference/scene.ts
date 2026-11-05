@@ -10,7 +10,12 @@ type Rows = readonly [Vector, Vector, Vector]
 
 export interface ReferenceScene {
   name: string
-  model: {
+  /**
+   * A sky, drawn first, in this order. `Prop` is `petaldb.ini`'s. `Solar` adds a lab-only archetype
+   * for a file no retail table names.
+   */
+  sky?: { archetype: string; category: 'Prop' | 'Solar'; file: string }[]
+  model?: {
     /** Nickname in the table `category` selects. */
     archetype: string
     /** `Spaceship` is `[Ship]`, `Solar` is `[Solar]`. Exact, case included. */
@@ -80,7 +85,7 @@ const LIGHT_GROUP = 1
 
 /** Shapes and field order follow retail's `SCRIPTS/INTRO/gasminer3.thn`. */
 export const sceneScript = (scene: ReferenceScene): string => {
-  const { model, camera, ambient, lights } = scene
+  const { model, sky, camera, ambient, lights } = scene
 
   const entities = [
     value.table({
@@ -101,18 +106,33 @@ export const sceneScript = (scene: ReferenceScene): string => {
       }),
     }),
     value.table(common('Monitor_Reference', 'MONITOR', '', 0)),
-    value.table({
-      ...common('Model_Reference', 'COMPOUND', model.archetype, LIGHT_GROUP),
-      flags: value.identifier('LIT_DYNAMIC', 'LIT_AMBIENT'),
-      spatialprops: spatial(model.position, model.orientation),
-      userprops: value.table({ category: model.category }),
-    }),
-    ...(model.copies ?? []).map(({ position, orientation }, index) =>
+    // `usr_flg` 1 is the starsphere path, and `srt_grp` orders a room's groups, signed.
+    ...(sky ?? []).map(({ archetype, category }, index) =>
       value.table({
-        ...common(`Model_Reference_${index + 2}`, 'COMPOUND', model.archetype, LIGHT_GROUP),
+        ...common(`Sky_Reference_${index + 1}`, 'COMPOUND', archetype, 0),
+        srt_grp: index - (sky?.length ?? 0),
+        usr_flg: 1,
+        flags: value.identifier('LIT_DYNAMIC', 'LIT_AMBIENT'),
+        spatialprops: spatial([0, 0, 0], IDENTITY),
+        userprops: value.table({ category }),
+      }),
+    ),
+    ...(model
+      ? [
+          value.table({
+            ...common('Model_Reference', 'COMPOUND', model.archetype, LIGHT_GROUP),
+            flags: value.identifier('LIT_DYNAMIC', 'LIT_AMBIENT'),
+            spatialprops: spatial(model.position, model.orientation),
+            userprops: value.table({ category: model.category }),
+          }),
+        ]
+      : []),
+    ...(model?.copies ?? []).map(({ position, orientation }, index) =>
+      value.table({
+        ...common(`Model_Reference_${index + 2}`, 'COMPOUND', model!.archetype, LIGHT_GROUP),
         flags: value.identifier('LIT_DYNAMIC', 'LIT_AMBIENT'),
         spatialprops: spatial(position, orientation),
-        userprops: value.table({ category: model.category }),
+        userprops: value.table({ category: model!.category }),
       }),
     ),
     ...lights.map((light, index) =>
@@ -173,4 +193,4 @@ export const cameraOf = ({ camera }: ReferenceScene): Camera => ({
 
 /** Where the scene stands its model. */
 export const modelMatrixOf = ({ model }: ReferenceScene): Matrix4 =>
-  Matrix4.fromRotationTranslation(toRows(model.orientation), toVector(model.position))
+  Matrix4.fromRotationTranslation(toRows(model!.orientation), toVector(model!.position))

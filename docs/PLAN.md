@@ -24,8 +24,8 @@ An earlier attempt, `freelancer-render`, failed the other way, by transcribing t
 | [M1](#m1-first-picture) | One static ship, matched against retail | Done, canopy deferred |
 | [M2](#m2-in-the-model-viewer) | That ship in the real model viewer, with editor overlays | Done |
 | [M3](#m3-every-rigid-model) | All materials on rigid models, with animation and LOD | Done, some override types untested |
-| [M4](#m4-spheres-and-the-sky) | Planets, atmospheres, starspheres | **Next** |
-| [M5](#m5-characters) | Skinned characters | |
+| [M4](#m4-spheres-and-the-sky) | Planets, atmospheres, starspheres | Done, backdrop uncaptured |
+| [M5](#m5-characters) | Skinned characters | **Next** |
 | [M6](#m6-effects) | Alchemy effects | |
 | [M7](#m7-the-space-frame) | A whole system, as the game frames it | |
 | [M8](#m8-rooms-and-cutscenes) | Bases and THN playback | |
@@ -198,8 +198,15 @@ renderer**, so the two don't diverge.
       UV, and picture: 99.9% within 2 of 255, mean 0.22. **Uncaptured:** `DetailMap2Dm1Msk2PassMaterial`
       on a real `.sph`, and the single-pass fallback, as these assume the multipass and atmosphere
       options on, as a retail install has them.
-- [ ] `Nebula` materials; starsphere and backdrop overrides, with the game's draw order for the layers.
-- [ ] **You:** reference scenes for a planet, done as `planet_earth`, and a starsphere.
+- [x] `Nebula` materials; starsphere and backdrop overrides, with the game's draw order for the layers.
+      `SceneModel.sky`, in the order the host gives. All four skies below match in state, and in
+      picture, `starsphere_ew05` at a wider mean: see [VALIDATION.md](VALIDATION.md#open-questions).
+      Each part now culls against the frustum for every model (`RenderInstance`), which `starsphere_li01`
+      needs, 18 draws of 47. **Read only:** `BackdropMaterial`, which retail uses for `skydome_*` in
+      scenes, so M8's. **Uncaptured:** a position-only sky part, which `starsphere_st03b`'s camera culls,
+      and any lights a room leaves on over a lit sky material.
+- [x] **You:** reference scenes for a planet, `planet_earth`, and starspheres: `starsphere_li01`,
+      `starsphere_st03b`, `starsphere_ew05`, `starsphere_ew06`.
 
 **Done when** the sphere rows are state matched. The tessellation density is a budget in the game, so
 compare its density-independent results only.
@@ -247,6 +254,8 @@ renderer.
 ## M8: Rooms and cutscenes
 
 - [ ] Room frame: `room_control.cpp`, its star sphere, backdrop and shadow passes.
+- [ ] A room camera's rank 2 in `ClassifySphere`, which drops a part covering under a pixel.
+- [ ] A `BackdropMaterial` reference scene, with a `skydome_*` at `usr_flg` 2.
 - [ ] Thorn playback: clock, attachments, THN cameras and letterbox.
 - [ ] Texture animation, moved here from M3: `TickAllPlayback`, and base interiors to test it on.
 
@@ -264,6 +273,14 @@ renderer.
 
 Wanted later, and not needed to replace the old renderer. Scope it when it comes up: screen quads,
 fonts, `ximage` and `screen_quad_state`, in `src/freelancer/Client/`.
+
+## Later, beyond retail
+
+Wanted, and not part of matching the game, so none of this is on by default or in a reference path.
+
+- [ ] **Texture colour depth as an option.** Retail narrows an opaque Targa to R5G6B5 at load (`DAOT`,
+      `src/RP8/RP8.cpp`), which is where a starsphere's banding comes from. Keeping the 24 bits is a choice
+      in `planUpload`, set on the renderer. It reaches only Targas: a DXT texture has no more to keep.
 
 ## Out of scope
 

@@ -41,6 +41,8 @@ const CANOPY: Record<string, Box> = {
  */
 const WIDER: Record<string, { close: number; mean: number }> = {
   no_fighter: { close: 0.97, mean: 0.6 },
+  // Measured at 99.95% and a mean of 0.59, its state matching: see VALIDATION.md.
+  starsphere_ew05: { close: 0.995, mean: 0.65 },
 }
 
 // The door shield's ramp isn't bound in retail's capture either.
@@ -95,6 +97,10 @@ for (const [name, draws] of [
   ['bands_one_uv', 6],
   ['bands_planet', 9],
   ['planet_earth', 15],
+  ['starsphere_li01', 18],
+  ['starsphere_st03b', 4],
+  ['starsphere_ew05', 3],
+  ['starsphere_ew06', 2],
 ] as const)
   test(
     `${name} matches retail's screenshot, outside its menu and canopy`,

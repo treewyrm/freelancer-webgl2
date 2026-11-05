@@ -25,10 +25,10 @@ import {
 } from '@treewyrm/freelancer/vmesh'
 import { mapMaterialType, REGISTERED_TYPES, type MaterialMapRule } from '#/material/map.js'
 import { DEFAULT_SAMPLER, type SamplerState, type TextureWrap } from '#/texture/texture.js'
-import { projectionMatrix, viewMatrix, type Camera } from './camera.js'
+import { projectionMatrix, sphereInFrustum, viewMatrix, type Camera } from './camera.js'
 import { partTransforms } from './hierarchy.js'
 import { sampleUvAnimation, type UvTransform } from './uv-animation.js'
-import { levelAt, levelEnds, levelMetric, type LodList } from './level.js'
+import { largestAxis, levelAt, levelEnds, levelMetric, type LodList } from './level.js'
 
 export interface SceneLight {
   color: Vector3
@@ -63,6 +63,12 @@ export interface SceneModel {
   materialAnimations?: MaterialAnimLibrary
   /** `[MaterialMap]` from the host's own `dacom.ini`, in file order. Retail's when absent. */
   materialMap?: readonly MaterialMapRule[]
+  /**
+   * Drawn through `StarsphereMaterial`: at the camera, turned with the view alone, under white ambient
+   * and no lights. Or `BackdropMaterial`, where the camera stands, on planes of its own. Both ignore
+   * depth. The host orders models, so a sky goes first.
+   */
+  sky?: 'starsphere' | 'backdrop'
   /**
    * The instance's user data, which HUD icons and exclusion zones read: over `Ac` and `Oc`. The engine
    * sets it, so without it they use the material's own.
@@ -155,10 +161,14 @@ export interface Draw {
 
   cull: 'back' | 'front' | 'none'
   depthWrite: boolean
-  /** `D3DCMP_LESS` for most. */
-  depthFunc: 'less' | 'lequal'
+  /** `D3DCMP_LESS` for most. `always` is a sky's `ZENABLE 0`, which comes to the same pixels. */
+  depthFunc: 'less' | 'lequal' | 'always'
   /** Scene ambient in place of the frame's, for this draw. */
   sceneAmbient?: Vector3
+  /** The frame's lights don't reach it. */
+  lightless?: boolean
+  /** In place of the frame's, for this draw. */
+  projection?: Matrix4
   negateNormals: boolean
   normalizeNormals: boolean
   blend: boolean
@@ -714,6 +724,34 @@ const secondStage = (
   return { operation, texture: drawTexture(slot, entry) }
 }
 
+// `FFLAppearanceBase::DrawBackdrop`'s planes, from `BindArg`'s first flag.
+const BACKDROP_NEAR = 1
+const BACKDROP_FAR = 200000
+
+/**
+ * `DrawBackdrop`, `DrawStarsphere` and the draw they share. A starsphere's zeroed view translation is
+ * a world moved to the camera, as one view serves a frame. Which lights a room leaves on for it
+ * isn't read: space turns them off (`0x4101e0`), and no reference scene has any.
+ */
+const skyState = (
+  sky: 'starsphere' | 'backdrop',
+  world: Matrix4,
+  camera: Camera,
+  aspect: number,
+): Partial<Draw> => ({
+  depthWrite: false,
+  depthFunc: 'always',
+  ...(sky === 'backdrop'
+    ? {
+        projection: projectionMatrix({ ...camera, near: BACKDROP_NEAR, far: BACKDROP_FAR }, aspect),
+      }
+    : {
+        world: Matrix4.multiply(Matrix4.translation(camera.position), world),
+        sceneAmbient: WHITE,
+        lightless: true,
+      }),
+})
+
 interface Queued {
   depth: number
   draws: Draw[]
@@ -747,6 +785,8 @@ const batchDepth = (
 /** Lists a model's draws, its parts in the order given and each part's groups in order. */
 const collectModel = (
   model: SceneModel,
+  camera: Camera,
+  aspect: number,
   view: Matrix4,
   time: number,
   draws: Draw[],
@@ -761,6 +801,20 @@ const collectModel = (
       unsupported.add(`mesh ${reference.meshId}`)
       continue
     }
+
+    // `RenderInstance`, per part: a compound's children recurse whatever became of their parent. A
+    // sky is tested as it's drawn, at the camera. Reports below come first, so none depends on the view.
+    const placed =
+      model.sky === 'starsphere'
+        ? Matrix4.multiply(Matrix4.translation(camera.position), world)
+        : world
+    const { center, radius } = reference.boundingSphere
+    const visible = sphereInFrustum(
+      Matrix4.transformPoint(center, Matrix4.multiply(view, placed)),
+      (radius < 0.001 ? 1 : radius) * largestAxis(world),
+      camera,
+      aspect,
+    )
 
     for (const { materialId, startIndex, elementCount } of getMeshDraw(mesh, reference)) {
       const material = model.material(faceMaterial ?? materialId)
@@ -799,6 +853,8 @@ const collectModel = (
           : undefined
       const animated = anim && sampleUvAnimation(anim, time)
 
+      if (!visible) continue
+
       // A queued material's passes stay together, being one submission (`ProcessQueuedBin`).
       const passes = passesOf(kind, type, material, model).map((pass) =>
         model.cloaked && kind !== 'nomad'
@@ -806,7 +862,9 @@ const collectModel = (
           : pass,
       )
       const target: Draw[] = []
-      const queuedHere = BATCHED.test(type) && passes[0]!.blend
+      // The sky's override calls the batched face's `Submit` itself, so it never reaches a queue
+      // (`FMaterialImpl::DrawBackdrop`), and draws where it stands.
+      const queuedHere = !model.sky && BATCHED.test(type) && passes[0]!.blend
       if (queuedHere)
         queued.push({ depth: batchDepth(mesh, reference, world, view), draws: target })
 
@@ -875,6 +933,7 @@ const collectModel = (
           ...(animated ? { uvTransform: animated } : {}),
           ...pass,
           ...(cube?.type === 'cube' ? { environmentTexture: cube } : {}),
+          ...(model.sky ? skyState(model.sky, world, camera, aspect) : {}),
         })
       }
     }
@@ -884,7 +943,8 @@ const collectModel = (
 const BLACK_BACKGROUND: Vector3 = { x: 0, y: 0, z: 0 }
 
 const hooksOf = (draws: Draw[]): FrameHook[] => {
-  const firstBlended = draws.findIndex(({ blend }) => blend)
+  // A sky blends before anything opaque, and isn't what this hook waits for.
+  const firstBlended = draws.findIndex(({ blend, depthFunc }) => blend && depthFunc !== 'always')
   return [
     { name: 'begin', before: 0 },
     { name: 'opaque', before: firstBlended === -1 ? draws.length : firstBlended },
@@ -907,7 +967,7 @@ export const collectFrame = ({
   const view = viewMatrix(camera)
   const queued: Queued[] = []
   for (const model of models)
-    collectModel(model, view, time, draws, queued, unsupported, unregistered)
+    collectModel(model, camera, aspect, view, time, draws, queued, unsupported, unregistered)
   // A room flushes its queue once, after all its objects (`RoomBatcherEnd`, `ku_dragon_pair`). Space
   // does so per object, which M7 will need. Stable, where retail's qsort leaves equal keys in no set order.
   queued.sort((a, b) => a.depth - b.depth)

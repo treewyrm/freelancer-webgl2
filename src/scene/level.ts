@@ -56,7 +56,7 @@ export const levelAt = (
   return source.type === 'vmeshpart' ? source : source.levels[level]
 }
 
-const largestAxis = ({ x, y, z }: Matrix4): number =>
+export const largestAxis = ({ x, y, z }: Matrix4): number =>
   Math.max(Math.hypot(x.x, x.y, x.z), Math.hypot(y.x, y.y, y.z), Math.hypot(z.x, z.y, z.z)) || 1
 
 /**

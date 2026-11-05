@@ -10,6 +10,20 @@ const CAMERA = {
   far: 10000,
 } as const
 
+const starsphere = (name: string, sky: NonNullable<ReferenceScene['sky']>): ReferenceScene => ({
+  name,
+  sky,
+  camera: {
+    position: [500, -200, 900],
+    orientation: rotation(40, -15),
+    fovh: 40,
+    near: 1,
+    far: 100000,
+  },
+  ambient: [0, 0, 0],
+  lights: [],
+})
+
 export const scenes: ReadonlyMap<string, ReferenceScene> = new Map(
   [
     {
@@ -198,5 +212,21 @@ export const scenes: ReadonlyMap<string, ReferenceScene> = new Map(
       ambient: [40, 40, 40],
       lights: [{ color: [255, 255, 255], direction: [1, -0.3, -0.6], range: 100000 }],
     } satisfies ReferenceScene,
+    // M4: the sky, four ways. A camera away from the origin, turned, shows it stays locked to it.
+    starsphere('starsphere_li01', [
+      { archetype: 'starsphere_Li01_stars', category: 'Prop', file: 'starsphere_li01_stars.cmp' },
+      { archetype: 'starsphere_Li01', category: 'Prop', file: 'starsphere_li01.cmp' },
+    ]),
+    // `DcDt` alone, some of it with no normals or UVs, and reaching past 40,000.
+    starsphere('starsphere_st03b', [
+      { archetype: 'starsphere_St03b', category: 'Prop', file: 'starsphere_st03b.cmp' },
+    ]),
+    // No retail table names these two, as only their systems load them.
+    starsphere('starsphere_ew05', [
+      { archetype: 'reference_sky_ew05', category: 'Solar', file: 'starsphere_ew05.cmp' },
+    ]),
+    starsphere('starsphere_ew06', [
+      { archetype: 'reference_sky_ew06', category: 'Solar', file: 'starsphere_ew06.cmp' },
+    ]),
   ].map((scene) => [scene.name, scene]),
 )

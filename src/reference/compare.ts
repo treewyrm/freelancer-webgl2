@@ -80,8 +80,9 @@ export const assertFrameMatches = (
       )
     }
 
-    // D3DCMP_LESS 2, LESSEQUAL 4.
-    assert.equal(retail.states['ZFUNC'], ours.depthFunc === 'lequal' ? 4 : 2, what)
+    // D3DCMP_LESS 2, LESSEQUAL 4, ALWAYS 8.
+    assert.equal(retail.states['ZFUNC'], { less: 2, lequal: 4, always: 8 }[ours.depthFunc], what)
+    assert.equal(retail.states['ZENABLE'], ours.depthFunc === 'always' ? 0 : 1, what)
     if (ours.sceneAmbient) assert.equal(retail.states['AMBIENT'], 0xffffffff, what)
 
     // Stage 0's transform is on when ours is.

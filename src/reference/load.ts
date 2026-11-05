@@ -1,5 +1,6 @@
 /** Loads a reference scene's assets into a renderer scene, from whatever reads bytes. */
 import { getMaterial, readMaterialLibrary } from '@treewyrm/freelancer/material'
+import { Matrix4 } from '@treewyrm/freelancer/math'
 import {
   readMaterialAnimLibrary,
   readRigidModel,
@@ -8,7 +9,7 @@ import {
 import { readTextureLibrary, type TextureEntry } from '@treewyrm/freelancer/texture'
 import { Directory } from '@treewyrm/freelancer/utf'
 import { getMesh, readVMeshLibrary } from '@treewyrm/freelancer/vmesh'
-import { placeParts, type Scene } from '#/scene/frame.js'
+import { placeParts, type Scene, type SceneModel } from '#/scene/frame.js'
 import { placeSphere } from '#/scene/sphere.js'
 import { BAND_LIBRARIES } from './bands.js'
 import { generateBands } from './generate.js'
@@ -91,12 +92,42 @@ const scaled = ([x, y, z]: readonly [number, number, number]) => ({
   z: z / 255,
 })
 
+const SKY_FOLDER = 'SOLAR/STARSPHERE'
+
+/** A sky file as a model of its own: the libraries are inside it. */
+const loadSky = async (file: string, read: ReadAsset): Promise<SceneModel> => {
+  const root = Directory.read(await read(`${SKY_FOLDER}/${file}`))
+  const meshes = readVMeshLibrary(root)
+  const materials = [...readMaterialLibrary(root)]
+  const textures = [...readTextureLibrary(root)]
+  return {
+    sky: 'starsphere',
+    parts: placeParts(readRigidModel(root), Matrix4.identity),
+    mesh: (id) => getMesh(meshes, id),
+    material: (id) => getMaterial(materials, id),
+    texture: (name) => textures.find((entry) => entry.name.toLowerCase() === name.toLowerCase()),
+  }
+}
+
 export const loadScene = async (
   definition: ReferenceScene,
   read: ReadAsset,
 ): Promise<LoadedScene> => {
-  const assets = ASSETS[definition.model.archetype]
-  if (!assets) throw new Error(`No assets listed for ${definition.model.archetype}`)
+  const skies = await Promise.all((definition.sky ?? []).map(({ file }) => loadSky(file, read)))
+  const shared = {
+    camera: cameraOf(definition),
+    aspect: 1024 / 768,
+    ambient: scaled(definition.ambient),
+    lights: definition.lights.map(({ color, direction: [x, y, z] }) => ({
+      color: scaled(color),
+      direction: { x, y, z },
+    })),
+  }
+  const placedModel = definition.model
+  if (!placedModel) return { scene: { ...shared, models: skies } }
+
+  const assets = ASSETS[placedModel.archetype]
+  if (!assets) throw new Error(`No assets listed for ${placedModel.archetype}`)
 
   const root = definition.generated
     ? Directory.read(generateBands(definition.generated).model)
@@ -121,38 +152,35 @@ export const loadScene = async (
   const model: RigidModel = readRigidModel(root)
   return {
     scene: {
-      camera: cameraOf(definition),
-      aspect: 1024 / 768,
-      ambient: scaled(definition.ambient),
-      lights: definition.lights.map(({ color, direction: [x, y, z] }) => ({
-        color: scaled(color),
-        direction: { x, y, z },
-      })),
-      models: [definition.model, ...(definition.model.copies ?? [])].map((placed) => ({
-        parts:
-          model.type === 'sphere'
-            ? placeSphere(
-                model,
-                modelMatrixOf({ ...definition, model: { ...definition.model, ...placed } }),
-                {
-                  camera: cameraOf(definition),
-                  width: 1024,
-                  material: (id) => getMaterial(materials, id),
-                },
-              )
-            : placeParts(
-                model,
-                modelMatrixOf({ ...definition, model: { ...definition.model, ...placed } }),
-                { camera: cameraOf(definition), lod: [{ ranges: assets.lod }] },
-              ),
-        mesh: (id) => getMesh(meshes, id),
-        material: (id) => getMaterial(materials, id),
-        texture,
-        materialAnimations,
-        ...(assets.environment && !definition.generated?.noEnvironment
-          ? { environment: assets.environment }
-          : {}),
-      })),
+      ...shared,
+      models: [
+        ...skies,
+        ...[placedModel, ...(placedModel.copies ?? [])].map((placed) => ({
+          parts:
+            model.type === 'sphere'
+              ? placeSphere(
+                  model,
+                  modelMatrixOf({ ...definition, model: { ...placedModel, ...placed } }),
+                  {
+                    camera: cameraOf(definition),
+                    width: 1024,
+                    material: (id: number) => getMaterial(materials, id),
+                  },
+                )
+              : placeParts(
+                  model,
+                  modelMatrixOf({ ...definition, model: { ...placedModel, ...placed } }),
+                  { camera: cameraOf(definition), lod: [{ ranges: assets.lod }] },
+                ),
+          mesh: (id: number) => getMesh(meshes, id),
+          material: (id: number) => getMaterial(materials, id),
+          texture,
+          materialAnimations,
+          ...(assets.environment && !definition.generated?.noEnvironment
+            ? { environment: assets.environment }
+            : {}),
+        })),
+      ],
     },
   }
 }

@@ -54,7 +54,8 @@ No file names these; the engine applies them.
 | `WireMaterial` | M10 | | | | |
 | `WireMaterial2` | M3, untested as a `Type` | | | | |
 | `EngineGlowMaterial` | M3, a mod can name it | Yes | Yes | `bands` | `bands` |
-| `StarsphereMaterial`, `BackdropMaterial` | M4 | | | | |
+| `StarsphereMaterial` | M4 | Yes | Yes | `starsphere_li01`, `starsphere_st03b`, `starsphere_ew05`, `starsphere_ew06` | The same four, `starsphere_ew05` at a wider tolerance |
+| `BackdropMaterial` | M4, M8 | Yes | Yes | | |
 | `ShadowMaterial` | M8; crashes as a `Type` | | | | |
 | `VisibleCounterMaterial` | M7; crashes as a `Type` | | | | |
 
@@ -67,7 +68,7 @@ No file names these; the engine applies them.
 | `IllumDetailMapMaterial` | Yes | Yes | `bands_planet`, `run1-stock-menu` | `bands_planet` |
 | `Masked2DetailMapMaterial` | Yes | Yes | `bands_planet`, `planet_earth` | `bands_planet`, `planet_earth` |
 | `AtmosphereMaterial` | Yes | Yes | `bands_planet`, `run1-stock-menu`, `planet_earth`, each vertex's UV | `bands_planet`, `planet_earth` |
-| `Nebula`, `NebulaTwo` | Yes | Yes | `bands`, on a rigid model | `bands`, on a rigid model |
+| `Nebula`, `NebulaTwo` | Yes | Yes | `bands`, `starsphere_li01`, `starsphere_ew05`, `starsphere_ew06` | The same, `starsphere_ew05` at a wider tolerance |
 
 ## Other (M5, M6)
 
