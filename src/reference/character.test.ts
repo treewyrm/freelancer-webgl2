@@ -14,21 +14,23 @@ import { scenes } from './scenes.js'
 
 const data = process.env['FREELANCER_DATA'] ?? join(homedir(), 'Downloads/Freelancer/DATA')
 const references = process.env['FREELANCER_REFERENCES'] ?? 'references'
-const run = join(references, 'character_reed/d3d8log.jsonl')
-const skip = !existsSync(data)
-  ? 'no retail DATA'
-  : !existsSync(run)
-    ? 'no character_reed capture in references'
-    : false
+const runOf = (name: string) => join(references, name, 'd3d8log.jsonl')
+const skipOf = (name: string) =>
+  !existsSync(data)
+    ? 'no retail DATA'
+    : !existsSync(runOf(name))
+      ? `no ${name} capture in references`
+      : false
+const skip = skipOf('character_reed')
 
-const load = async (): Promise<{ frame: Frame; retail: CaptureDraw[] }> => {
+const load = async (name = 'character_reed'): Promise<{ frame: Frame; retail: CaptureDraw[] }> => {
   const read = async (path: string) => {
     const file = readFileSync(join(data, path))
     return new Uint8Array(file.buffer, file.byteOffset, file.byteLength)
   }
-  const { scene } = await loadScene(scenes.get('character_reed')!, read)
+  const { scene } = await loadScene(scenes.get(name)!, read)
   const frame = collectFrame(scene)
-  const draws = readCapture(readFileSync(run, 'utf8')).frames.at(-1)!.draws
+  const draws = readCapture(readFileSync(runOf(name), 'utf8')).frames.at(-1)!.draws
   return { frame, retail: draws.slice(0, frame.draws.length) }
 }
 
@@ -121,3 +123,31 @@ test('each part stands where retail joined it', { skip }, async () => {
     )
   })
 })
+
+test('an eye bone at rest leaves the transform off', { skip }, async () => {
+  const { frame, retail } = await load()
+  frame.draws.forEach(({ uvTransform }, n) => {
+    assert.equal(uvTransform, undefined)
+    assert.equal(retail[n]!.stages[0]!.transform, undefined)
+  })
+})
+
+test(
+  "a turned eye bone slides only the eye's texture, by what retail set, moving no vertex",
+  { skip: skipOf('character_eyes') },
+  async () => {
+    const { frame, retail } = await load('character_eyes')
+    assert.deepEqual(frame.unsupported, [])
+    assertFrameMatches(frame, retail, indexTextures(data), { streamed: true })
+
+    const eyes = frame.draws.flatMap(({ uvTransform }, n) => (uvTransform ? [n] : []))
+    assert.deepEqual(eyes.length, 1)
+    const at = eyes[0]!
+    const { offset, scale } = frame.draws[at]!.uvTransform!
+    const theirs = retail[at]!.stages[0]!.transform!
+    // Row-major: retail's translation is the third row, as a 2D coordinate reads one.
+    assert.deepEqual(scale, [1, 1])
+    assert.ok(Math.abs(offset[0] - theirs[8]!) < 1e-5, `${offset} against ${theirs}`)
+    assert.ok(Math.abs(offset[1] - theirs[9]!) < 1e-5, `${offset} against ${theirs}`)
+  },
+)

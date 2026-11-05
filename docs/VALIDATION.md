@@ -68,6 +68,7 @@ Models chosen because the earlier projects already found them useful for these f
 | M3 | Dyson platform | Detail map |
 | M4 | `run1-stock-menu` | Two real `.sph` planets and their shells, with no scene to set up, but no normals logged |
 | M4 | `planet_earth` | `planet_earth_3000`: `Masked2DetailMapMaterial`, its shell, terminator and limb |
+| M5 | `character_eyes` | The same pose close up, its eyes held on a marker by `START_IK`: the eye bone's UV offset |
 | M5 | `character_reed` | A whole costume at the last keyframe of a one-shot script: skinning, joining, the seated pose |
 | M4 | `starsphere_li01` | Two layers, `DcDtEc` stars, `Nebula`, and a blended `DcDtEcOcOt` under the override |
 | M4 | `starsphere_st03b` | `DcDt` alone, with no normals |
@@ -125,15 +126,6 @@ gamma ramp reads a linear 0..255 where D3D's range is 0..65535. That stays unexp
 screenshot shows no sign of it.
 
 ## Open questions
-
-**Do retail's eyes move?** `FEyeMaterial::Bind` works out the eye bone's offset and writes it to the stage's
-texture matrix, then sets `COUNT2` (`deformable2.dll`, `0x6600102` to `0x66001a3`). It writes `m[0][2]` and
-`m[1][2]`, which the DLL's own stack offsets confirm. D3D applies `(u, v, 1, 0) · M` to two coordinates, so
-a translation belongs in `m[2][0]` and `m[2][1]`, and those two cells only reach an output that's dropped.
-So the offset reads as doing nothing, against the library's `DEFORMABLE.md`, which has the eye sliding. Our
-renderer draws no offset. `character_reed` can't tell, as no eye bone moves: its transform is off. A
-facial script that turns the eyes, against a screenshot, would settle it, and the capture would show
-the matrix the rig got.
 
 **Why does `starsphere_ew05`'s green read low?** Its picture is 99.95% within 2, and its state matches,
 but its mean of 0.59 is over the usual 0.5, with green at -0.34, red at +0.08 and blue at +0.15 where

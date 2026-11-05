@@ -11,7 +11,7 @@ import {
   type FaceGroup,
   type Level,
 } from '@treewyrm/freelancer/deformable'
-import { Matrix3, Matrix4 } from '@treewyrm/freelancer/math'
+import { Matrix3, Matrix4, Quat } from '@treewyrm/freelancer/math'
 import { Directory } from '@treewyrm/freelancer/utf'
 import { Primitive } from '@treewyrm/freelancer/vmesh'
 import { boneTable, MAX_BONES, placeCostume, placeSkin, skinMesh } from './skin.js'
@@ -287,4 +287,61 @@ test('a seam nothing seats keeps the identity as its world, and past the cursor 
   // `W(root)⁻¹ · B`: torn towards the world origin.
   assert.deepEqual(applied(placed!.skin!.bones, 1, 0, 0, 0), [-6, 0, 0])
   assert.deepEqual(applied(placed!.skin!.bones, 3, 0, 0, 0), [0, 0, 0])
+})
+
+const eyed = (z: { x: number; y: number; z: number }, parent: Matrix3 = Matrix3.identity) => {
+  const uvBone = {
+    bone: 1,
+    scaleU: 0.4,
+    scaleV: 0.4,
+    minU: -0.2,
+    maxU: 0.2,
+    minV: -0.1,
+    maxV: 0.1,
+    distance: 1,
+  }
+  const level = single()
+  ;(level.geometry as { uvBone?: unknown }).uvBone = uvBone
+  const model = {
+    levels: [level],
+    bones: [
+      { ...bone(0), name: 'head', hardpoints: [] },
+      { ...bone(0), name: 'eye', hardpoints: [] },
+    ],
+    constraints: [
+      {
+        parent: 'head',
+        child: 'eye',
+        joint: {
+          type: 'sphere',
+          position: { x: 0, y: 0, z: 0 },
+          offset: { x: 0, y: 0, z: 0 },
+          orientation: Matrix3.identity,
+        },
+      },
+    ],
+  } as unknown as DeformableModel
+  const length = Math.hypot(z.x, z.y, z.z)
+  const unit = { x: z.x / length, y: z.y / length, z: z.z / length }
+  const orientation = Quat.fromTo({ x: 0, y: 0, z: 1 }, unit)
+  const root = Matrix4.fromRotationTranslation(parent, { x: 0, y: 0, z: 0 })
+  return placeSkin(model, root, { jointState: () => ({ orientation }) })!.eyeOffset
+}
+
+test("an eye's offset is its bone's Z in its parent's frame, scaled, and clamped to the bone", () => {
+  const offset = eyed({ x: 0.1, y: -0.05, z: 1 })!
+  const length = Math.hypot(0.1, 0.05, 1)
+  assert.ok(Math.abs(offset[0] - (0.4 * 0.1) / length) < 1e-5, `${offset}`)
+  assert.ok(Math.abs(offset[1] - (0.4 * -0.05) / length) < 1e-5, `${offset}`)
+  assert.deepEqual(eyed({ x: 1, y: 1, z: 0.01 }), [0.2, 0.1])
+  assert.deepEqual(eyed({ x: -1, y: -1, z: 0.01 }), [-0.2, -0.1])
+})
+
+test('an eye within the dead zone has no offset at all', () => {
+  assert.equal(eyed({ x: 0, y: 0, z: 1 }), undefined)
+})
+
+test("the head turning doesn't move the eye, as the offset is in its parent's frame", () => {
+  const turned = Matrix3.axisAngle({ x: 0, y: 1, z: 0 }, 1)
+  assert.equal(eyed({ x: 0, y: 0, z: 1 }, turned), undefined)
 })

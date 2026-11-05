@@ -27,6 +27,8 @@ export interface ReferenceScene {
     duration: number
     position: Vector
     orientation: Rows
+    /** Aims the eyes at this point, through a `MARKER`, as 1,499 retail `START_IK` events do. */
+    gaze?: Vector
   }
   model?: {
     /** Nickname in the table `category` selects. */
@@ -140,6 +142,14 @@ export const sceneScript = (scene: ReferenceScene): string => {
           }),
         ]
       : []),
+    ...(character?.gaze
+      ? [
+          value.table({
+            ...common('Gaze_Reference', 'MARKER', '', 0),
+            spatialprops: spatial(character.gaze, IDENTITY),
+          }),
+        ]
+      : []),
     ...(model
       ? [
           value.table({
@@ -198,6 +208,30 @@ export const sceneScript = (scene: ReferenceScene): string => {
               time_scale: 1,
               weight: 1,
               heading: -1,
+            }),
+          ),
+        ]
+      : []),
+    // Shaped as `SCRIPTS/GCS/gcs_fmsit_a01ag_01.thn` writes them, holding for the whole scene.
+    ...(character?.gaze
+      ? [
+          value.list(
+            0,
+            value.identifier('START_IK'),
+            value.list('Char_Reference', 'Gaze_Reference'),
+            value.table({
+              duration: 3600,
+              end_effector: 'Eye IK Left',
+              count_to_root: 1,
+              target_part: '',
+              target_type: value.identifier('ROOT'),
+              damping: 1,
+              up: value.identifier('Y_AXIS'),
+              front: value.identifier('Z_AXIS'),
+              point_at: 1,
+              move_to: 0,
+              transition_duration: 0.79,
+              event_flags: 128,
             }),
           ),
         ]

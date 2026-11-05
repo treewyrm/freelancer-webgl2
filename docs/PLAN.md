@@ -225,8 +225,10 @@ Adapted from `freelancer-vscode`'s GPU skinning; see [ADAPTING.md](ADAPTING.md#g
       `placeSkin`, in FVF `0x112` with strips expanded at load as `ExpandTristrip` does. All 204 retail `.dfm` files and
       1,220 levels plan. `character_reed` matches at a script's last keyframe: see below. Culling uses the
       bind pose's bound, where retail's `PartBoundSphere` isn't read.
-- [x] `EyeMaterial`: `deformable2.dll`'s own `^eye*` rule, and `DcDt`'s states. Its bone's UV offset is
-      read as having no effect: see [VALIDATION.md](VALIDATION.md#open-questions).
+- [x] `EyeMaterial`: `deformable2.dll`'s own `^eye*` rule, `DcDt`'s states, and its bone's UV offset,
+      from `jointState`. `character_eyes` matches retail's matrix in state, and in picture: 99.98% within 2,
+      a mean of 0.42. Only one gaze is captured, saturated at both limits, so the scale between them is
+      as read. **`START_IK` itself is M8's**: the scene aims the bone's -Z by hand.
 - [ ] A detail level per part, and levels drawn rigid past the skinned count.
 - [x] Costumes joined from four `.dfm` files: `placeCostume`, by shared hardpoint name, roots and seams.
 - [x] **You:** a reference scene with a character. `character_reed`, at the last keyframe of a one-shot

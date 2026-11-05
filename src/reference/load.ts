@@ -9,7 +9,7 @@ import {
 import type { JointState } from '@treewyrm/freelancer/compound'
 import { readDeformableModel } from '@treewyrm/freelancer/deformable'
 import { getMaterial, readMaterialLibrary } from '@treewyrm/freelancer/material'
-import { Matrix3, Matrix4 } from '@treewyrm/freelancer/math'
+import { Matrix3, Matrix4, Quat } from '@treewyrm/freelancer/math'
 import {
   readMaterialAnimLibrary,
   readRigidModel,
@@ -102,12 +102,21 @@ const scaled = ([x, y, z]: readonly [number, number, number]) => ({
   z: z / 255,
 })
 
+const EYE_BONE = 'Eye IK Left'
+
 /**
  * A character where its script ends. A joint map's last sample is its joint's state (`DEFORMABLE.md`),
  * and the root stands at the script's height over its own place and yaw, carried by its object map.
  */
 const loadCharacter = async (
-  { parts, animations, script, position, orientation }: NonNullable<ReferenceScene['character']>,
+  {
+    parts,
+    animations,
+    script,
+    position,
+    orientation,
+    gaze,
+  }: NonNullable<ReferenceScene['character']>,
   read: ReadAsset,
 ): Promise<SceneModel[]> => {
   const roots = await Promise.all(parts.map(async (path) => Directory.read(await read(path))))
@@ -132,9 +141,34 @@ const loadCharacter = async (
     Matrix4.translation({ x: position[0], y: found.height ?? 0, z: position[2] }),
     orientationMatrix(orientation),
   )
-  const placed = placeCostume(roots.map(readDeformableModel), Matrix4.multiply(start, motion), {
-    jointState: ({ name }) => states.get(name.toLowerCase()),
-  })
+  const models = roots.map(readDeformableModel)
+  const place = () =>
+    placeCostume(models, Matrix4.multiply(start, motion), {
+      jointState: ({ name }) => states.get(name.toLowerCase()),
+    })
+  // `START_IK`'s solver is M8's. This turns the eye bone to the marker in its head's frame, which is
+  // near enough where retail saturates at the bone's limits, as `character_eyes` does. The bone's Z
+  // points out of the back of the head at rest, so -Z is what aims: measured, against `character_eyes`.
+  if (gaze) {
+    const head = place()[1]!.world
+    const target = Matrix4.transformPoint(
+      { x: gaze[0], y: gaze[1], z: gaze[2] },
+      Matrix4.invert(head),
+    )
+    const { joint } = models[1]!.constraints.find(({ child }) => child === EYE_BONE)!
+    const eye = joint.position!
+    const away = { x: eye.x - target.x, y: eye.y - target.y, z: eye.z - target.z }
+    const length = Math.hypot(away.x, away.y, away.z)
+    const { z: rest } = Matrix4.fromRotationTranslation(joint.orientation!, { x: 0, y: 0, z: 0 })
+    states.set(EYE_BONE.toLowerCase(), {
+      orientation: Quat.fromTo(rest, {
+        x: away.x / length,
+        y: away.y / length,
+        z: away.z / length,
+      }),
+    })
+  }
+  const placed = place()
   return placed.map((part, at) => {
     const materials = [...readMaterialLibrary(roots[at]!)]
     const textures = [...readTextureLibrary(roots[at]!)]

@@ -38,8 +38,7 @@ triangles start from another corner: the same triangle, and retail's indices her
 
 **Missing, confirmed in the decomp:**
 
-- `EyeMaterial`, which the extension has as `DcDt` and so shows the `Et` retail drops. Eyes are still there,
-  which may be right: see [VALIDATION.md](VALIDATION.md#open-questions).
+- The eye UV bone, and `EyeMaterial`, which the extension has as `DcDt` and so shows the `Et` retail drops.
 - A detail level per part, from `[DetailSwitchTable]`.
 - Levels past a part's skinned count draw rigid at bind (`Flag70`). The extension skins every level.
 
@@ -80,6 +79,15 @@ readings as disassembled, with addresses that can be checked one by one.
 
 Places where the decomp disagrees with the retail binary. Keep these, and report them upstream if you
 want them fixed there.
+
+### `FEyeMaterial::Bind`
+
+`src/Deformable2/EyeMaterial.cpp`, retail `0x65fff20`. Found 2026-11-05.
+
+It writes the eye offset to `m[0][2]` and `m[1][2]` of the stage's matrix, where a 2D coordinate never
+reads it. `character_eyes` captures `[1,0,0,0, 0,1,0,0, U,V,1,0, 0,0,0,1]`, the third row, and the eye
+moves. **Reading the stack offsets by hand reproduced the decomp's error**: the two stores sit between
+pushes that are easy to miscount. A capture of the matrix is what settled it.
 
 ### `FxBasicAppearance::FillTriangleGeometry`
 

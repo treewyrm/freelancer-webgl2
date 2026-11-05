@@ -102,6 +102,7 @@ for (const [name, draws] of [
   ['starsphere_ew05', 3],
   ['starsphere_ew06', 2],
   ['character_reed', 9],
+  ['character_eyes', 7],
 ] as const)
   test(
     `${name} matches retail's screenshot, outside its menu and canopy`,

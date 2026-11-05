@@ -239,6 +239,34 @@ export const scenes: ReadonlyMap<string, ReferenceScene> = new Map(
       ambient: [40, 40, 40],
       lights: [{ color: [255, 255, 255], direction: [0.5, -0.5, -1] }],
     } satisfies ReferenceScene,
+    {
+      // M5: do retail's eyes move? The same pose in close-up, the eyes held on a marker off to one side.
+      name: 'character_eyes',
+      character: {
+        costume: 'reed',
+        parts: [
+          'CHARACTERS/BODIES/li_rockford_body.dfm',
+          'CHARACTERS/HEADS/li_captain_head.dfm',
+          'CHARACTERS/HANDS/benchmarkmalehandleft.dfm',
+          'CHARACTERS/HANDS/benchmarkmalehandright.dfm',
+        ],
+        animations: 'CHARACTERS/ANIMATIONS/bodygenericmale.anm',
+        script: 'Sc_MLBODY_CHRB_GESTL_WHAT_000LV_XA_03',
+        duration: 1.77,
+        position: [0, 0, 0],
+        orientation: rotation(150, 0),
+        gaze: [3, 2.5, 2],
+      },
+      camera: {
+        position: [0, 1.22, 4],
+        orientation: IDENTITY,
+        fovh: 5,
+        near: 0.1,
+        far: 100,
+      },
+      ambient: [40, 40, 40],
+      lights: [{ color: [255, 255, 255], direction: [0.5, -0.5, -1] }],
+    } satisfies ReferenceScene,
     // M4: the sky, four ways. A camera away from the origin, turned, shows it stays locked to it.
     starsphere('starsphere_li01', [
       { archetype: 'starsphere_Li01_stars', category: 'Prop', file: 'starsphere_li01_stars.cmp' },

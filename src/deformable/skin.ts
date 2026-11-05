@@ -6,6 +6,7 @@ import {
   type Bone,
   type DeformableModel,
   type Level,
+  type UVBone,
 } from '@treewyrm/freelancer/deformable'
 import { Matrix4 } from '@treewyrm/freelancer/math'
 import {
@@ -196,6 +197,28 @@ export interface SkinOptions {
   pose?: 'chain' | 'bind'
 }
 
+// `EyeUvClampPair`: below this on both axes, the stage's transform stays off.
+const EYE_DEAD_ZONE = 1e-4
+
+/**
+ * What `FEyeMaterial::Bind` slides the eye's texture by: the bone's Z axis in its parent's frame. The
+ * decomp writes it to the wrong cells of the matrix, and `character_eyes` has it in the third row.
+ */
+const eyeOffset = (
+  { scaleU, scaleV, minU, maxU, minV, maxV, distance }: UVBone,
+  world: Matrix4 | undefined,
+  parent: Matrix4 | undefined,
+): [number, number] | undefined => {
+  if (!world) return undefined
+  const { x, y, z } = world.z
+  const axes = parent ?? Matrix4.identity
+  const across = axes.x.x * x + axes.x.y * y + axes.x.z * z
+  const along = axes.y.x * x + axes.y.y * y + axes.y.z * z
+  const [u, v] = [scaleU * across * distance, scaleV * along * distance]
+  if (Math.abs(u) <= EYE_DEAD_ZONE && Math.abs(v) <= EYE_DEAD_ZONE) return undefined
+  return [Math.min(maxU, Math.max(minU, u)), Math.min(maxV, Math.max(minV, v))]
+}
+
 const placement = ({
   orientation,
   position,
@@ -267,7 +290,25 @@ export const placeCostume = (
     const rootWorld = worlds[root.index]!
     const { mesh, reference, influences } = skinMesh(chosen, model.bones.length)
     const skin: DrawSkin = { influences, bones: boneTable(model.bones, worlds, rootWorld) }
-    parts.push({ reference, mesh, world: rootWorld, skin })
+    // Only the first UV bone drives, and only eye groups read it (`0x65f75ca`).
+    const uvBone = chosen.geometry.uvBone
+    const parentOf = new Map<number, number>()
+    const walk = (node: typeof root) => {
+      for (const child of node.children) {
+        parentOf.set(child.index, node.index)
+        walk(child)
+      }
+    }
+    walk(root)
+    const offset =
+      uvBone && eyeOffset(uvBone, worlds[uvBone.bone], worlds[parentOf.get(uvBone.bone) ?? -1])
+    parts.push({
+      reference,
+      mesh,
+      world: rootWorld,
+      skin,
+      ...(offset ? { eyeOffset: offset } : {}),
+    })
   })
   return parts
 }

@@ -53,6 +53,8 @@ export interface PlacedPart {
   /** That material's name, as the file writes it, for a report: an id can't be read back. */
   materialName?: string
   skin?: DrawSkin
+  /** Added to an `EyeMaterial` group's UVs, as its eye bone turns. */
+  eyeOffset?: [number, number]
   /** What the engine tells a sphere's shell of its size. Anything else reads 1 (`Field20` unset). */
   extent?: number
 }
@@ -871,7 +873,10 @@ const collectModel = (
         model.materialAnimations
           ? getMaterialAnim(model.materialAnimations, material.name)
           : undefined
-      const animated = anim && sampleUvAnimation(anim, time)
+      const animated =
+        type === 'EyeMaterial' && part.eyeOffset
+          ? { offset: part.eyeOffset, scale: [1, 1] as [number, number] }
+          : anim && sampleUvAnimation(anim, time)
 
       if (!visible) continue
 
