@@ -80,7 +80,8 @@ field's velocity, and eviction across appearances.
 **Two more findings from the captures.** Under a THN host dust never draws: `Thorn_Psys` follows each tick with
 a pass at 0 ms (`0x453ff0`), so the routine's speed is a distance over a step of 0 and its fade is 0. That same
 pass is when an appearance applies its fields, reading the real step's values. And retail's
-`FxOrientedAppearance.poolSize = 0` crashes the game (`effect_oriented`), against the ledger's "works".
+`FxOrientedAppearance.poolSize = 0` crashes the game, against the ledger's "works", and at 1000 it runs and
+matches (`effect_oriented`): a mod that sets the size is what can reach the type.
 
 **Left out on purpose.** Replay and fixed steps belong to a scrubbing host, which can make a new
 `EffectInstance` and step it. The affine closed form needs a fixed step, and transform feedback paid for
@@ -94,9 +95,8 @@ needs its own frame's `dt` to compare against.
 
 **Still open:**
 
-- **Uncaptured:** `FLDustAppearance`'s kite and fade, which a THN host can't show, so M7's;
-  `FxOrientedAppearance`, which crashes at retail's `poolSize` of 0; and gravity, radial, turbulence and
-  collide fields. A field's frame of lag stands on the source, with `effect_fields` consistent with it.
+- **Uncaptured:** `FLDustAppearance`'s kite and fade, which a THN host can't show, so M7's; and gravity,
+  radial, turbulence and collide fields. A field's frame of lag stands on the source, with `effect_fields` consistent with it.
 - **The green sprites:** `effect_sprites` and `effect_child` are off by up to 5 on pure green, about one step of
   a 16-bit texture's green. That the rig filters it otherwise is a guess.
 - An animated texture's own playback, which picks the atlas when `UseCommonTexFrame` is off (`0x6244ef0`). M8's.

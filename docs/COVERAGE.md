@@ -81,5 +81,5 @@ No file names these; the engine applies them.
 | `FLBeamAppearance` | M6 | From the ledger; see [ADAPTING.md](ADAPTING.md#alchemy-m6) | Yes | `effect_beams`, `effect_motion` by shape | `effect_beams` |
 | `FLDustAppearance` | M6, M7 | From the ledger | Yes | `effect_dust`: nothing under a THN host | |
 | `FxParticleAppearance` | M6 | Yes | Yes | `effect_child` | `effect_child` |
-| `FxOrientedAppearance` | M6 | Yes | Yes; crashes at retail's `poolSize` of 0 | | |
+| `FxOrientedAppearance` | M6 | Yes | Yes; crashes at retail's `poolSize` of 0 | `effect_oriented`, at 1000 | `effect_oriented`, at 1000 |
 | `FxMeshAppearance` | M6 | Yes; crashes the game on spawn | Reported, undrawn | | |

@@ -50,6 +50,8 @@ const WIDER: Record<string, { close: number; mean: number; compared?: number }> 
   effect_sprites: { close: 0.99, mean: 0.45 },
   // A green sprite again, as `effect_sprites`. Measured at 98.90% and a mean of 0.38.
   effect_child: { close: 0.985, mean: 0.45, compared: 4000 },
+  // Few pixels to compare. Measured at 99.90% and a mean of 0.36.
+  effect_oriented: { close: 0.995, mean: 0.45, compared: 4000 },
   // Few pixels to compare: two sprites, then one. Measured at 99.91% and a mean of 0.36.
   effect_folder: { close: 0.995, mean: 0.45, compared: 4000 },
 }

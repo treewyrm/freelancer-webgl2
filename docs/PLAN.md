@@ -278,8 +278,9 @@ Adapted from `freelancer-vscode`'s Alchemy; see [ADAPTING.md](ADAPTING.md#alchem
       anchors included, and in picture: 99.72%, a mean of 0.43. `effect_child` in draws, order and place, and
       picture: 98.90%, 0.38. `effect_fields` in age by depth and air velocity. `effect_pool` in the eviction:
       1,800 and 200 triangles. `effect_oriented` crashed the game. `effect_dust` draws nothing, as below.
-- [ ] **You:** `effect_oriented` again, now with `poolSize = 1000` written over `dacom.ini` for the run. Running
-      would pin the crash on retail's 0, and capture the sprites.
+- [x] **You:** `effect_oriented` again, with `poolSize = 1000` written over `dacom.ini` for the run. It runs, so
+      the crash is retail's 0. It matches in draws and every corner and UV, the frame's turn and the particle
+      transform included, and in picture: 99.90%, a mean of 0.36.
 - [ ] The extension's effect editor on this renderer, behind the same setting. It scrubs, so it replays by
       making a new instance, and needs hidden nodes, which `EffectInstance` doesn't take yet.
 

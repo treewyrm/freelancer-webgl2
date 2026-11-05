@@ -365,7 +365,7 @@ export const scenes: ReadonlyMap<string, ReferenceScene> = new Map(
     effect('effect_beams', 'beams', 1),
     // Press F9 past two seconds, when the third parent has died.
     effect('effect_child', 'child', 5),
-    // Retail's `poolSize` of 0 crashes the game on the first spawn.
+    // Retail's `poolSize` of 0 crashes the game, so this runs at 1000.
     effect('effect_oriented', 'oriented', 1, { pools: { FxOrientedAppearance: 1000 } }),
     effect('effect_fields', 'fields', 2),
     effect('effect_pool', 'pool', 1),
