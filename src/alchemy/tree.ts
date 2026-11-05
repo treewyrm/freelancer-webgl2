@@ -8,6 +8,8 @@ import {
 import { describeNode, type NodeDescriptor } from './nodes.js'
 
 export interface EffectNode {
+  /** The file's entry this came from, which is how a host names it. */
+  instance: NodeInstance
   /** What a CRC resolves to. A flagged entry is a folder and never looked up (`0x621efe7`). */
   descriptor?: NodeDescriptor
   /** The CRC, as text, when it resolved to nothing or to a type no DLL registers. */
@@ -62,6 +64,7 @@ export const buildEffect = (effect: Effect, resolve: ResolveNode): EffectScene =
       ? { name: '', lifeSpan: 3, category: 'folder', kind: 'folder' }
       : node && describeNode(node)
     scene.nodes.push({
+      instance,
       descriptor,
       missing: descriptor ? undefined : `0x${(instance.crc >>> 0).toString(16)}`,
       parent: -1,

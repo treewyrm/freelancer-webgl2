@@ -13,7 +13,7 @@ import {
 import { Matrix3, Matrix4, Quat, type Vector3, type Vector4 } from '@treewyrm/freelancer/math'
 import type { Appearance, Emitter, Field, NodeDescriptor, ParticleAppearance } from './nodes.js'
 import { frameInverse, localMatrix, transposeInto } from './transform.js'
-import type { EffectLookup, EffectScene } from './tree.js'
+import type { EffectLookup, EffectNode, EffectScene } from './tree.js'
 
 /** A lane's record, in floats. Position and velocity are in the appearance's frame, at `BORN`. */
 export const RECORD = 16
@@ -584,6 +584,27 @@ export class EffectInstance {
   /** Its emitters stop, and what they made lives out (`+0x34(1)`, `0x4f84d0`). */
   stop(): void {
     stopRun(this.#run, this.top)
+  }
+
+  /** Every live particle, in sub-effects too: which appearance holds it, its age, and its span. */
+  eachParticle(visit: (node: EffectNode, age: number, life: number) => void): void {
+    const walk = (node: RunNode) => {
+      if (node.dead) return
+      const { lane, records } = node as AppearanceNode
+      const entry = node.run.scene.nodes[node.index]!
+      if (lane)
+        for (let i = lane.tail; i < lane.head; i++) {
+          const o = i * RECORD
+          if (!aliveAt(lane, o)) continue
+          const age = lane.records[o + AGE]! + (lane.clock - lane.records[o + BORN]!)
+          visit(entry, age, lane.records[o + LIFE]!)
+        }
+      if (records)
+        for (const { state } of records)
+          if (state[AGE]! <= state[LIFE]!) visit(entry, state[AGE]!, state[LIFE]!)
+      for (const child of node.children) walk(child)
+    }
+    for (const node of this.top) walk(node)
   }
 
   /** One of the game's frames, at the step the host chooses (`0x4f8a20`). */

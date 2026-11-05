@@ -25,6 +25,7 @@ import {
 } from '@treewyrm/freelancer/vmesh'
 import { collectEffect, type EffectDraw } from '#/alchemy/draw.js'
 import type { EffectInstance } from '#/alchemy/effect.js'
+import type { EffectNode } from '#/alchemy/tree.js'
 import { mapMaterialType, REGISTERED_TYPES, type MaterialMapRule } from '#/material/map.js'
 import { DEFAULT_SAMPLER, type SamplerState, type TextureWrap } from '#/texture/texture.js'
 import { projectionMatrix, sphereInFrustum, viewMatrix, type Camera } from './camera.js'
@@ -105,6 +106,8 @@ export interface PlaceOptions {
 export interface SceneEffect {
   instance: EffectInstance
   texture: (name: string) => TextureEntry | undefined
+  /** An appearance left out isn't drawn, and still runs: a way of looking. Every one when absent. */
+  visible?: (node: EffectNode) => boolean
 }
 
 export interface Scene {
@@ -1012,8 +1015,8 @@ export const collectFrame = ({
   queued.sort((a, b) => a.depth - b.depth)
   for (const queue of queued) draws.push(...queue.draws)
   const effectDraws: EffectDraw[] = []
-  for (const { instance, texture } of effects)
-    collectEffect(instance, view, texture, effectDraws, unsupported)
+  for (const { instance, texture, visible } of effects)
+    collectEffect(instance, view, texture, effectDraws, unsupported, visible)
   return {
     background: background ?? BLACK_BACKGROUND,
     hooks: hooksOf(draws),

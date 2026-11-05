@@ -26,7 +26,7 @@ An earlier attempt, `freelancer-render`, failed the other way, by transcribing t
 | [M3](#m3-every-rigid-model) | All materials on rigid models, with animation and LOD | Done, some override types untested |
 | [M4](#m4-spheres-and-the-sky) | Planets, atmospheres, starspheres | Done, backdrop uncaptured |
 | [M5](#m5-characters) | Skinned characters | Done, mid-script frames uncaptured |
-| [M6](#m6-effects) | Alchemy effects | **In progress** |
+| [M6](#m6-effects) | Alchemy effects | **In progress**, your check of the editor left |
 | [M7](#m7-the-space-frame) | A whole system, as the game frames it | |
 | [M8](#m8-rooms-and-cutscenes) | Bases and THN playback | |
 | [M9](#m9-retire-the-old-renderer) | Old renderer deleted from the extension | |
@@ -281,8 +281,12 @@ Adapted from `freelancer-vscode`'s Alchemy; see [ADAPTING.md](ADAPTING.md#alchem
 - [x] **You:** `effect_oriented` again, with `poolSize = 1000` written over `dacom.ini` for the run. It runs, so
       the crash is retail's 0. It matches in draws and every corner and UV, the frame's turn and the particle
       transform included, and in picture: 99.90%, a mean of 0.36.
-- [ ] The extension's effect editor on this renderer, behind the same setting. It scrubs, so it replays by
-      making a new instance, and needs hidden nodes, which `EffectInstance` doesn't take yet.
+- [x] The extension's effect editor on this renderer, behind the same setting: `effect/game-run.ts` there, which
+      replays a scrub from 0 on a new instance. `SceneEffect.visible` hides an appearance, `eachParticle` feeds the
+      age playheads. Gizmos stay the old renderer's. Particle markers and sprite frames are off under the setting,
+      until M9: they read the old pool, whose particles aren't these.
+- [ ] **You:** open effects in the editor with the setting on: play, scrub, hide, mount on a model, move the host.
+      Checked so far by tests and one GPU run through the old renderer's gate, not in VS Code itself.
 
 **Done when** captured particle quads match by measurement, and the effect editor runs on this
 renderer. Random streams need not match retail; each appearance's sizes, colours and blends must.
@@ -321,6 +325,8 @@ renderer.
 ## M9: Retire the old renderer
 
 - [ ] Every surface on this renderer, switches defaulting on for a release, then removed.
+- [ ] The effect editor's particle markers and sprite frames, read from `EffectInstance`, and its gizmos' placement
+      and the host's travel from `effect/game-run.ts`, so the old pool stops stepping underneath.
 - [ ] Delete the game-path code from `src/webview/gl`, `alchemy` and `thn` in the extension. Editor
       overlays stay.
 

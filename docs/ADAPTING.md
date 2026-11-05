@@ -83,8 +83,8 @@ pass is when an appearance applies its fields, reading the real step's values. A
 `FxOrientedAppearance.poolSize = 0` crashes the game, against the ledger's "works", and at 1000 it runs and
 matches (`effect_oriented`): a mod that sets the size is what can reach the type.
 
-**Left out on purpose.** Replay and fixed steps belong to a scrubbing host, which can make a new
-`EffectInstance` and step it. The affine closed form needs a fixed step, and transform feedback paid for
+**Left out on purpose.** Replay and fixed steps belong to a scrubbing host, which makes a new
+`EffectInstance` and steps it, as the extension's `effect/game-run.ts` does. The affine closed form needs a fixed step, and transform feedback paid for
 17.7% of particle-steps at the extension's measure. A pushed lane steps on the CPU and uploads each frame.
 Bring either back only on a measurement from a real scene, which is M7's, and the affine form not at all
 unless the step is fixed: it's exact only at equal steps.

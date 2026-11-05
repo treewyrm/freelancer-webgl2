@@ -384,3 +384,76 @@ test("a THN host's zero-length pass lets a field act once a frame, with the real
   }
   assert.ok(Math.abs(speed() + 3) < 1e-4, `${speed()}`)
 })
+
+test('a hidden appearance draws nothing and keeps running', () => {
+  const { scene } = sceneOf([
+    {
+      root: true,
+      children: [
+        { node: emitter('e'), targets: ['a'] },
+        { node: basic('a') },
+        { node: emitter('f'), targets: ['b'] },
+        { node: basic('b') },
+      ],
+    },
+  ])
+  const instance = new EffectInstance(scene)
+  run(instance, 0.5)
+  const collect = (hide: boolean) => {
+    const draws: EffectDraw[] = []
+    const visible = (node: { descriptor?: { name: string } }) =>
+      !hide || node.descriptor?.name !== 'a'
+    collectEffect(instance, Matrix4.identity, () => undefined, draws, new Set(), visible)
+    return draws.length
+  }
+  assert.equal(collect(false), 2)
+  assert.equal(collect(true), 1)
+  assert.ok(appearance(instance, 0).lane!.count > 0)
+})
+
+test('hiding a particle appearance hides what it started, and not what sits beside it', () => {
+  const { scene } = sceneOf([
+    {
+      root: true,
+      children: [
+        { node: emitter('e'), targets: ['p'] },
+        { node: node('p', 'FxParticleAppearance', { ParticleApp_LifeName: 'test' }) },
+      ],
+    },
+  ])
+  const sub = sceneOf([
+    { root: true, children: [{ node: emitter('i'), targets: ['s'] }, { node: basic('s') }] },
+  ]).scene
+  const instance = new EffectInstance(scene, { lookup: () => sub })
+  run(instance, 0.5)
+  const count = (visible?: (n: { descriptor?: { name: string } }) => boolean) => {
+    const draws: EffectDraw[] = []
+    collectEffect(instance, Matrix4.identity, () => undefined, draws, new Set(), visible)
+    return draws.length
+  }
+  assert.ok(count() > 0)
+  assert.equal(
+    count((n) => n.descriptor?.name !== 'p'),
+    0,
+  )
+  const names = new Set<string | undefined>()
+  instance.eachParticle((entry) => names.add(entry.descriptor?.name))
+  assert.deepEqual([...names].sort(), ['p', 's'])
+})
+
+test('eachParticle reads every live age and names the file entry', () => {
+  const { effect, scene } = sceneOf([
+    { root: true, children: [{ node: emitter('e'), targets: ['a'] }, { node: basic('a') }] },
+  ])
+  const instance = new EffectInstance(scene)
+  run(instance, 0.5)
+  const ages: number[] = []
+  instance.eachParticle((entry, age, life) => {
+    assert.equal(entry.descriptor?.name, 'a')
+    assert.ok(effect.children[0]!.children.includes(entry.instance))
+    assert.equal(life, 10)
+    ages.push(age)
+  })
+  assert.equal(ages.length, appearance(instance, 0).lane!.count)
+  assert.ok(Math.max(...ages) <= 0.5 + 1e-6 && Math.min(...ages) >= -1e-6)
+})

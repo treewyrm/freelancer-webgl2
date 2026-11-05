@@ -42,6 +42,7 @@ export {
   buildEffect,
   lookupOver,
   type EffectLookup,
+  type EffectNode,
   type EffectScene,
   type ResolveNode,
 } from '#/alchemy/tree.js'

@@ -12,6 +12,7 @@ import type { Texture, TextureEntry } from '@treewyrm/freelancer/texture'
 import type { AppearanceNode, EffectInstance, FieldNode, Lane, RunNode } from './effect.js'
 import { AGE, BORN, LIFE, POSITION, RECORD } from './effect.js'
 import type { UVRect } from './curves.js'
+import type { EffectNode } from './tree.js'
 import type { Appearance, BeamAppearance, OrientedAppearance, Sprite } from './nodes.js'
 import { frameInverse, localMatrix } from './transform.js'
 
@@ -452,14 +453,17 @@ export const collectEffect = (
   texture: (name: string) => TextureEntry | undefined,
   draws: EffectDraw[],
   unsupported: Set<string>,
+  visible?: (node: EffectNode) => boolean,
 ): void => {
   const { sparam, lod } = instance.context
   const camera = frameInverse(view)
 
   const visit = (node: RunNode) => {
     if (node.dead) return
-    if (node.descriptor?.category === 'appearance') appear(node as AppearanceNode)
-    for (const child of node.children) visit(child)
+    const shown = !visible || visible(node.run.scene.nodes[node.index]!)
+    if (shown && node.descriptor?.category === 'appearance') appear(node as AppearanceNode)
+    // What a hidden particle appearance started is its picture, and what's under it in the file isn't.
+    for (const child of node.children) if (shown || child.run === node.run) visit(child)
   }
 
   const appear = (node: AppearanceNode) => {
