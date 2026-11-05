@@ -285,8 +285,8 @@ Adapted from `freelancer-vscode`'s Alchemy; see [ADAPTING.md](ADAPTING.md#alchem
       replays a scrub from 0 on a new instance. `SceneEffect.visible` hides an appearance, `eachParticle` feeds the
       age playheads. Gizmos stay the old renderer's. Particle markers and sprite frames are off under the setting,
       until M9: they read the old pool, whose particles aren't these.
-- [x] **You:** effects in the editor with the setting on. Play, scrub, mounting on a model and moving the host all
-      work. The eye wasn't named in that check, so hiding rests on tests and one GPU run through the old renderer's gate.
+- [x] **You:** effects in the editor with the setting on. Play, scrub, the eye, mounting on a model and moving the
+      host all work.
 
 **Done when** captured particle quads match by measurement, and the effect editor runs on this
 renderer. Random streams need not match retail; each appearance's sizes, colours and blends must.
