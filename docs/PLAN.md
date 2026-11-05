@@ -181,7 +181,7 @@ closing and losing the context all work. Then revise the API with what was learn
 **Done when** every rigid-model row in [COVERAGE.md](COVERAGE.md) has reached "state matched", and
 the model viewer's switch can default to on. Every rigid-model row has, bar `NomadMaterial`, the class
 `NomadMaterialNoBendy` matched under another name, and `NullMaterial`, which draws nothing. **The switch
-stays off until M4**, as a `.sph` and the planet classes still draw nothing through it. **From here on, stop adding shading features to the old
+stayed off until M4**, when a `.sph` and the planet classes began drawing through it. **From here on, stop adding shading features to the old
 renderer**, so the two don't diverge.
 
 ## M4: Spheres and the sky
@@ -205,6 +205,12 @@ renderer**, so the two don't diverge.
       needs, 18 draws of 47. **Read only:** `BackdropMaterial`, which retail uses for `skydome_*` in
       scenes, so M8's. **Uncaptured:** a position-only sky part, which `starsphere_st03b`'s camera culls,
       and any lights a room leaves on over a lit sky material.
+- [x] The extension's model viewer and material preview draw a `.sph` and the planet classes through
+      `placeSphere`, behind the same setting. Its thumbnails stay on the old renderer. Its model viewer has a *Draw as*
+      dropdown: Model, Starsphere and Backdrop, starting on Starsphere for a `starsphere_*` file or one
+      under `STARSPHERE`. Overlays and picking are off for Starsphere, since they keep to the orbit.
+- [ ] **You:** open a `.sph` and a starsphere in VS Code with the setting on, and the material preview on
+      a planet material.
 - [x] **You:** reference scenes for a planet, `planet_earth`, and starspheres: `starsphere_li01`,
       `starsphere_st03b`, `starsphere_ew05`, `starsphere_ew06`.
 
