@@ -93,6 +93,8 @@ for (const [name, draws] of [
   ['lair', 13],
   ['bands', 28],
   ['bands_one_uv', 6],
+  ['bands_planet', 9],
+  ['planet_earth', 15],
 ] as const)
   test(
     `${name} matches retail's screenshot, outside its menu and canopy`,

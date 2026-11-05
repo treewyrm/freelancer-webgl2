@@ -133,7 +133,7 @@ test('the flags choose wrap and UV set', () => {
 })
 
 test('what M3 has yet to cover is reported, and draws nothing', () => {
-  const frame = collectFrame(scene({ name: 'planet', type: 'AtmosphereMaterial' }))
+  const frame = collectFrame(scene({ name: 'planet', type: 'StarsphereMaterial' }))
   assert.deepEqual(frame.draws, [])
   assert.deepEqual(frame.unsupported, ['planet'])
 })
@@ -212,7 +212,7 @@ test('an unregistered type is told apart from one not built yet, and NullMateria
     [[], ['hull'], []],
   )
 
-  const unbuilt = collectFrame(scene(skinned({ type: 'AtmosphereMaterial' })))
+  const unbuilt = collectFrame(scene(skinned({ type: 'StarsphereMaterial' })))
   assert.deepEqual([unbuilt.draws, unbuilt.unregistered, unbuilt.unsupported], [[], [], ['hull']])
 
   const nothing = collectFrame(scene(skinned({ name: 'null', type: 'DcDt' })))
@@ -579,4 +579,56 @@ test('an override type named by a material is reported, and draws nothing', () =
     const { draws, unsupported } = collectFrame(scene(skinned({ type })))
     assert.deepEqual([type, draws, unsupported], [type, [], ['hull']])
   }
+})
+
+test('a planet surface tiles its mask on UV0, and each class has its own passes', () => {
+  const masks = {
+    maskTexture: { name: 'dm', flags: 0x40 },
+    maskTexture0: { name: 'dm0', flags: 0x44 },
+    maskTexture1: { name: 'dm1', flags: 0x44 },
+    tileRate: 3,
+    tileRate0: 5,
+    tileRate1: 7,
+  }
+  const passes = (type: string) =>
+    collectFrame(scene(skinned({ type, ...masks }))).draws.map(
+      ({ alphaFunction, alphaReference, blend, depthFunc, depthWrite, unlit, second }) => [
+        alphaFunction,
+        alphaReference,
+        blend,
+        depthFunc,
+        depthWrite,
+        unlit,
+        second?.texture?.name,
+        second?.texture?.uvSet,
+        second?.tile,
+      ],
+    )
+  const a = ['less', 0xfe, false, 'less', true, false]
+  const b = ['greater', 1, true, 'lequal', true, false]
+  assert.deepEqual(passes('DetailMapMaterial'), [
+    ['greater', 0, false, 'less', true, false, 'dm', 0, 3],
+  ])
+  assert.deepEqual(passes('DetailMap2Dm1Msk2PassMaterial'), [
+    [...a, 'dm1', 0, 3],
+    [...b, undefined, undefined, undefined],
+  ])
+  assert.deepEqual(passes('Masked2DetailMapMaterial'), [
+    [...a, 'dm0', 0, 5],
+    [...b, 'dm1', 0, 7],
+  ])
+  assert.deepEqual(passes('IllumDetailMapMaterial'), [
+    ['always', 0, false, 'less', true, false, 'dm0', 0, 5],
+    ['greater', 1, true, 'lequal', false, true, 'dm1', 0, 7],
+  ])
+})
+
+test('an atmosphere draws scaled, unwritten, with its UVs from the unscaled object', () => {
+  const frame = collectFrame(
+    scene(skinned({ type: 'AtmosphereMaterial', fade: 1.1, alpha: 0.6, scale: 2 })),
+  )
+  const [draw] = frame.draws
+  assert.deepEqual([draw!.blend, draw!.depthWrite, draw!.depthFunc], [true, false, 'lequal'])
+  assert.equal(draw!.world.x.x, 2)
+  assert.ok(draw!.atmosphere)
 })

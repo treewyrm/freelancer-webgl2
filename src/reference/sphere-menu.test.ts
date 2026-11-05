@@ -1,16 +1,24 @@
 /** The stock menu's two planets against what retail drew: level, indices, vertices, faces, order. */
 import assert from 'node:assert/strict'
 import { existsSync, readFileSync } from 'node:fs'
+import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import { getResourceId } from '@treewyrm/freelancer'
+import { getMaterial, readMaterialLibrary } from '@treewyrm/freelancer/material'
 import { Matrix3, Matrix4 } from '@treewyrm/freelancer/math'
-import type { Sphere } from '@treewyrm/freelancer/rigid'
+import { readSphere, type Sphere } from '@treewyrm/freelancer/rigid'
+import { readTextureLibrary } from '@treewyrm/freelancer/texture'
+import { Directory } from '@treewyrm/freelancer/utf'
 import { readCapture, type CaptureDraw } from '#/capture/capture.js'
+import { indexTextures } from '#/capture/texture-names.js'
 import { spherePatch } from '#/mesh/sphere.js'
 import type { Camera } from '#/scene/camera.js'
+import { collectFrame, type SceneModel } from '#/scene/frame.js'
 import { placeSphere } from '#/scene/sphere.js'
+import { assertFrameMatches } from './compare.js'
 
+const data = process.env['FREELANCER_DATA'] ?? join(homedir(), 'Downloads/Freelancer/DATA')
 const references = process.env['FREELANCER_REFERENCES'] ?? 'references'
 const run = join(references, 'run1-stock-menu/d3d8log.jsonl')
 const skip = existsSync(run) ? false : 'no run1-stock-menu capture in references'
@@ -38,7 +46,7 @@ const CAMERA: Camera = {
 }
 
 // `planet_rckdes_1000.sph` and `planet_mercury_200.sph`, whose level and bound textures these are.
-const SIDES = ['side1', 'side2', 'side1', 'side2', 'cap', 'cap', 'atmosphere']
+const SIDES = ['side1', 'side2', 'side1', 'side2', 'cap', 'cap']
 const PLANETS = [
   { radius: 1000, primitives: 512, level: 8 },
   { radius: 200, primitives: 64, level: 5 },
@@ -144,4 +152,105 @@ test('level 5 is the patch retail drew, vertex for vertex', { skip }, () => {
     assert.ok(Math.abs(ours[at * 8 + 6]! - t0![0]!) < 1e-6)
     assert.ok(Math.abs(ours[at * 8 + 7]! - t0![1]!) < 1e-6)
   })
+})
+
+const readDirectory = (path: string) => Directory.read(readFileSync(join(data, path)))
+
+// As retail's menu loads them: the planet's own file and materials, and what those name.
+const REAL_PLANETS = [
+  {
+    file: 'SOLAR/PLANETS/PLANET_RCKDES/planet_rckdes_1000.sph',
+    primitives: 512,
+    libraries: [
+      'SOLAR/PLANETS/PLANET_RCKDES/planet_rckdes.mat',
+      'SOLAR/PLANETS/planet_rckdes.txm',
+      'SOLAR/PLANETS/atmosphere.txm',
+    ],
+  },
+  {
+    file: 'SOLAR/PLANETS/PLANET_MERCURY/planet_mercury_200.sph',
+    primitives: 64,
+    libraries: [
+      'SOLAR/PLANETS/PLANET_MERCURY/planet_mercury.mat',
+      'SOLAR/PLANETS/mercury.txm',
+      'SOLAR/PLANETS/atmosphere.txm',
+    ],
+  },
+]
+
+const menuFrame = () => {
+  const { draws } = frames().at(-1)!
+  const models = REAL_PLANETS.map(({ file, primitives, libraries }): SceneModel => {
+    const directories = libraries.map(readDirectory)
+    const materials = directories.flatMap((library) => [...readMaterialLibrary(library)])
+    const textures = directories.flatMap((library) => [...readTextureLibrary(library)])
+    const material = (id: number) => getMaterial(materials, id)
+    const retail = facesOf(surfaceOf(draws, primitives))
+    return {
+      parts: placeSphere(readSphere(readDirectory(file)), baseOf(modelViewOf(retail.at(-1)!)), {
+        camera: CAMERA,
+        width: draws[0]!.viewport[2]!,
+        material,
+      }),
+      mesh: () => undefined,
+      material,
+      // A stand-in where a mask lives in a library only the menu has loaded: the state's the point.
+      texture: (name) =>
+        textures.find((entry) => entry.name.toLowerCase() === name.toLowerCase()) ?? {
+          ...textures[0]!,
+          name,
+        },
+    }
+  })
+  return {
+    frame: collectFrame({
+      camera: CAMERA,
+      aspect: 4 / 3,
+      ambient: { x: 0, y: 0, z: 0 },
+      lights: [],
+      models,
+    }),
+    retail: draws.filter(({ fvf }) => fvf === 0x112),
+  }
+}
+
+const skipData = skip || (existsSync(data) ? false : 'no retail DATA')
+
+test("the menu's planets are retail draw for draw, shell included", { skip: skipData }, () => {
+  const { frame, retail } = menuFrame()
+  assert.deepEqual(frame.unsupported, [])
+  assert.equal(frame.draws.length, retail.length)
+  assertFrameMatches(frame, retail, indexTextures(data), { streamed: true })
+  frame.draws.forEach(({ world, materialName }, n) => {
+    const modelView = Matrix4.multiply(frame.view, world)
+    const theirs = modelViewOf(retail[n]!)
+    for (const axis of ['x', 'y', 'z', 'w'] as const)
+      for (const cell of ['x', 'y', 'z'] as const)
+        assert.ok(
+          Math.abs(modelView[axis][cell] - theirs[axis][cell]) < 0.01,
+          `draw ${n}, ${materialName}, ${axis}.${cell}`,
+        )
+  })
+})
+
+test('the shell has the UVs retail wrote, vertex for vertex', { skip: skipData }, () => {
+  const { frame, retail } = menuFrame()
+  const { vertices } = spherePatch(200, 5).mesh
+  const patch = new Float32Array(vertices.buffer, vertices.byteOffset, vertices.byteLength / 4)
+  let checked = 0
+  frame.draws.forEach(({ atmosphere }, n) => {
+    const written = retail[n]!.vertexData
+    if (!atmosphere || !written) return
+    written.forEach(({ t0 }, at) => {
+      const [nx, ny, nz] = patch.slice(at * 8 + 3, at * 8 + 6) as unknown as number[]
+      const { x, y, z } = atmosphere.direction
+      const facing = x * nx! + y * ny! + z * nz!
+      const { threshold: t, gain, v } = atmosphere
+      const u = facing < t ? 0 : ((facing - t) / (1 - t)) * gain
+      assert.ok(Math.abs(u - t0![0]!) < 2e-5, `draw ${n}, vertex ${at}: ${u} against ${t0![0]}`)
+      assert.ok(Math.abs(v - t0![1]!) < 1e-5, `draw ${n}, vertex ${at}: ${v} against ${t0![1]}`)
+      checked++
+    })
+  })
+  assert.equal(checked, 5 * 41)
 })

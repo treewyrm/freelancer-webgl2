@@ -62,11 +62,11 @@ No file names these; the engine applies them.
 
 | Type | Read | Built | State | Picture |
 | ---- | ---- | ----- | ----- | ------- |
-| `DetailMapMaterial` | | | | |
-| `DetailMap2Dm1Msk2PassMaterial` | | | | |
-| `IllumDetailMapMaterial` | | | | |
-| `Masked2DetailMapMaterial` | | | | |
-| `AtmosphereMaterial` | | | | |
+| `DetailMapMaterial` | Yes | Yes | `bands_planet`, `run1-stock-menu` | `bands_planet` |
+| `DetailMap2Dm1Msk2PassMaterial` | Yes | Yes | `bands_planet` | `bands_planet` |
+| `IllumDetailMapMaterial` | Yes | Yes | `bands_planet`, `run1-stock-menu` | `bands_planet` |
+| `Masked2DetailMapMaterial` | Yes | Yes | `bands_planet`, `planet_earth` | `bands_planet`, `planet_earth` |
+| `AtmosphereMaterial` | Yes | Yes | `bands_planet`, `run1-stock-menu`, `planet_earth`, each vertex's UV | `bands_planet`, `planet_earth` |
 | `Nebula`, `NebulaTwo` | Yes | Yes | `bands`, on a rigid model | `bands`, on a rigid model |
 
 ## Other (M5, M6)

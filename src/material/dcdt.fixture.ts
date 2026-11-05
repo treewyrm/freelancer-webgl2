@@ -30,6 +30,7 @@ type Parameters = Pick<
   | 'negateNormals'
   | 'normalizeNormals'
   | 'alphaReference'
+  | 'alphaFunction'
   | 'texture'
   | 'environment'
   | 'second'
@@ -40,6 +41,7 @@ const BLACK = { x: 0, y: 0, z: 0 }
 const SAMPLER = { name: 't', uvSet: 0 } as Draw['texture']
 
 const base: Parameters = {
+  alphaFunction: 'greater',
   world: IDENTITY,
   diffuse: [0, 0, 0, 1],
   ambient: BLACK,
@@ -231,6 +233,13 @@ export default ((gl) => {
   report['alphaKept'] = read({ ...faded, alphaReference: 127 })
   report['alphaCut'] = read({ ...faded, alphaReference: 128 })
   report['alphaZero'] = read({ emissive: { x: 1, y: 1, z: 1 }, diffuse: [0, 0, 0, 0] })
+  report['alphaLessKept'] = read({ ...faded, alphaFunction: 'less', alphaReference: 129 })
+  report['alphaLessCut'] = read({ ...faded, alphaFunction: 'less', alphaReference: 128 })
+  report['alphaAlways'] = read({
+    emissive: { x: 1, y: 1, z: 1 },
+    diffuse: [0, 0, 0, 0],
+    alphaFunction: 'always',
+  })
 
   // A stage-0 UV transform: a 2x2 checker, moved half a texture across.
   const checker: Texture = {

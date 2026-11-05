@@ -11,6 +11,8 @@ export const assertFrameMatches = (
   frame: Frame,
   draws: readonly CaptureDraw[],
   index: TextureIndex,
+  /** Retail streams a sphere's patch, so it has no constant place in an index buffer. */
+  { streamed = false }: { streamed?: boolean } = {},
 ): void => {
   const close = (a: number, b: number, what: string) =>
     assert.ok(Math.abs(a - b) < 1e-5, `${what}: ${a} against ${b}`)
@@ -22,9 +24,9 @@ export const assertFrameMatches = (
     const what = `draw ${n}, ${ours.materialName}`
 
     assert.equal(ours.count, retail.indices, what)
-    // Retail's Two and nomad copy their vertices elsewhere, so only the others compare.
+    // Retail's Two, nomad and atmosphere copy their vertices elsewhere, so only the others compare.
     // Retail holds a model's meshes in one index buffer, so each mesh has one constant offset.
-    if (!ours.negateNormals && !ours.nomad) {
+    if (!ours.negateNormals && !ours.nomad && !ours.atmosphere && !streamed) {
       const start = ours.reference.indexStart + ours.byteOffset / 2
       const offset = offsets.get(ours.mesh) ?? retail.startIndex! - start
       offsets.set(ours.mesh, offset)
@@ -36,6 +38,10 @@ export const assertFrameMatches = (
     assert.equal(retail.states['LIGHTING'], ours.nomad || ours.unlit ? 0 : 1, what)
     assert.equal(retail.states['ALPHABLENDENABLE'], ours.blend ? 1 : 0, what)
     assert.equal(retail.states['ALPHAREF'], ours.alphaReference, what)
+    assert.equal(retail.states['ALPHATESTENABLE'], ours.alphaFunction === 'always' ? 0 : 1, what)
+    // D3DCMP_LESS 2, GREATER 5.
+    if (ours.alphaFunction !== 'always')
+      assert.equal(retail.states['ALPHAFUNC'], ours.alphaFunction === 'less' ? 2 : 5, what)
     assert.equal(retail.states['NORMALIZENORMALS'], ours.normalizeNormals ? 1 : 0, what)
     assert.equal(retail.states['ZWRITEENABLE'], ours.depthWrite ? 1 : 0, what)
 
@@ -96,6 +102,12 @@ export const assertFrameMatches = (
     if (ours.second?.texture) {
       assert.ok(stageNames(1).includes(ours.second.texture.name.toLowerCase()), what)
       assert.equal(retail.stages[1]!.states['TEXCOORDINDEX'], ours.second.texture.uvSet, what)
+    }
+    // A planet mask's tile matrix, and retail's flags saying the stage applies it.
+    if (ours.second?.tile !== undefined) {
+      assert.equal(retail.stages[1]!.states['TEXTURETRANSFORMFLAGS'], 2, what)
+      close(retail.stages[1]!.transform![0]!, ours.second.tile, `${what} tile`)
+      close(retail.stages[1]!.transform![5]!, ours.second.tile, `${what} tile`)
     }
     if (ours.environment) {
       const stage = onStageZero ? 0 : 1

@@ -1,6 +1,7 @@
 import type { Material } from '@treewyrm/freelancer/material'
 import { Matrix3, Matrix4, type Vector3 } from '@treewyrm/freelancer/math'
 import { getResourceId } from '@treewyrm/freelancer'
+import type { Texture } from '@treewyrm/freelancer/texture'
 import type { Fixture } from '#/harness.js'
 import { collectFrame } from './frame.js'
 import { createRenderer } from './render.js'
@@ -12,6 +13,11 @@ export interface SphereReport {
   pixels: Record<string, number[]>
   /** Background showing well inside the silhouette, per level: a crack or a missing cell. */
   holes: Record<string, number>
+  /** Red along a shell whose texture's red is its `u`, over black: centre, then towards the rim. */
+  shell: number[]
+  /** A row of that texture's green, which is `v`. */
+  shellRow: number
+  shellDraws: number
 }
 
 const COLOURS: readonly (readonly [number, number, number])[] = [
@@ -127,8 +133,68 @@ const fixture: Fixture<SphereReport> = (gl) => {
       }
     holes[`${level}`] = count
   }
+  // Radius 1, `Scale` 1.5, from 4: extent 1.5, shell 0.5, so k = 2.5 / 3 and k³ = 0.5787.
+  const ramp: Texture = {
+    type: 'image',
+    name: 'ramp',
+    format: 'rgba32_8888',
+    storage: 'targa',
+    flip: false,
+    width: 256,
+    height: 256,
+    levels: [
+      new Uint8Array(
+        Array.from({ length: 256 * 256 }, (_, at) => [at % 256, at >> 8, 0, 255]).flat(),
+      ),
+    ],
+  }
+  const shellMaterial = {
+    name: 'shell',
+    type: 'AtmosphereMaterial',
+    diffuse: { x: 1, y: 1, z: 1 },
+    // Clamp both ways.
+    diffuseTexture: { name: 'ramp', flags: 0x48 },
+    fade: 1,
+    alpha: 0.5,
+    scale: 1.5,
+  } as unknown as Material
+  const shellId = getResourceId('shell')
+  const material = (id: number) => (id === shellId ? shellMaterial : undefined)
+  const camera = {
+    position: { x: 0, y: 0, z: 4 },
+    orientation: Matrix3.identity,
+    fovh: 30,
+    near: 1,
+    far: 1000,
+  }
+  const frame = collectFrame({
+    camera,
+    aspect: width / height,
+    ambient: { x: 1, y: 1, z: 1 },
+    lights: [],
+    models: [
+      {
+        parts: placeSphere(
+          {
+            type: 'sphere',
+            hardpoints: [],
+            sides: ['none', ...sides.slice(1), 'shell'],
+            radius: 1,
+          },
+          Matrix4.identity,
+          { camera, width, level: 8, material },
+        ).filter((part) => part.extent !== undefined),
+        mesh: () => undefined,
+        material,
+        texture: (name) => (name === 'ramp' ? ramp : undefined),
+      },
+    ],
+  })
+  renderer.render(frame)
+  const shell = [0, 4, 8, 12].map((offset) => read(mid + offset, mid)[0]!)
+  const shellRow = read(mid, mid)[1]!
   renderer.dispose()
-  return { error: gl.getError(), pixels, holes }
+  return { error: gl.getError(), pixels, holes, shell, shellRow, shellDraws: frame.draws.length }
 }
 
 export default fixture

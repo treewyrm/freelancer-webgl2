@@ -66,6 +66,7 @@ for (const name of [
   'lair',
   'bands',
   'bands_one_uv',
+  'bands_planet',
 ])
   test(`${name} is retail draw for draw, in retail order`, { skip: skipFor(name) }, async () => {
     const frame = await load(name)

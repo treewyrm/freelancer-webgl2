@@ -44,6 +44,8 @@ export interface PlacedPart {
   mesh?: VMeshData
   /** Over each group's own, as a sphere's face names its material and its patch can't. */
   materialId?: number
+  /** What the engine tells a sphere's shell of its size. Anything else reads 1 (`Field20` unset). */
+  extent?: number
 }
 
 export interface SceneModel {
@@ -109,6 +111,20 @@ export interface DrawTexture {
 export interface DrawStage {
   operation: 'add' | 'modulate2x'
   texture?: DrawTexture
+  /** A planet mask's `diag(tile, tile)` texture matrix, on UV0 (`SetDetailTileTransform`). */
+  tile?: number
+}
+
+/** What `SubmitAtmosphereLock` needs for each vertex's UV, the rest being the same for a draw. */
+export interface DrawAtmosphere {
+  /** Towards the camera, in the object's space. */
+  direction: Vector3
+  /** The cosine of the horizon, where `u` starts. */
+  threshold: number
+  /** `u` where the vertex faces the camera. */
+  gain: number
+  /** The row of the fade texture, the whole draw's. */
+  v: number
 }
 
 /** Source and destination: `SRCALPHA / INVSRCALPHA`, `ONE / ONE`, `SRCALPHA / ONE`, `DESTCOLOR / ZERO`. */
@@ -150,8 +166,10 @@ export interface Draw {
   blendMode: BlendMode
   /** Lighting off: white, or the vertex colour, at `diffuse`'s alpha. */
   unlit: boolean
-  /** Discards at or below this, of 255. */
+  /** Compared with this, of 255: `D3DRS_ALPHAFUNC`, or `always` with the test off. */
   alphaReference: number
+  alphaFunction: 'greater' | 'less' | 'always'
+  atmosphere?: DrawAtmosphere
 }
 
 /**
@@ -196,6 +214,10 @@ type MaterialClass =
   | 'lightMap'
   | 'glow'
   | 'nebula'
+  | 'detailMap'
+  | 'masked'
+  | 'illum'
+  | 'atmosphere'
 
 // What M3 has built so far. Other registered types are reported, not drawn. The eight single-pass
 // names share one bind and submit (`kMaterialTypes`, `src/Shading/Material.cpp`), and `Ec` and `OcOt`
@@ -229,6 +251,12 @@ const CLASSES: Readonly<Record<string, MaterialClass>> = {
   HighGlassMaterial: 'glass',
   GlassMaterial: 'glass',
   GFGlassMaterial: 'glass',
+  DetailMapMaterial: 'detailMap',
+  // Only which masks they read sets these two apart.
+  DetailMap2Dm1Msk2PassMaterial: 'masked',
+  Masked2DetailMapMaterial: 'masked',
+  IllumDetailMapMaterial: 'illum',
+  AtmosphereMaterial: 'atmosphere',
 }
 
 /** Whether `collectFrame` draws this type, the one `[MaterialMap]` gives. */
@@ -296,6 +324,10 @@ type Pass = Pick<
   depthWrite?: boolean
   depthFunc?: 'less' | 'lequal'
   blendMode?: BlendMode
+  alphaFunction?: Draw['alphaFunction']
+  unlit?: boolean
+  /** Stage 1, for the classes whose passes differ in it. `null` turns it off. */
+  mask?: { slot: TextureReference | undefined; tile: number } | null
 }
 
 const NO_ENVIRONMENT: Pick<Pass, 'normalizeNormals'> = { normalizeNormals: false }
@@ -345,12 +377,98 @@ const nomadAlpha = (fade: number): number => {
   return Math.trunc((1 - (3 - 2 * delta) * delta * delta) * 255) / 255
 }
 
+// `TileRate`'s default in each planet class's property schema.
+const DEFAULT_TILE = 4
+
+// `Scale`'s default in the atmosphere's property schema.
+export const DEFAULT_SHELL_SCALE = 1.025
+
+/**
+ * The planet surfaces (`src/Shading/Material.cpp`, `FMaterial::Submit`), whose state `bands_planet`
+ * captured. Pass A is opaque, with its stage 1 on UV0 through a tile matrix, and B blends over it. An
+ * environment map turns on normalized normals on the two-pass classes, and has no stage free. These
+ * assume `[PerfOptions]`' multipass record on, as a retail install has it.
+ */
+const planetPasses = (
+  kind: 'detailMap' | 'masked' | 'illum',
+  type: string,
+  material: Material,
+  model: SceneModel,
+): Pass[] => {
+  const shared = {
+    cull: 'back' as const,
+    negateNormals: false,
+    alpha: 1,
+    normalizeNormals: model.environment !== undefined,
+  }
+  if (kind === 'detailMap')
+    return [
+      {
+        ...shared,
+        normalizeNormals: false,
+        blend: false,
+        alphaReference: DEVICE_ALPHA_REFERENCE,
+        mask: { slot: material.maskTexture, tile: material.tileRate ?? DEFAULT_TILE },
+      },
+    ]
+
+  // `DetailMap2Dm1Msk2PassMaterial` reads `Dm1` and `TileRate` for A, and B leaves stage 1 off.
+  const single = type === 'DetailMap2Dm1Msk2PassMaterial'
+  const first = single
+    ? { slot: material.maskTexture1, tile: material.tileRate ?? DEFAULT_TILE }
+    : { slot: material.maskTexture0, tile: material.tileRate0 ?? DEFAULT_TILE }
+  const second = single
+    ? null
+    : { slot: material.maskTexture1, tile: material.tileRate1 ?? DEFAULT_TILE }
+  const over = {
+    ...shared,
+    blend: true,
+    alphaReference: 1,
+    depthFunc: 'lequal',
+    mask: second,
+  } as const
+  if (kind === 'illum')
+    return [
+      // The test off, so a texel at zero alpha still draws, and B unlit: the night side's lights.
+      {
+        ...shared,
+        blend: false,
+        alphaReference: DEVICE_ALPHA_REFERENCE,
+        alphaFunction: 'always',
+        mask: first,
+      },
+      { ...over, depthWrite: false, unlit: true },
+    ]
+  return [
+    { ...shared, blend: false, alphaReference: 0xfe, alphaFunction: 'less', mask: first },
+    over,
+  ]
+}
+
 const passesOf = (
   kind: MaterialClass,
   type: string,
   material: Material,
   model: SceneModel,
 ): Pass[] => {
+  if (kind === 'detailMap' || kind === 'masked' || kind === 'illum')
+    return planetPasses(kind, type, material, model)
+
+  // `GAtmosphereRs`, and `SubmitAtmosphereLock`'s depth. Stage 1 stays free for a reflection (`bands_planet`).
+  if (kind === 'atmosphere')
+    return [
+      {
+        cull: 'back',
+        negateNormals: false,
+        blend: true,
+        alphaReference: DEVICE_ALPHA_REFERENCE,
+        alpha: 1,
+        depthWrite: false,
+        depthFunc: 'lequal',
+        ...withEnvironment(model.environment),
+      },
+    ]
+
   // The fixed classes, whose tables `bands` captured. Each leaves stage 1 free. Two names draw twice.
   if (kind === 'emissive' || kind === 'lightMap' || kind === 'glow' || kind === 'nebula') {
     const front: Pass = {
@@ -521,6 +639,54 @@ const entryOf = (
 // `nt_name`'s default (`FlmNomadParamsBase`), which wraps both ways.
 const NOMAD_RAMP: TextureReference = { name: DEFAULT_NOMAD_TEXTURE_NAME, flags: 0x40 }
 
+/** A planet mask: an empty slot draws as an empty stage, and one not found drops the stage. */
+const maskStage = (
+  { slot, tile }: { slot: TextureReference | undefined; tile: number },
+  model: SceneModel,
+  unsupported: Set<string>,
+): DrawStage | undefined => {
+  if (!slot) return { operation: 'modulate2x', tile }
+  const entry = entryOf(slot.name, model, unsupported)
+  if (!entry) return undefined
+  return { operation: 'modulate2x', tile, texture: { ...drawTexture(slot, entry), uvSet: 0 } }
+}
+
+const SHELL_FLOOR = 1e-7
+
+/**
+ * `SubmitAtmosphereLock`'s values for a draw, from the camera in the unscaled object's space. Each
+ * face has its own space, and retail reads its patch's normals, so this holds for the turned face.
+ */
+const atmosphereOf = (
+  material: Material,
+  world: Matrix4,
+  view: Matrix4,
+  radius: number,
+): { atmosphere: DrawAtmosphere; scale: number } => {
+  const scale = material.scale ?? DEFAULT_SHELL_SCALE
+  const fade = material.fade ?? 1
+  // Defaults from its property schema.
+  const alpha = material.alpha ?? 0.75
+  const camera = Matrix4.transformPoint(
+    { x: 0, y: 0, z: 0 },
+    Matrix4.invert(Matrix4.multiply(view, world)),
+  )
+  const length = Math.hypot(camera.x, camera.y, camera.z) || SHELL_FLOOR
+  const shell = (scale - 1) * (radius / scale)
+  const distance = length - radius
+  const factor = distance / ((shell > 0 ? shell : SHELL_FLOOR) + distance)
+  const cubed = factor * factor * factor
+  return {
+    scale,
+    atmosphere: {
+      direction: { x: camera.x / length, y: camera.y / length, z: camera.z / length },
+      threshold: radius / length,
+      gain: fade * cubed,
+      v: cubed < 0.5 ? 2 * (1 - alpha) * cubed : 1 - alpha,
+    },
+  }
+}
+
 const secondStage = (
   kind: MaterialClass,
   { emissionTexture, detailTexture, nomadTexture }: Material,
@@ -588,7 +754,8 @@ const collectModel = (
   unsupported: Set<string>,
   unregistered: Set<string>,
 ): void => {
-  for (const { reference, world, mesh: generated, materialId: faceMaterial } of model.parts) {
+  for (const part of model.parts) {
+    const { reference, world, mesh: generated, materialId: faceMaterial, extent } = part
     const mesh = generated ?? model.mesh(reference.meshId)
     if (!mesh) {
       unsupported.add(`mesh ${reference.meshId}`)
@@ -643,14 +810,28 @@ const collectModel = (
       if (queuedHere)
         queued.push({ depth: batchDepth(mesh, reference, world, view), draws: target })
 
-      for (const { alpha, depthWrite, depthFunc, blendMode, ...pass } of passes) {
+      const shell =
+        kind === 'atmosphere' ? atmosphereOf(material, world, view, extent ?? 1) : undefined
+
+      for (const {
+        alpha,
+        depthWrite,
+        depthFunc,
+        blendMode,
+        alphaFunction,
+        unlit,
+        mask,
+        ...pass
+      } of passes) {
         const cube = pass.environment ? entryOf(pass.environment, model, unsupported) : undefined
+        const stage = mask === undefined ? second : mask && maskStage(mask, model, unsupported)
         ;(queuedHere ? target : draws).push({
           mesh,
           reference,
           byteOffset: (startIndex - reference.indexStart) * Uint16Array.BYTES_PER_ELEMENT,
           count: elementCount,
-          world,
+          // `SubmitAtmosphereLock` scales only what it draws: its UVs come from the unscaled object.
+          world: shell ? Matrix4.multiply(world, Matrix4.scaling(shell.scale)) : world,
           materialName: material.name,
           // `Dc` is never read by the nomad class.
           diffuse:
@@ -683,12 +864,14 @@ const collectModel = (
           depthWrite: depthWrite ?? true,
           depthFunc: depthFunc ?? 'less',
           blendMode: blendMode ?? 'alpha',
-          unlit: kind === 'lightMap' || kind === 'nebula',
+          unlit: unlit ?? (kind === 'lightMap' || kind === 'nebula'),
+          alphaFunction: alphaFunction ?? 'greater',
+          ...(shell ? { atmosphere: shell.atmosphere } : {}),
           // `SubmitExclusionGeometry` draws with `D3DRS_AMBIENT` white, so `Ac` arrives unscaled.
           ...(kind === 'exclusion' ? { sceneAmbient: WHITE } : {}),
           // A slot with no texture draws as an empty stage, which reads as white.
           ...(slot && entry ? { texture: drawTexture(slot, entry) } : {}),
-          ...(second ? { second } : {}),
+          ...(stage ? { second: stage } : {}),
           ...(animated ? { uvTransform: animated } : {}),
           ...pass,
           ...(cube?.type === 'cube' ? { environmentTexture: cube } : {}),

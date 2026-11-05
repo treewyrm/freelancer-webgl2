@@ -9,6 +9,7 @@ import { readTextureLibrary, type TextureEntry } from '@treewyrm/freelancer/text
 import { Directory } from '@treewyrm/freelancer/utf'
 import { getMesh, readVMeshLibrary } from '@treewyrm/freelancer/vmesh'
 import { placeParts, type Scene } from '#/scene/frame.js'
+import { placeSphere } from '#/scene/sphere.js'
 import { BAND_LIBRARIES } from './bands.js'
 import { generateBands } from './generate.js'
 import { cameraOf, modelMatrixOf, type ReferenceScene } from './scene.js'
@@ -53,6 +54,18 @@ const ASSETS: Record<
     model: '',
     libraries: BAND_LIBRARIES,
     environment: 'envmapbasic',
+  },
+  // Lines as `solararch.ini` writes them, textures first.
+  planet_earth_3000: {
+    lod: [],
+    model: 'SOLAR/PLANETS/PLANET_EARTH/planet_earth_3000.sph',
+    libraries: [
+      'SOLAR/PLANETS/planet_earth.txm',
+      'SOLAR/PLANETS/DETAILMAPS/detailmap_rock01.txm',
+      'SOLAR/PLANETS/DETAILMAPS/detailmap_ocean.txm',
+      'SOLAR/PLANETS/atmosphere.txm',
+      'SOLAR/PLANETS/PLANET_EARTH/planet_earth.mat',
+    ],
   },
   dyson_door_shield: {
     lod: [0, 50000],
@@ -116,11 +129,22 @@ export const loadScene = async (
         direction: { x, y, z },
       })),
       models: [definition.model, ...(definition.model.copies ?? [])].map((placed) => ({
-        parts: placeParts(
-          model,
-          modelMatrixOf({ ...definition, model: { ...definition.model, ...placed } }),
-          { camera: cameraOf(definition), lod: [{ ranges: assets.lod }] },
-        ),
+        parts:
+          model.type === 'sphere'
+            ? placeSphere(
+                model,
+                modelMatrixOf({ ...definition, model: { ...definition.model, ...placed } }),
+                {
+                  camera: cameraOf(definition),
+                  width: 1024,
+                  material: (id) => getMaterial(materials, id),
+                },
+              )
+            : placeParts(
+                model,
+                modelMatrixOf({ ...definition, model: { ...definition.model, ...placed } }),
+                { camera: cameraOf(definition), lod: [{ ranges: assets.lod }] },
+              ),
         mesh: (id) => getMesh(meshes, id),
         material: (id) => getMaterial(materials, id),
         texture,

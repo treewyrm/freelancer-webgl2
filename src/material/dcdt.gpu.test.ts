@@ -73,6 +73,12 @@ test('alpha test is GREATER on the 8-bit value', () => {
   rgb('alphaZero', [0, 0, 255])
 })
 
+test('a planet pass can cut above its reference, or not test at all', () => {
+  rgb('alphaLessKept', [255, 255, 255])
+  rgb('alphaLessCut', [0, 0, 255])
+  rgb('alphaAlways', [255, 255, 255])
+})
+
 test('a vertex colour replaces the material diffuse, alpha included, in B G R A', () => {
   rgb('vertexColor', [255, 128, 64])
   rgb('vertexColorAlpha', [0, 0, 255])

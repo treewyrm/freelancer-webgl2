@@ -66,8 +66,8 @@ Models chosen because the earlier projects already found them useful for these f
 | M3 | Rheinland fighter cockpit | Batching, translucency |
 | M3 | Nomad fighter | Nomad material |
 | M3 | Dyson platform | Detail map |
-| M4 | `run1-stock-menu` | Two real `.sph` planets, with no scene to set up, but a capture with no normals |
-| M4 | Earth | Planet surfaces, atmosphere |
+| M4 | `run1-stock-menu` | Two real `.sph` planets and their shells, with no scene to set up, but no normals logged |
+| M4 | `planet_earth` | `planet_earth_3000`: `Masked2DetailMapMaterial`, its shell, terminator and limb |
 | M4 | `ew06` starsphere | Nebula, sky order |
 
 ## The capture

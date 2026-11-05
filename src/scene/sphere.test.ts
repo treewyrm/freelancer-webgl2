@@ -88,7 +88,7 @@ test('a turned sphere culls by its own axes', () => {
   assert.deepEqual([normal.x, normal.y, normal.z], [0, 0, 1])
 })
 
-test('sides repeat, and a seventh is not a face', () => {
+test('sides repeat, and a seventh draws after the rest, as a shell of its own', () => {
   const one = ['only']
   const parts = placeSphere(sphere(one), Matrix4.identity, {
     camera: camera(0, 0, 100000),
@@ -101,7 +101,10 @@ test('sides repeat, and a seventh is not a face', () => {
     camera: camera(0, 0, 100000),
     width: 1024,
   })
-  assert.deepEqual(facesOf(withShell, seven), [0, 1, 3, 4, 5])
+  assert.deepEqual(facesOf(withShell, seven), [0, 1, 3, 4, 5, 6, 6, 6, 6, 6])
+  assert.equal(withShell[0]!.extent, undefined)
+  assert.equal(withShell[5]!.extent, 100)
+  assert.deepEqual(withShell[5]!.world, withShell[0]!.world)
 })
 
 test('a pinned level overrides the choice, and spheres alike share a patch', () => {

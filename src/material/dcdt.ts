@@ -13,6 +13,8 @@ export const MAX_LIGHTS = 4
 // `D3DTOP_ADD` for `DcDtEt` (`0x6ed1724`), `D3DTOP_MODULATE2X` for `BtDetailMapMaterial` (`0x6ed14dc`).
 const SECOND_STAGE = { none: 0, add: 1, modulate2x: 2 } as const
 
+const ALPHA_FUNCTION = { always: 0, greater: 1, less: 2 } as const
+
 const VERTEX = `#version 300 es
 layout(location = ${ATTRIBUTE_LOCATIONS.position}) in vec3 position;
 layout(location = ${ATTRIBUTE_LOCATIONS.normal}) in vec3 normal;
@@ -40,6 +42,11 @@ uniform bool normalizeNormals;
 uniform bool reflecting;
 uniform int uvSet;
 uniform int secondUvSet;
+uniform float secondTile;
+// Towards the camera and the horizon's cosine, then \`u\`'s gain and the row.
+uniform bool atmosphere;
+uniform vec4 atmosphereView;
+uniform vec2 atmosphereFade;
 // Offset, then scale, on stage 0 alone.
 uniform vec4 uvTransform;
 
@@ -53,7 +60,14 @@ void main() {
   vec4 eyePosition = modelView * vec4(position, 1.0);
   gl_Position = projection * eyePosition;
   uv = (uvSet == 1 ? uv1 : uv0) * uvTransform.zw + uvTransform.xy;
-  secondUv = secondUvSet == 1 ? uv1 : uv0;
+  secondUv = (secondUvSet == 1 ? uv1 : uv0) * secondTile;
+
+  // What \`SubmitAtmosphereLock\` writes to locked memory each frame, from the vertex's own normal.
+  if (atmosphere) {
+    float facing = dot(atmosphereView.xyz, normal);
+    float u = facing < atmosphereView.w ? 0.0 : (facing - atmosphereView.w) / (1.0 - atmosphereView.w) * atmosphereFade.x;
+    uv = vec2(u, atmosphereFade.y);
+  }
 
   // What \`NomadWriteVert\` writes to locked memory each frame: white at the draw's alpha, and a ramp
   // coordinate from one camera axis per draw, carried into object space by the transpose alone.
@@ -102,6 +116,7 @@ uniform sampler2D diffuseMap;
 uniform bool reflecting;
 uniform samplerCube environmentMap;
 uniform float alphaReference;
+uniform int alphaFunction;
 uniform int secondStage;
 uniform bool secondTextured;
 uniform sampler2D secondMap;
@@ -128,8 +143,10 @@ void main() {
     color = vec4(clamp(2.0 * cube.rgb * color.rgb, 0.0, 1.0), clamp(cube.a * color.a, 0.0, 1.0));
   }
 
-  // D3DCMP_GREATER, on the 8-bit value.
-  if (!(floor(color.a * 255.0 + 0.5) > alphaReference)) discard;
+  // On the 8-bit value.
+  float alpha8 = floor(color.a * 255.0 + 0.5);
+  if (alphaFunction == ${ALPHA_FUNCTION.greater} && !(alpha8 > alphaReference)) discard;
+  if (alphaFunction == ${ALPHA_FUNCTION.less} && !(alpha8 < alphaReference)) discard;
 }`
 
 const UNIFORMS = [
@@ -152,6 +169,11 @@ const UNIFORMS = [
   'uvSet',
   'uvTransform',
   'secondUvSet',
+  'secondTile',
+  'atmosphere',
+  'atmosphereView',
+  'atmosphereFade',
+  'alphaFunction',
   'secondStage',
   'secondTextured',
   'secondMap',
@@ -212,6 +234,8 @@ export const setDrawUniforms = (
     | 'negateNormals'
     | 'normalizeNormals'
     | 'alphaReference'
+    | 'alphaFunction'
+    | 'atmosphere'
     | 'texture'
     | 'environment'
     | 'second'
@@ -232,6 +256,13 @@ export const setDrawUniforms = (
   gl.uniform1f(uniforms.normalSign, draw.negateNormals ? -1 : 1)
   gl.uniform1i(uniforms.normalizeNormals, draw.normalizeNormals ? 1 : 0)
   gl.uniform1f(uniforms.alphaReference, draw.alphaReference)
+  gl.uniform1i(uniforms.alphaFunction, ALPHA_FUNCTION[draw.alphaFunction])
+  gl.uniform1i(uniforms.atmosphere, draw.atmosphere ? 1 : 0)
+  if (draw.atmosphere) {
+    const { direction, threshold, gain, v } = draw.atmosphere
+    gl.uniform4f(uniforms.atmosphereView, direction.x, direction.y, direction.z, threshold)
+    gl.uniform2f(uniforms.atmosphereFade, gain, v)
+  }
   gl.uniform1i(uniforms.textured, draw.texture ? 1 : 0)
   gl.uniform1i(uniforms.uvSet, draw.texture?.uvSet ?? 0)
   const { offset, scale } = draw.uvTransform ?? { offset: [0, 0], scale: [1, 1] }
@@ -240,4 +271,5 @@ export const setDrawUniforms = (
   gl.uniform1i(uniforms.secondStage, SECOND_STAGE[draw.second?.operation ?? 'none'])
   gl.uniform1i(uniforms.secondTextured, draw.second?.texture ? 1 : 0)
   gl.uniform1i(uniforms.secondUvSet, draw.second?.texture?.uvSet ?? 0)
+  gl.uniform1f(uniforms.secondTile, draw.second?.tile ?? 1)
 }

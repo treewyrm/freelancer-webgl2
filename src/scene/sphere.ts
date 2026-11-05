@@ -1,10 +1,12 @@
 /** A `.sph` where a camera sees it: `FSphereAnim::Draw` and `UpdateLevel`, in `RendComp`. Pure, no GL. */
 import { getResourceId } from '@treewyrm/freelancer'
 import { Matrix4, type Vector3 } from '@treewyrm/freelancer/math'
+import type { Material } from '@treewyrm/freelancer/material'
 import type { Sphere } from '@treewyrm/freelancer/rigid'
+import { mapMaterialType, type MaterialMapRule } from '#/material/map.js'
 import { spherePatch } from '#/mesh/sphere.js'
 import type { Camera } from './camera.js'
-import type { PlacedPart } from './frame.js'
+import { DEFAULT_SHELL_SCALE, type PlacedPart } from './frame.js'
 
 export interface SphereOptions {
   /** Decides the level and which faces draw. */
@@ -13,6 +15,10 @@ export interface SphereOptions {
   width: number
   /** Pins a level, for a host choosing its own density. Faces still cull. */
   level?: number
+  /** Finds the seventh side's `Scale`, which its shell culls by. 1 if absent. */
+  material?: (id: number) => Material | undefined
+  /** As on `SceneModel`, for that side's type. */
+  materialMap?: readonly MaterialMapRule[]
 }
 
 // `FSphereAnim::Init`. The `level_of_detail` option changes the last two, on a space solar only
@@ -81,7 +87,7 @@ export const sphereLevel = (radius: number, metric: number): number => {
   return Math.min(LEVEL_MAXIMUM, Math.max(LEVEL_MINIMUM, level))
 }
 
-/** Which faces draw, in order. A sphere's world rotation turns the cube; its scale isn't read. */
+/** Which faces draw, in order, at this radius. A world's rotation turns the cube; its scale isn't read. */
 const visibleFaces = (radius: number, world: Matrix4, position: Vector3): number[] => {
   const turn = ({ x, y, z }: Vector3): Vector3 => ({
     x: world.x.x * x + world.y.x * y + world.z.x * z,
@@ -112,23 +118,43 @@ const visibleFaces = (radius: number, world: Matrix4, position: Vector3): number
 }
 
 /**
- * A sphere's visible faces, as parts. Materials repeat by `Sides`, a retail sun naming just one.
- * The seventh, an atmosphere, comes in its own pass, which isn't built yet.
+ * A sphere's visible faces, as parts, then its shell's, which is the same patch under the seventh
+ * material and culls by its own larger radius. Materials repeat by `Sides`, a retail sun naming one.
  */
 export const placeSphere = (
   { radius, sides }: Sphere,
   world: Matrix4,
-  { camera, width, level }: SphereOptions,
+  { camera, width, level, material, materialMap }: SphereOptions,
 ): PlacedPart[] => {
   const { x, y, z } = camera.position
   const distance = Math.hypot(x - world.w.x, y - world.w.y, z - world.w.z)
   // `Draw` divides by `ZNear * GetXScaleOverNear()`, which is `HalfWidth / tan(fovx½)` (`space_camera.cpp`).
   const pixel = (Math.tan((camera.fovh * Math.PI) / 180) / (width / 2)) * distance
   const { mesh, reference } = spherePatch(radius, level ?? sphereLevel(radius, pixel * LEVEL_BIAS))
-  return visibleFaces(radius, world, camera.position).map((face) => ({
+  const part = (face: number, name: string): PlacedPart => ({
     reference,
     mesh,
     world: Matrix4.multiply(world, FACES[face]!),
-    materialId: getResourceId(sides[face % sides.length]!),
-  }))
+    materialId: getResourceId(name),
+  })
+  const parts = visibleFaces(radius, world, camera.position).map((face) =>
+    part(face, sides[face % sides.length]!),
+  )
+  const shell = sides[FACES.length]
+  if (shell === undefined) return parts
+
+  // `FSphereHandle::Load` reads `Scale` only from a seventh side that's an `AtmosphereMaterial`.
+  const found = material?.(getResourceId(shell))
+  const scale =
+    found && mapMaterialType(found, materialMap) === 'AtmosphereMaterial'
+      ? (found.scale ?? DEFAULT_SHELL_SCALE)
+      : 1
+  const extent = radius * scale
+  return [
+    ...parts,
+    ...visibleFaces(extent, world, camera.position).map((face) => ({
+      ...part(face, shell),
+      extent,
+    })),
+  ]
 }

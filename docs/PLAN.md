@@ -189,16 +189,17 @@ renderer**, so the two don't diverge.
 - [x] Sphere patch tessellation and the `M0..M5` face order: `placeSphere`, which also chooses the level
       and culls faces as the game does. The stock menu's two planets match over all six captured frames:
       level, faces drawn, their matrices and order, all logged indices at levels 5 and 8, and level 5's
-      vertices (`src/reference/sphere-menu.test.ts`). **Uncaptured:** normals, as that capture predates
-      logging them, and even-level vertices, being over `verts_max`. The level's width is corroborated
-      only by those two planets falling in range. Only the first six sides draw so far.
-- [ ] The four planet surface types and `AtmosphereMaterial`. `references/bands_planet` already has
-      their state from a generated sphere: each pass's alpha test, depth and stage 1 tile matrix.
-      `run1-stock-menu` has them on real `.sph` planets, atmosphere included: 5 of its faces, the same
-      patch and its own vertex buffer, and a world scaled by what looks to be its `Scale` (1.025 on
-      the mercury). That shell culls by `Scale × Radius`, so `placeSphere` needs the value.
+      vertices (`src/reference/sphere-menu.test.ts`), and `planet_earth` has every vertex and normal at
+      level 8. The level's width is corroborated only by those three planets falling in range.
+- [x] The four planet surface types and `AtmosphereMaterial`. `bands_planet` matches in state and
+      picture, and the stock menu's planets draw for draw: `IllumDetailMapMaterial`,
+      `DetailMapMaterial` and both shells, their matrices and each vertex's UV. That `r` is the shell's
+      radius rests on those UVs. `planet_earth` matches in state, each vertex and normal, each shell
+      UV, and picture: 99.9% within 2 of 255, mean 0.22. **Uncaptured:** `DetailMap2Dm1Msk2PassMaterial`
+      on a real `.sph`, and the single-pass fallback, as these assume the multipass and atmosphere
+      options on, as a retail install has them.
 - [ ] `Nebula` materials; starsphere and backdrop overrides, with the game's draw order for the layers.
-- [ ] **You:** reference scenes for a planet and a starsphere.
+- [ ] **You:** reference scenes for a planet, done as `planet_earth`, and a starsphere.
 
 **Done when** the sphere rows are state matched. The tessellation density is a budget in the game, so
 compare its density-independent results only.

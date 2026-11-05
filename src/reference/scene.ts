@@ -37,7 +37,8 @@ export interface ReferenceScene {
   preload?: { file: string; texture: string }[]
   /** 0 to 255, given to the model through `LIT_AMBIENT`. */
   ambient: Vector
-  lights: { color: Vector; direction: Vector }[]
+  /** `range` is 2000 unless a scene is too large for that. */
+  lights: { color: Vector; direction: Vector; range?: number }[]
 }
 
 export const IDENTITY: Rows = [
@@ -125,7 +126,7 @@ export const sceneScript = (scene: ReferenceScene): string => {
           specular: value.list(0, 0, 0),
           ambient: value.list(0, 0, 0),
           direction: vector(light.direction),
-          range: 2000,
+          range: light.range ?? 2000,
           cutoff: value.number('98.999977'),
           type: value.identifier('L_DIRECT'),
           theta: 90,
