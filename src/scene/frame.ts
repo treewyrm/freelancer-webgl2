@@ -23,6 +23,8 @@ import {
   type VMeshData,
   type VMeshRef,
 } from '@treewyrm/freelancer/vmesh'
+import { collectEffect, type EffectDraw } from '#/alchemy/draw.js'
+import type { EffectInstance } from '#/alchemy/effect.js'
 import { mapMaterialType, REGISTERED_TYPES, type MaterialMapRule } from '#/material/map.js'
 import { DEFAULT_SAMPLER, type SamplerState, type TextureWrap } from '#/texture/texture.js'
 import { projectionMatrix, sphereInFrustum, viewMatrix, type Camera } from './camera.js'
@@ -99,6 +101,12 @@ export interface PlaceOptions {
   jointState?: (part: CompoundNode<RigidPart>) => JointState | undefined
 }
 
+/** A running effect, advanced by the host, and where its textures come from. */
+export interface SceneEffect {
+  instance: EffectInstance
+  texture: (name: string) => TextureEntry | undefined
+}
+
 export interface Scene {
   camera: Camera
   /** Width over height of the viewport. */
@@ -111,6 +119,8 @@ export interface Scene {
   background?: Vector3
   /** Seconds, the host's clock, for material UV animation. 0 when absent. */
   time?: number
+  /** After the models, in the order given: the game's by type then newest is the host's (M7). */
+  effects?: readonly SceneEffect[]
 }
 
 export interface DrawTexture {
@@ -214,6 +224,8 @@ export interface Frame {
   ambient: Vector3
   lights: SceneLight[]
   draws: Draw[]
+  /** Each appearance of each effect, after `draws`, in the game's tree order. */
+  effects: EffectDraw[]
   /** What didn't draw as authored: materials M3 is to cover, and any mesh or texture not found. */
   unsupported: string[]
   /** Materials of a type no DLL registers. They draw nothing in retail either. */
@@ -986,6 +998,7 @@ export const collectFrame = ({
   models,
   background,
   time = 0,
+  effects = [],
 }: Scene): Frame => {
   const draws: Draw[] = []
   const unsupported = new Set<string>()
@@ -998,6 +1011,9 @@ export const collectFrame = ({
   // does so per object, which M7 will need. Stable, where retail's qsort leaves equal keys in no set order.
   queued.sort((a, b) => a.depth - b.depth)
   for (const queue of queued) draws.push(...queue.draws)
+  const effectDraws: EffectDraw[] = []
+  for (const { instance, texture } of effects)
+    collectEffect(instance, view, texture, effectDraws, unsupported)
   return {
     background: background ?? BLACK_BACKGROUND,
     hooks: hooksOf(draws),
@@ -1006,6 +1022,7 @@ export const collectFrame = ({
     ambient,
     lights,
     draws,
+    effects: effectDraws,
     unsupported: [...unsupported],
     unregistered: [...unregistered],
   }

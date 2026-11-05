@@ -251,12 +251,24 @@ are state matched.
 
 Adapted from `freelancer-vscode`'s Alchemy; see [ADAPTING.md](ADAPTING.md#alchemy-m6).
 
-- [ ] Audit the rest of its ledger against the decomp and, where they differ, retail.
-- [ ] Adapt the simulation and effect shaders, driven by host-supplied time and a seed.
-- [ ] Rewrite the draw side against the frame list; gizmos stay in the extension, behind hooks.
-- [ ] Settle the fixed step against retail's per-frame `dt`.
-- [ ] Effects mounted on model hardpoints.
-- [ ] **You:** reference scenes, reusing the one-particle lab assets where they still serve.
+- [x] Audit the rest of its ledger against the decomp and, where they differ, retail. Its readings hold
+      and its structure doesn't: a folder's clock kills live particles in 33 retail effects, and more. The
+      table is in [ADAPTING.md](ADAPTING.md#alchemy-m6), with what's still open.
+- [x] Adapt the simulation and effect shaders, driven by host-supplied time and a seed: `EffectInstance`,
+      on retail's own tree walk, and a vertex stage carrying each record to now. All 1,213 retail effects
+      run, finite, and hand-worked pixels pin each facing (`src/alchemy/`). **Uncaptured.**
+- [x] Rewrite the draw side against the frame list: `Frame.effects`, after `draws`, in tree order and with
+      hooks either side. Gizmos stay in the extension, behind those hooks.
+- [x] Settle the fixed step against retail's per-frame `dt`: the host's `dt`, as retail.
+- [x] Effects mounted on model hardpoints: `advance`'s `placement`, the hardpoint's world, as the game's
+      override. Pinned: it reaches the control root alone, and leaves a trail. The hardpoint's matrix is the host's.
+- [ ] Reference scene generator for effects: a menu `.thn` holding one camera and one `PSYS`, a `[VisEffect]`
+      and a generated `.ale`, as `freelancer-vscode/docs/renderer/ALCHEMY-LAB.md` describes. And comparing
+      captured quads, whose `dt` the capture must log.
+- [ ] **You:** reference scenes: `gf_explosion_mine01` first, for the folder cut at 3 s, then a perp with a
+      lopsided texture, a beam, and dust.
+- [ ] The extension's effect editor on this renderer, behind the same setting. It scrubs, so it replays by
+      making a new instance, and needs hidden nodes, which `EffectInstance` doesn't take yet.
 
 **Done when** captured particle quads match by measurement, and the effect editor runs on this
 renderer. Random streams need not match retail; each appearance's sizes, colours and blends must.
@@ -269,6 +281,8 @@ renderer. Random streams need not match retail; each appearance's sizes, colours
       `SolarSpheresApplyDetail`. `placeSphere` has the menu's 1.5 and 9, and a host can pin a level.
 - [ ] Planet rings, asteroid field exteriors and billboards, space dust, gate tunnels.
 - [ ] Projectiles and beams; the cockpit pass with its depth clear.
+- [ ] Measure effects' CPU cost in a whole system. A pushed lane steps on the CPU, by choice: bring back
+      transform feedback only if this shows the need. The picture doesn't depend on it ([ADAPTING.md](ADAPTING.md#alchemy-m6)).
 - [ ] **You:** a custom system and a save that places the ship, with screenshots and captures.
 
 **Done when** a reference system matches in draw order and state, and the system editor runs on this

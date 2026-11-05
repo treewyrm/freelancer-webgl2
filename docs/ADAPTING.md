@@ -44,36 +44,53 @@ triangles start from another corner: the same triangle, and retail's indices her
 
 ## Alchemy (M6)
 
-**Verdict: adapt, and finish the audit in M6.** Spot checks agree with the decomp and retail. This is
-a sample of a large system, not proof of the whole. Its own ledger, `docs/renderer/ALCHEMY.md`, marks
-readings as disassembled, with addresses that can be checked one by one.
+**Verdict: adapted, with its simulation rewritten around what the audit found**, in `src/alchemy/`. Its
+readings hold up: emission, every field's arithmetic, the sprite routines' geometry and skips, curves,
+blending and draw order within a tree all match the decomp, and retail where they were checked. What
+fails is the structure around them. Checked against `src/alchemy/` and `alchemy.dll` (2026-11-05). The
+beam's chain and the dust's kite were read against the ledger's addresses and pinned by tests, without a
+term-by-term pass over their decomp; a capture is what checks them.
 
-| Part | Size | Plan |
-| ---- | ---- | ---- |
-| `src/webview/alchemy/` | About 4,500 lines; imports only the library and itself | Adapt |
-| `gl/shaders/{sprites,curves,fields,motion}.ts` | About 900 lines | Adapt |
-| `gl/arena.ts`, `gl/integrate.ts`, `gl/sprite.ts` | GPU store, transform feedback, templates | Adapt |
-| `gl/effects.ts`, `render/passes/effects.ts` | About 2,600 lines; gizmos and old renderer plumbing mixed in | Rewrite against the frame list |
+**Where the extension's ledger is wrong or open, now settled:**
 
-| Checked | Result |
-| ------- | ------ |
-| Emission: truncated count, bursts, LOD carry (`alchemy_emitters.cpp`) | Matches |
-| Pass state: lighting off, no Z writes, no culling, blend on (`alchemy_alchemy.cpp`) | Matches |
-| Blend taken per node from `BlendInfo` | Matches |
-| Skip at alpha under 0.01 | Matches |
-| Triangle sprite, equilateral with circumradius `2·Size` | Matches retail; **the decomp is wrong** ([below](#known-decomp-errors)) |
-| Sort keys: appearance 100, emitter 300, folder 400 | Matches the extension's draw order notes |
-| Curves handed to the shader whole, not baked | Good: the extension measured baking to lose 10% of alpha at the 99th percentile |
-| Fog applied across the effects pass | Per-pixel, which matches table fog; the rig's capture will show which mode it uses |
+| Reading | Extension | Retail | Where |
+| ------- | --------- | ------ | ----- |
+| A folder's clock | "Nothing reads it", unmodelled | It ticks, and past the longest life below it the folder dies **with its subtree, live particles included**: 33 retail effects, such as `gf_explosion_mine01` at 3 s | `0x6240180`, `0x6201810`, `+0x5c` |
+| An appearance's `Node_LifeSpan` | "Stops drawing" | Never read: it ends only with no emitter and nothing held | `0x6216441` |
+| An emitter past its life | "Open" | Its last update still emits, then the walk kills it and all that hangs from it | `0x6245c19`, `0x6201843` |
+| The expired test | `time ≥ lifespan` | `>` | `0x6240160` |
+| An emitter naming two appearances | Open; EXP-03 | One slot, so the last `Pair` wins, and the first's feed count never comes back | `+0x98`, `AssociateAppearance`, `BindRec8Associates` |
+| A perp's roll | "Seed not read", the viewer's own | +X, or +Z when it leaves along +X, projected across the velocity each draw | `0x6235e15`, `0x6233330` |
+| Update order | Fields sampled for this step | The tree's, and all 240 retail field links have the appearance first, so it **reads the field a frame late**, and not at all on the first | `0x6201810` |
+| Draw and spawn frames | Sampled after the step | Composed before it, so at the time before this `dt` | `0x4f8bc7` |
+| A sub-effect's place in the order | After all its parent's batches | Its top nodes hang off the spawner, sorted by class among all that spawner's children | `0x622f71a`, `0x6201e00` |
+| A finished sub-effect | Inferred | No node live but the root, so a field that never expires keeps its particle for good | `0x621f6d0`, `Slot11` |
+| A dust field of radius 0 | Doesn't act | Kills everything | `0x6212c90` |
+| A collide under 0.001 of speed | Reflects | Lands on the plane, velocity untouched | `0x621a32f` |
+| Pools | One 8,192 budget of its own | One per kind, from `dacom.ini`, a full one evicting its oldest, across effects | `0x6234ab0`, `createPools` |
+| Properties absent | 0 on emitters and fields | The constructors' own: a cube's 5 and 15, a dust's 60.1, gravity's 9.8 | `0x62455b0`, and on |
 
-**To settle in M6:**
+**Left out on purpose.** Replay and fixed steps belong to a scrubbing host, which can make a new
+`EffectInstance` and step it. The affine closed form needs a fixed step, and transform feedback paid for
+17.7% of particle-steps at the extension's measure. A pushed lane steps on the CPU and uploads each frame.
+Bring either back only on a measurement from a real scene, which is M7's, and the affine form not at all
+unless the step is fixed: it's exact only at equal steps.
 
-- **Fixed step.** The pool steps at 1/60 s; retail uses the frame's own `dt`. Emission and turbulence
-  depend on step size, so captures need a known frame rate, or comparison by measurement.
-- **The rest of the ledger**: the other appearances, fields, sub-effects and beams, by the same method.
-- **Defaults**, such as what a node with no `BlendInfo` gets. Retail seeds `{5, 2}`; not yet compared.
-- **`FxMeshAppearance`** isn't implemented. The extension's notes count 4 nodes and say the game
-  crashes when one spawns a particle, so it can probably stay out. Confirm first.
+**The fixed step is settled: the host's `dt`, as retail** (`0x4f8bc7`). Emission truncates per frame and
+turbulence depends on the step, so a fixed step is a different picture at any other frame rate. A capture
+needs its own frame's `dt` to compare against.
+
+**Still open:**
+
+- **Uncaptured, all of it.** No effect has a reference scene, so every reading above stands on the source.
+- `FxOrientedAppearance`'s per-particle `MeshApp_ParticleTransform` isn't applied (`0x622c6dd`). A mod can set it.
+- An animated texture's own playback, which picks the atlas when `UseCommonTexFrame` is off (`0x6244ef0`). M8's.
+- The beam's wireframe flag `0x1C65B7B9` isn't drawn. D3D's fill mode has no GL equivalent, but lines could do.
+- A present `BlendInfo` of `None` (22 retail nodes) is no D3D value, and draws as the default here.
+- Fog waits for M7, and the sampler a particle's texture gets is whatever the game last left.
+- A non-positive `Emitter_InitLifeSpan` births nothing here, by this library's rule, not read.
+- **`FxMeshAppearance` stays out**, and is reported. The game's factory fails on every one and the DLL calls
+  through the null mesh on spawn (`0x6224ed9`), so no data can draw one.
 
 ## Known decomp errors
 

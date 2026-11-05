@@ -15,6 +15,7 @@ export {
   type PlacedPart,
   type PlaceOptions,
   type Scene,
+  type SceneEffect,
   type SceneLight,
   type SceneModel,
 } from '#/scene/frame.js'
@@ -37,6 +38,22 @@ export {
   type SkinMesh,
   type SkinOptions,
 } from '#/deformable/skin.js'
+export {
+  buildEffect,
+  lookupOver,
+  type EffectLookup,
+  type EffectScene,
+  type ResolveNode,
+} from '#/alchemy/tree.js'
+export {
+  createPools,
+  EffectInstance,
+  RETAIL_POOLS,
+  type AdvanceOptions,
+  type EffectPools,
+  type PoolSizes,
+} from '#/alchemy/effect.js'
+export type { BeamDraw, EffectDraw, SpriteDraw } from '#/alchemy/draw.js'
 export { placeSphere, sphereLevel, type SphereOptions } from '#/scene/sphere.js'
 export { MATERIAL_MAP, mapMaterialType, type MaterialMapRule } from '#/material/map.js'
 export { sampleUvAnimation, type UvTransform } from '#/scene/uv-animation.js'

@@ -105,6 +105,7 @@ Flat, one directory per subsystem, added when there is code for it. A subsystem 
 | `scene/`        | Camera; next, frame order and lights  | `src/freelancer/`, `src/Shading/MaterialBatcher.cpp` |
 | `material/`     | One program per material type         | `src/Shading/`, `src/flmaterials/`    |
 | `deformable/`   | Skinned meshes and bone tables        | `src/Deformable2/`                    |
+| `alchemy/`      | Particle effects: run, draws, programs | `src/alchemy/`                       |
 | `harness.ts`    | GPU test runner, never shipped        |                                       |
 | `capture/`      | Capture reader and texture names, never shipped |                             |
 | `reference/`    | Reference scenes and their install, never shipped |                           |
@@ -114,7 +115,6 @@ Expected next, as a guide and not a commitment:
 
 | Directory       | Holds                                 | Decomp source                         |
 | --------------- | ------------------------------------- | ------------------------------------- |
-| `alchemy/`      | Particle effects                      | `src/alchemy/`                        |
 | `thorn/`        | THN scene playback                    | `src/Thorn/`                          |
 
 ## Tests

@@ -55,6 +55,7 @@ const base: Parameters = {
 }
 
 const frameOf = (fields: Partial<Frame>): Frame => ({
+  effects: [],
   view: IDENTITY,
   projection: IDENTITY,
   ambient: BLACK,

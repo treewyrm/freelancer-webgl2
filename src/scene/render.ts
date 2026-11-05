@@ -2,6 +2,7 @@
 import { Matrix4 } from '@treewyrm/freelancer/math'
 import type { CubeTexture, Texture } from '@treewyrm/freelancer/texture'
 import type { VMeshData, VMeshRef } from '@treewyrm/freelancer/vmesh'
+import { createEffectRenderer, type EffectRenderer } from '#/alchemy/program.js'
 import { INFLUENCE_FLOATS } from '#/deformable/skin.js'
 import {
   BONES_BINDING,
@@ -59,6 +60,7 @@ interface MeshResources {
  */
 export const createRenderer = (gl: WebGL2RenderingContext): Renderer => {
   let program: DcDtProgram | undefined
+  let effects: EffectRenderer | undefined
   let meshes = new Map<VMeshData, MeshResources>()
   let textures = new Map<Texture | CubeTexture, WebGLTexture>()
   let samplers = new Map<string, WebGLSampler>()
@@ -66,6 +68,7 @@ export const createRenderer = (gl: WebGL2RenderingContext): Renderer => {
 
   const forget = () => {
     program = undefined
+    effects = undefined
     meshes = new Map()
     textures = new Map()
     samplers = new Map()
@@ -190,9 +193,10 @@ export const createRenderer = (gl: WebGL2RenderingContext): Renderer => {
       gl.bindSampler(SECOND_UNIT, null)
     }
 
-    const runHooks = (before: number) => {
+    const runHooks = (before: number, only?: (name: HookName) => boolean) => {
       for (const hook of frame.hooks) {
-        const run = hook.before === before ? hooks[hook.name] : undefined
+        const run =
+          hook.before === before && (only?.(hook.name) ?? true) ? hooks[hook.name] : undefined
         if (!run) continue
         release()
         run({ gl, frame, viewProjection })
@@ -267,7 +271,24 @@ export const createRenderer = (gl: WebGL2RenderingContext): Renderer => {
       gl.drawElements(drawMode(draw.mesh.primitive), draw.count, gl.UNSIGNED_SHORT, draw.byteOffset)
     })
 
-    runHooks(frame.draws.length)
+    runHooks(frame.draws.length, (name) => name !== 'end')
+    if (frame.effects.length) {
+      effects ??= createEffectRenderer(gl)
+      effects.draw(frame.effects, {
+        gl,
+        view: frame.view,
+        projection,
+        bindTexture: ({ texture }) => {
+          gl.activeTexture(gl.TEXTURE0 + DIFFUSE_UNIT)
+          gl.bindTexture(gl.TEXTURE_2D, texture ? textureOf(texture.entry) : null)
+          // **Uncaptured:** the game leaves whatever sampler state was last set.
+          gl.bindSampler(DIFFUSE_UNIT, samplerOf(DEFAULT_SAMPLER))
+          return texture !== undefined
+        },
+      })
+      applyState()
+    }
+    runHooks(frame.draws.length, (name) => name === 'end')
     release()
     return true
   }
@@ -293,6 +314,7 @@ export const createRenderer = (gl: WebGL2RenderingContext): Renderer => {
       for (const resources of meshes.values()) freeMesh(resources)
       for (const texture of textures.values()) gl.deleteTexture(texture)
       for (const sampler of samplers.values()) gl.deleteSampler(sampler)
+      effects?.dispose()
       if (program) {
         gl.deleteProgram(program.handle)
         gl.deleteBuffer(program.boneBuffer)

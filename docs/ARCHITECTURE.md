@@ -55,8 +55,9 @@ its own `collect`. Previews have no game frame to match: there the host chooses 
 ## Skinning and effects
 
 Both keep the extension's GPU-heavy design ([ADAPTING.md](ADAPTING.md)). Skinned meshes are ordinary
-draws with a bone table. An effect's simulation is CPU state advanced by host-supplied time, and each
-appearance adds a draw to the frame list, in the game's tree order.
+draws with a bone table. An effect's simulation is CPU state advanced by the host's `dt`, and each appearance
+adds a draw to `Frame.effects`, in the game's tree order. A particle nothing pushes is its birth record,
+which the vertex stage carries to now, along with its curves. A pushed one steps on the CPU.
 
 ## Host boundary
 

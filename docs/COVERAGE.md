@@ -76,4 +76,8 @@ No file names these; the engine applies them.
 | ---- | --------- | ---- | ----- | ----- | ------- |
 | `EyeMaterial` | M5 | Yes | Yes | `character_reed`, `character_eyes` | `character_reed`, `character_eyes` |
 | Skinned `DcDt` | M5 | Yes | Yes | `character_reed` | `character_reed` |
-| Alchemy appearances | M6 | Partly; see [ADAPTING.md](ADAPTING.md#alchemy-m6) | | | |
+| `FxBasicAppearance`, `FxRectAppearance`, `FxPerpAppearance` | M6 | Yes | Yes | | |
+| `FLBeamAppearance`, `FLDustAppearance` | M6 | From the ledger; see [ADAPTING.md](ADAPTING.md#alchemy-m6) | Yes | | |
+| `FxParticleAppearance` | M6 | Yes | Yes | | |
+| `FxOrientedAppearance` | M6 | Yes, bar its particle transform | Partly | | |
+| `FxMeshAppearance` | M6 | Yes; crashes the game on spawn | Reported, undrawn | | |
