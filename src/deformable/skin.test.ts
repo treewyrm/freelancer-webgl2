@@ -16,7 +16,7 @@ import { Directory } from '@treewyrm/freelancer/utf'
 import { Primitive } from '@treewyrm/freelancer/vmesh'
 import type { Camera } from '#/scene/camera.js'
 import type { SwitchTable } from './level.js'
-import { boneTable, MAX_BONES, placeCostume, placeSkin, skinMesh } from './skin.js'
+import { boneTable, MAX_BONES, placeCostume, placeSkin, poseSkin, skinMesh } from './skin.js'
 
 const strip = (material: string, ...indices: number[]): FaceGroup => ({
   material,
@@ -390,4 +390,22 @@ test('a level past what a part may skin draws rigid, a pick out of its table hid
     placeCostume([model], Matrix4.identity, { lod: { camera: camera(50), tables } }).length,
     0,
   )
+})
+
+test('a host posing its own bones gets the same part as placing them, or a rigid one', () => {
+  const model = part(
+    { name: 'root', position: { x: 0, y: 0, z: 0 } },
+    { name: 'arm', position: { x: -2, y: 0, z: 0 } },
+  )
+  const root = moved(10)
+  const worlds = [root, moved(12)]
+  const posed = poseSkin(model.levels[0]!, model.bones, { worlds, root })
+  assert.deepEqual(posed.world, root)
+  assert.deepEqual(applied(posed.skin!.bones, 1, 1, 0, 0), [1, 0, 0])
+  const rigid = poseSkin(model.levels[0]!, model.bones, {
+    worlds: [root, moved(99)],
+    root,
+    rigid: true,
+  })
+  assert.deepEqual(applied(rigid.skin!.bones, 1, 1, 0, 0), [1, 0, 0])
 })

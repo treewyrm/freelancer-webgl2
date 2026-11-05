@@ -4,7 +4,7 @@
 `@treewyrm/freelancer-webgl2`. Its first consumer is [freelancer-vscode](../freelancer-vscode),
 whose webviews will move onto it.
 
-**Status: M4 done, M5 in progress.** Rigid models, planets and starspheres render and match retail; rigid models are in a model viewer and material preview behind a setting. The canopy glass is deferred; see [VALIDATION.md](docs/VALIDATION.md#open-questions).
+**Status: M5 done, M6 in progress.** Rigid models, planets, starspheres and characters render and match retail; all are in the extension's model viewer, character editor and material preview behind a setting. The canopy glass is deferred; see [VALIDATION.md](docs/VALIDATION.md#open-questions).
 
 | Doc | Covers |
 | --- | ------ |

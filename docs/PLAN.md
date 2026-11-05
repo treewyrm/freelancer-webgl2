@@ -25,8 +25,8 @@ An earlier attempt, `freelancer-render`, failed the other way, by transcribing t
 | [M2](#m2-in-the-model-viewer) | That ship in the real model viewer, with editor overlays | Done |
 | [M3](#m3-every-rigid-model) | All materials on rigid models, with animation and LOD | Done, some override types untested |
 | [M4](#m4-spheres-and-the-sky) | Planets, atmospheres, starspheres | Done, backdrop uncaptured |
-| [M5](#m5-characters) | Skinned characters | **In progress** |
-| [M6](#m6-effects) | Alchemy effects | |
+| [M5](#m5-characters) | Skinned characters | Done, mid-script frames uncaptured |
+| [M6](#m6-effects) | Alchemy effects | **In progress** |
 | [M7](#m7-the-space-frame) | A whole system, as the game frames it | |
 | [M8](#m8-rooms-and-cutscenes) | Bases and THN playback | |
 | [M9](#m9-retire-the-old-renderer) | Old renderer deleted from the extension | |
@@ -238,6 +238,11 @@ Adapted from `freelancer-vscode`'s GPU skinning; see [ADAPTING.md](ADAPTING.md#g
 - [x] **You:** a reference scene with a character. `character_reed`, at the last keyframe of a one-shot
       script, matches in draws, indices, every vertex and normal, each part's root, and picture: 99.92%
       within 2, a mean of 0.43. **Uncaptured:** frames mid-script and blending, and an unseated seam.
+
+- [x] The extension's character editor and a `.dfm` in its model viewer draw through `poseSkin`, behind the
+      same setting, with rigid props beside them. It poses and joins bones itself, as it did. A viewer has
+      no switch tables yet, so its level is the pin or the top one.
+- [x] **You:** open a costume in VS Code with the setting on, and scrub an animation. All looks right.
 
 **Done when** the character editor runs on this renderer behind its switch and the eye and skin rows
 are state matched.

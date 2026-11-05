@@ -31,6 +31,8 @@ export {
   MAX_BONES,
   placeCostume,
   placeSkin,
+  poseSkin,
+  type SkinPose,
   skinMesh,
   type SkinMesh,
   type SkinOptions,

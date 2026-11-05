@@ -233,6 +233,34 @@ const placement = ({
 }: Pick<Hardpoint, 'orientation' | 'position'>): Matrix4 =>
   Matrix4.fromRotationTranslation(orientation, position)
 
+export interface SkinPose {
+  /** Each bone's world, by its place in the table. A slot with none keeps the identity. */
+  worlds: readonly (Matrix4 | undefined)[]
+  /** The part's root bone's world, which the mesh is drawn with. */
+  root: Matrix4
+  /** Each bone's parent, by the same place, which an eye's offset is read against. */
+  parents?: readonly (number | undefined)[]
+  /** `Flag70` off: every bone the identity (`0x65f6cc6`), so the level draws at bind. */
+  rigid?: boolean
+}
+
+/** One level of a part, for a host that poses and joins its own bones. `placeCostume` is the other way in. */
+export const poseSkin = (
+  level: Level,
+  bones: readonly Bone[],
+  { worlds, root, parents, rigid = false }: SkinPose,
+): PlacedPart => {
+  const { mesh, reference, influences } = skinMesh(level, bones.length)
+  const skin: DrawSkin = { influences, bones: boneTable(bones, rigid ? [] : worlds, root) }
+  // Only the first UV bone drives, and only eye groups read it (`0x65f75ca`).
+  const { uvBone } = level.geometry
+  const parent = uvBone && parents?.[uvBone.bone]
+  const offset =
+    uvBone &&
+    eyeOffset(uvBone, worlds[uvBone.bone], parent === undefined ? undefined : worlds[parent])
+  return { reference, mesh, world: root, skin, ...(offset ? { eyeOffset: offset } : {}) }
+}
+
 /**
  * A character's parts, body first, each drawn with its root's world and skinned relative to it. Their
  * skeletons join by shared hardpoint name (`0x65f3540`, library `COSTUME.md`): walking every bone, the
@@ -311,35 +339,24 @@ export const placeCostume = (
 
     // Past its far cutoff a part draws nothing, and its bones still hold for those after it.
     if (!chosen) return
-    const rootWorld = worlds[root.index]!
-    const { mesh, reference, influences } = skinMesh(chosen, model.bones.length)
-    // `BuildCharacterDeformable` (`0x443b60`): the body has no limit, and the others skin levels 0 and 1.
-    const skinned = skinnedLevels?.[at] ?? (at === 0 ? Infinity : CHILD_SKINNED_LEVELS)
-    // `Flag70`: every bone the identity (`0x65f6cc6`).
-    const bones =
-      chosenAt! < skinned
-        ? boneTable(model.bones, worlds, rootWorld)
-        : boneTable(model.bones, [], rootWorld)
-    const skin: DrawSkin = { influences, bones }
-    // Only the first UV bone drives, and only eye groups read it (`0x65f75ca`).
-    const uvBone = chosen.geometry.uvBone
-    const parentOf = new Map<number, number>()
+    const parents: (number | undefined)[] = []
     const walk = (node: typeof root) => {
       for (const child of node.children) {
-        parentOf.set(child.index, node.index)
+        parents[child.index] = node.index
         walk(child)
       }
     }
     walk(root)
-    const offset =
-      uvBone && eyeOffset(uvBone, worlds[uvBone.bone], worlds[parentOf.get(uvBone.bone) ?? -1])
-    parts.push({
-      reference,
-      mesh,
-      world: rootWorld,
-      skin,
-      ...(offset ? { eyeOffset: offset } : {}),
-    })
+    parts.push(
+      poseSkin(chosen, model.bones, {
+        worlds,
+        root: worlds[root.index]!,
+        parents,
+        // `BuildCharacterDeformable` (`0x443b60`): the body has no limit, and the others skin levels 0
+        // and 1.
+        rigid: chosenAt! >= (skinnedLevels?.[at] ?? (at === 0 ? Infinity : CHILD_SKINNED_LEVELS)),
+      }),
+    )
   })
   return parts
 }
