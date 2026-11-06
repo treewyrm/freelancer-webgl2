@@ -23,10 +23,12 @@ export const assertFrameMatches = (
     const retail = draws[n]!
     const what = `draw ${n}, ${ours.materialName}`
 
-    assert.equal(ours.count, retail.indices, what)
+    // A ring piece is drawn from memory, `DrawPrimitiveUP`, with no indices and no buffer.
+    const immediate = retail.call === 'DrawPrimitiveUP'
+    assert.equal(ours.count, immediate ? retail.vertices : retail.indices, what)
     // Retail's Two, nomad and atmosphere copy their vertices elsewhere, so only the others compare.
     // Retail holds a model's meshes in one index buffer, so each mesh has one constant offset.
-    if (!ours.negateNormals && !ours.nomad && !ours.atmosphere && !streamed) {
+    if (!ours.negateNormals && !ours.nomad && !ours.atmosphere && !streamed && !immediate) {
       const start = ours.reference.indexStart + ours.byteOffset / 2
       const offset = offsets.get(ours.mesh) ?? retail.startIndex! - start
       offsets.set(ours.mesh, offset)
@@ -45,8 +47,9 @@ export const assertFrameMatches = (
     assert.equal(retail.states['NORMALIZENORMALS'], ours.normalizeNormals ? 1 : 0, what)
     assert.equal(retail.states['ZWRITEENABLE'], ours.depthWrite ? 1 : 0, what)
 
-    // A nomad surface sets no material, so the device's is left over from the last draw.
-    if (!ours.nomad) {
+    // A nomad surface sets no material, so the device's is left over from the last draw. Nor does an
+    // unlit immediate draw, which lighting off leaves unread.
+    if (!ours.nomad && !(immediate && ours.unlit)) {
       ours.diffuse.forEach((value, c) =>
         close(value, retail.material!.diffuse[c]!, `${what} diffuse`),
       )

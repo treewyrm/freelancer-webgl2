@@ -387,14 +387,17 @@ renderer. Random streams need not match retail; each appearance's sizes, colours
       UVs. `thickness_edge`, `inner_edge` and `outer_edge` are read and never used. Stage 0 wraps,
       read in `Freelancer-original.exe` where the decomp has filters
       ([ADAPTING.md](ADAPTING.md#win3dsettexturefilterlinear-and-win3dsettexturefilterpoint)).
-      Pinned by reading and by pixels. **Uncaptured**: stage 1's addressing, both filters, the alpha
-      test and the fog are whatever the frame left, taken as off and the default sampler.
-- [ ] **You:** capture `ring_outside` and `ring_inside` (`src/reference/systems.ts`, mounted): a tilted
-      ringed planet ahead, every piece on the main list, and one off to the side whose pieces
-      straddle the far threshold; then the ship inside the near band. Load `lab_ring_outside.fl` and
-      `lab_ring_inside.fl`, capture each, and `collect`. Then read rings in `space-load.ts` and match.
+      Pinned by reading and by pixels. **Matched in `ring_outside` and `ring_inside`**
+      (`src/reference/rings.test.ts`): order among the planets, the far list, state, and every
+      vertex's position to two float steps, colour and both UV sets; the picture is 99.97% within 2.
+      What `DrawPiece` leaves to the frame is as captured: both stages wrapping, linear, mips point,
+      the alpha test `GREATER 0`, no fog. In a nebula the fog left on is **uncaptured**.
+- [x] **You:** `ring_outside` and `ring_inside` (`src/reference/systems.ts`): a tilted ringed planet
+      ahead, and one off to the side whose pieces straddle the far threshold; then the ship inside the
+      near band, where two pieces about the camera, keyed 0, draw after the ship.
 - [ ] A ring's `[Clouds]` from inside, by its immersion (`GetImmersion`, `DrawPanels`): the puffs
-      `FNebulaClouds` shares with nebulae.
+      `FNebulaClouds` shares with nebulae. `ring_inside`'s draw 66 is one batch of `rock_wisps`,
+      after the lists and before the effects.
 - [ ] Asteroid field exteriors and billboards.
 - [ ] Space dust.
 - [ ] Gate tunnels.

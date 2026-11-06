@@ -57,6 +57,24 @@ export const RUNS = {
     effectRate: 96,
     animationSeconds: 7.6306,
   },
+  // No solar past the draw range: the camera is found from the near ringed planet, on the main list.
+  // Inside the near ring's band: its pieces about the camera draw after the ship, then its clouds.
+  ring_inside: {
+    far: 'Lab_ringed_planet',
+    farDraw: 30,
+    hullDraw: 42,
+    effectSeconds: 20,
+    effectRate: 96,
+    animationSeconds: 0,
+  },
+  ring_outside: {
+    far: 'Lab_ringed_planet',
+    farDraw: 32,
+    hullDraw: 48,
+    effectSeconds: 20,
+    effectRate: 96,
+    animationSeconds: 0,
+  },
 } as const
 
 /**
@@ -106,6 +124,7 @@ export const readSpaceRun = (
       detail: option('level_of_detail'),
       starSphere: option('star_sphere'),
       effectDetail: option('generic_effect_perf'),
+      highDetailTextures: option('high_detail_textures'),
       effectSeconds,
       effectRate,
       animationSeconds,

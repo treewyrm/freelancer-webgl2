@@ -148,7 +148,8 @@ about 0.2, on an Apple M4 Max under ANGLE Metal.
 
 `src/reference/space.gpu.test.ts` holds a space frame to the same tolerance, outside the HUD and the
 effects' random particles. `space_order` measures 99.96% within 2 and a mean of 0.32, with its sky
-filling most of the frame, `mplatform`'s turret and turned quarters included.
+filling most of the frame, `mplatform`'s turret and turned quarters included. `ring_outside` measures 99.97% within 2
+and a mean of 0.35, its two rings across the frame.
 
 So the rig's stack adds little to a picture of a textured surface, and neither does gamma. The log's
 gamma ramp reads a linear 0..255 where D3D's range is 0..65535. That stays unexplained, but the

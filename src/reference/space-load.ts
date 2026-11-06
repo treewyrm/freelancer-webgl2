@@ -4,7 +4,7 @@
  */
 import { getMaterial, readMaterialLibrary } from '@treewyrm/freelancer/material'
 import { Document, type Section } from '@treewyrm/freelancer/ini'
-import { Matrix4, type Vector3 } from '@treewyrm/freelancer/math'
+import { Matrix4, Quat, type RingShape, type Vector3 } from '@treewyrm/freelancer/math'
 import { readRigidModel, type RigidModel } from '@treewyrm/freelancer/rigid'
 import { readTextureLibrary, type Texture } from '@treewyrm/freelancer/texture'
 import { readSurfaceLibrary } from '@treewyrm/freelancer/surface'
@@ -25,6 +25,7 @@ import { attachJoint, partTransforms } from '#/scene/hierarchy.js'
 import { LightBlink, RETAIL_FLARE_LIGHT, type FlareLight, type SpaceFlare } from '#/scene/flare.js'
 import { lodRange, type LodList } from '#/scene/level.js'
 import type { Graph, SpaceLight } from '#/scene/light.js'
+import { buildRing, textureShape, type RingExterior, type TextureShape } from '#/scene/ring.js'
 import { placeSphere } from '#/scene/sphere.js'
 import { skyLayers, type SpaceEffect, type SpaceObject, type SpaceScene } from '#/scene/space.js'
 import {
@@ -214,6 +215,8 @@ export interface SystemOptions {
   effectSeconds?: number
   /** The game's frame rate, which effects step at. 60 when absent. */
   effectRate?: number
+  /** `high_detail_textures` from it. */
+  highDetailTextures?: number
   /** `generic_effect_perf` from it. */
   effectDetail?: number
   /** How long a solar's `use_animation` scripts have played. At rest when absent. */
@@ -351,6 +354,82 @@ const startEffect = async (
   }
 }
 
+/**
+ * A ring file's `[TexturePanels]` shapes (`FShapeDB::Load`): a `[Texture]` names the current texture
+ * and may cut shapes from it by `shape_name` and `dim`, and each `[Shape]` cuts one by `x`, `y`, `w`
+ * and `h`. Then its `[Exterior]`.
+ */
+const loadRing = async (read: ReadAsset, file: string, zone: RingShape, highDetailTextures = 1) => {
+  const shapes = new Map<string, TextureShape>()
+  const exterior: Record<string, number[] | string> = {}
+  for (const section of Document.read(await read(pathOf(file)))) {
+    const name = section.name.toLowerCase()
+    if (name === 'texturepanels')
+      for (const path of strings(section, 'file')) {
+        let texture: Texture | undefined
+        for (const part of Document.read(await read(pathOf(path)))) {
+          const kind = part.name.toLowerCase()
+          if (kind === 'texture') {
+            const library = strings(part, 'file')[0]
+            const named = strings(part, 'name')[0] ?? strings(part, 'texture_name')[0]
+            if (!library || !named) continue
+            const entries = [...readTextureLibrary(Directory.read(await read(pathOf(library))))]
+            const found = entries.find((entry) => entry.name.toLowerCase() === named.toLowerCase())
+            texture = found?.type === 'image' ? found : undefined
+            const cuts = strings(part, 'shape_name')
+            const dims = part.filterProperties('dim')
+            cuts.forEach((cut, at) => {
+              const [x, y, w, h] = dims[at]!.values.map(({ value }) => Number(value))
+              if (texture) shapes.set(cut.toLowerCase(), textureShape(texture, { x, y, w, h }))
+            })
+          } else if (kind === 'shape' && texture) {
+            const value = (key: string) => Number(part.getValue(key)?.value ?? 0)
+            const cut = strings(part, 'name')[0] ?? strings(part, 'shape_name')[0]
+            if (cut)
+              shapes.set(
+                cut.toLowerCase(),
+                textureShape(texture, {
+                  x: value('x'),
+                  y: value('y'),
+                  w: value('w'),
+                  h: value('h'),
+                }),
+              )
+          }
+        }
+      }
+    if (name === 'exterior')
+      for (const { name: key, values } of section.properties)
+        exterior[key.toLowerCase()] = key.toLowerCase().endsWith('shape')
+          ? String(values[0]!.value)
+          : values.map(({ value }) => Number(value))
+  }
+  const numbers = (key: string) => exterior[key] as number[] | undefined
+  const shape = (key: string) => {
+    const name = exterior[key] as string | undefined
+    return name === undefined ? undefined : shapes.get(name.toLowerCase())
+  }
+  const color = numbers('color')
+  const tile = numbers('detail_tile')
+  const ring: RingExterior = {
+    ...(shape('shape') ? { shape: shape('shape')! } : {}),
+    ...(shape('detail_shape') ? { detail: shape('detail_shape')! } : {}),
+    ...(tile ? { detailTile: [tile[0]!, tile[1]!] as const } : {}),
+    ...(color
+      ? {
+          color: {
+            x: Math.fround(color[0]! / 255),
+            y: Math.fround(color[1]! / 255),
+            z: Math.fround(color[2]! / 255),
+          },
+        }
+      : {}),
+    ...(numbers('opacity') ? { opacity: numbers('opacity')![0]! } : {}),
+    ...(numbers('num_segments') ? { segments: numbers('num_segments')![0]! } : {}),
+  }
+  return buildRing(ring, zone, { highDetailTextures })
+}
+
 export const loadSystem = async (
   system: ReferenceSystem,
   read: ReadAsset,
@@ -363,6 +442,7 @@ export const loadSystem = async (
     effectDetail,
     effectRate = 60,
     animationSeconds,
+    highDetailTextures,
   }: SystemOptions,
 ): Promise<SpaceScene> => {
   const archetypes = await sectionsOf(read, ['SOLAR/solararch.ini', 'SHIPS/shiparch.ini'])
@@ -629,6 +709,26 @@ export const loadSystem = async (
     effects: placed.map(({ effect }) => effect).reverse(),
     effectView: await effectViewOf(read, effectDetail),
     viewport: { width: 1024, height: 768 },
+    rings: await Promise.all(
+      system.objects.flatMap(({ ring }) => {
+        if (!ring) return []
+        const zone = system.zones!.find(({ nickname }) => nickname === ring.zone)!
+        const [x, y, z] = zone.position
+        const shape: RingShape = {
+          type: 'ring',
+          center: { x, y, z },
+          // `EulerMatrix` of a pitch alone: a turn about X.
+          orientation: Quat.axisAngle({
+            axis: { x: 1, y: 0, z: 0 },
+            angle: (zone.pitch * Math.PI) / 180,
+          }),
+          radius: zone.size[0],
+          innerRadius: zone.size[1],
+          height: zone.size[2],
+        }
+        return [loadRing(read, ring.file, shape, highDetailTextures)]
+      }),
+    ),
     shine: { texture: await shapeOf(read, 'shine') },
   }
 }

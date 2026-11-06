@@ -239,8 +239,8 @@ export const buildRing = (
 }
 
 // `DrawPiece`'s `0x4223d0` and `0x422410` set stage 0's `ADDRESSU` and `ADDRESSV` (13 and 14) to
-// clamp, then wrap: the decomp takes them for filters. Stage 1's addressing and both filters aren't
-// set, so they're the device's as the frame left them: taken as the default here, uncaptured.
+// clamp, then wrap: the decomp takes them for filters. Stage 1's addressing and both filters are the
+// device's as the frame left them: `ring_outside` captures both stages wrapping, linear, mips point.
 const RING_SAMPLER: SamplerState = { ...DEFAULT_SAMPLER, wrapU: 'repeat', wrapV: 'repeat' }
 
 const BLACK = { x: 0, y: 0, z: 0 }
@@ -248,7 +248,8 @@ const BLACK = { x: 0, y: 0, z: 0 }
 /**
  * `DrawPiece` (`0x50b510`): a piece's strip, unlit, in its vertex colour times the shape, the detail
  * doubling it, blended over what's there with `LEQUAL` and no depth writes or culling. Nothing
- * without a shape. Its alpha test and fog are whatever the frame left on: off here.
+ * without a shape. Its alpha test and fog are whatever the frame left on: `ring_outside` captures
+ * `GREATER 0` and no fog, outside a nebula. In one, the last object's fog may still be on: uncaptured.
  */
 export const ringPieceDraw = (ring: PlanetRing, piece: RingPiece): Draw | undefined => {
   const { shape, detail } = ring
@@ -289,6 +290,6 @@ export const ringPieceDraw = (ring: PlanetRing, piece: RingPiece): Draw | undefi
     blendMode: 'alpha',
     unlit: true,
     alphaReference: 0,
-    alphaFunction: 'always',
+    alphaFunction: 'greater',
   }
 }
