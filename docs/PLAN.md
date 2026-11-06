@@ -345,8 +345,18 @@ renderer. Random streams need not match retail; each appearance's sizes, colours
       list's far ranges at 15000; `levelEnds` takes it too. The multiplier is 0.700208, read from
       `Freelancer-original.exe` (`0x5c7410`), not tan 35°. Pinned by reading. The option's retail default is
       a machine score, so the host gives it; 0.75 changes nothing.
-- [ ] What `SpaceEffectsDrawFrame` does around effects: `ZFUNC` 4 where the program has `LESS`, the view test
-      and `EXIST_OFFSCREEN` (`EffectTypeBucketWalk`), and the screen quads it flushes last (`ScreenQuadFlush`).
+- [x] `SpaceEffectsDrawFrame`'s depth test: `ZFUNC` 4 around every effect (`0x4f7480`), so a space frame
+      draws effects with `LEQUAL` where the menu's capture has `LESS` (`effectDepthFunc`). Pinned by reading
+      and by pixels: an effect in the plane of a model draws.
+- [ ] An effect's view test and its death off screen (`EffectTypeBucketWalk`, `FParticleEffect::UpdateVisibility`,
+      `0x4f86c0`). The test keeps last frame's answer when the effect's priority is under `generic_effect_perf`,
+      when it's behind the near plane, or past its type's `pbubble` near-to-far by that option; otherwise
+      the view's side planes decide. A cloaked watched ship, or one in another field than the camera's or
+      past its radius, hides it. Unseen with no `EXIST_OFFSCREEN`, it freezes to the world and dies; unseen
+      with it, it runs and isn't drawn. Retail steps effects by at most 0.1 s. The host runs effects, so this
+      is a query it asks, from `[EffectType]`.
+- [ ] The screen quads `SpaceEffectsDrawFrame` flushes after every effect, `LEQUAL` with no depth writes
+      (`ScreenQuadFlush`): equipment flares, with projectiles.
 - [ ] `level_of_detail` on a space solar's sphere: its level bias and maximum, up to 10, from
       `SolarSpheresApplyDetail`. `placeSphere` takes them as `levels` over the menu's 1.5 and 9, so
       what's left is the option's mapping onto them.

@@ -26,6 +26,8 @@ export interface SpaceReport {
   spotLit: number[]
   /** The middle, from 100 into a nebula's edge: a white square in it, then a red effect. */
   fogged: { square: number[]; effect: number[]; unfoggedEffect: number[] }
+  /** An effect in the plane of a black square: drawn over it in space, and not where `LESS` holds. */
+  coplanar: { space: number[]; less: number[] }
 }
 
 // A square of half-size 1 facing +Z: FVF 0x112.
@@ -228,6 +230,38 @@ export default (async (gl) => {
     unfoggedEffect: fogShot([], effect(), []),
   }
 
+  // The quad at the origin, and a white square in its plane, 300 ahead.
+  // Black, as the effect adds.
+  const plane = square([0, 0, 0], -0.5, 0, 30)
+  const coplanarAt = (effectDepthFunc?: 'less') => {
+    const frame = collectSpaceFrame({
+      camera: {
+        position: { x: 0, y: 0, z: 300 },
+        orientation: Matrix3.identity,
+        fovh: 45,
+        near: 1,
+        far: 1,
+      },
+      aspect: width / height,
+      ambient: { x: 255, y: 255, z: 255 },
+      lights: [],
+      objects: [plane],
+      effects: effect(),
+    })
+    renderer.render(effectDepthFunc ? { ...frame, effectDepthFunc } : frame)
+    return read(width >> 1, height >> 1)
+  }
+  const coplanar = { space: coplanarAt(), less: coplanarAt('less') }
+
   renderer.dispose()
-  return { error: gl.getError(), beyondFar, noDepth, withDepth, pointLit, spotLit, fogged }
+  return {
+    coplanar,
+    error: gl.getError(),
+    beyondFar,
+    noDepth,
+    withDepth,
+    pointLit,
+    spotLit,
+    fogged,
+  }
 }) satisfies Fixture<SpaceReport>

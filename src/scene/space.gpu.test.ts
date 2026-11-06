@@ -66,6 +66,12 @@ test('an equipment spot lights within its outer cone, fading from its inner, per
   assert.equal(narrow, 0)
 })
 
+test('in space, an effect in the plane of what is drawn still draws, as LESSEQUAL lets it', () => {
+  // Half red, added.
+  assert.deepEqual(report.coplanar.space, [127, 0, 0])
+  assert.deepEqual(report.coplanar.less, [0, 0, 0])
+})
+
 test('a point light attenuates by distance and stops at its range, per vertex', () => {
   const [full, half, none] = report.pointLit
   const d = Math.sqrt(43)

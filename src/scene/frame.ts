@@ -269,6 +269,8 @@ export interface Frame {
   effects: EffectDraw[]
   /** Over every effect, as `SpaceObjDrawPass` sets it in a nebula. */
   effectFog?: Fog
+  /** `less` when absent, as the menu's effects capture it; space's are `lequal`. */
+  effectDepthFunc?: 'less' | 'lequal'
   /** What didn't draw as authored: materials M3 is to cover, and any mesh or texture not found. */
   unsupported: string[]
   /** Materials of a type no DLL registers. They draw nothing in retail either. */

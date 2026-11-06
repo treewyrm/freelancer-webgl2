@@ -415,6 +415,8 @@ export interface EffectContext {
   projection: Matrix4
   bindTexture: (draw: EffectDraw) => boolean
   fog?: Fog
+  /** `less` when absent. */
+  depthFunc?: 'less' | 'lequal'
 }
 
 export interface EffectRenderer {
@@ -551,7 +553,7 @@ export const createEffectRenderer = (gl: WebGL2RenderingContext): EffectRenderer
 
   const draw = (
     draws: readonly EffectDraw[],
-    { view, projection, bindTexture, fog }: EffectContext,
+    { view, projection, bindTexture, fog, depthFunc = 'less' }: EffectContext,
   ): void => {
     if (!draws.length) return
     sprite ??= createProgram(gl, spriteVertex, fragment, SPRITE_UNIFORMS)
@@ -570,7 +572,7 @@ export const createEffectRenderer = (gl: WebGL2RenderingContext): EffectRenderer
     gl.disable(gl.CULL_FACE)
     gl.enable(gl.BLEND)
     gl.depthMask(false)
-    gl.depthFunc(gl.LESS)
+    gl.depthFunc(depthFunc === 'lequal' ? gl.LEQUAL : gl.LESS)
 
     // Encoded first: the texture must hold every list before any sprite reads one.
     for (const each of draws)

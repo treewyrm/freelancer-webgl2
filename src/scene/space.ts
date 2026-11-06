@@ -381,6 +381,8 @@ export const collectSpaceFrame = ({
     draws,
     effects: effectDraws,
     ...(effectFog && { effectFog }),
+    // `SpaceEffectsDrawFrame` (`0x4f7480`) sets `ZFUNC` 4 around every effect.
+    effectDepthFunc: 'lequal',
     unsupported: [...unsupported],
     unregistered: [...unregistered],
   }
