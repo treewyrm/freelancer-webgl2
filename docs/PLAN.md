@@ -348,13 +348,14 @@ renderer. Random streams need not match retail; each appearance's sizes, colours
 - [x] `SpaceEffectsDrawFrame`'s depth test: `ZFUNC` 4 around every effect (`0x4f7480`), so a space frame
       draws effects with `LEQUAL` where the menu's capture has `LESS` (`effectDepthFunc`). Pinned by reading
       and by pixels: an effect in the plane of a model draws.
-- [ ] An effect's view test and its death off screen (`EffectTypeBucketWalk`, `FParticleEffect::UpdateVisibility`,
-      `0x4f86c0`). The test keeps last frame's answer when the effect's priority is under `generic_effect_perf`,
-      when it's behind the near plane, or past its type's `pbubble` near-to-far by that option; otherwise
-      the view's side planes decide. A cloaked watched ship, or one in another field than the camera's or
-      past its radius, hides it. Unseen with no `EXIST_OFFSCREEN`, it freezes to the world and dies; unseen
-      with it, it runs and isn't drawn. Retail steps effects by at most 0.1 s. The host runs effects, so this
-      is a query it asks, from `[EffectType]`.
+- [x] An effect's view test: `viewEffect`, from `FParticleEffect::UpdateVisibility` (`0x4f86c0`) and
+      `EffectTypeBucketWalk`. A placed `SpaceEffect` draws only when seen; `effectViews` tells the host
+      whether it draws, runs unseen (`EXIST_OFFSCREEN`) or ends, and its `ALCHEMY_LOD` blend. A cloaked
+      watched ship, or one in another field than the camera's or past its fog, hides it; so does a priority
+      under `generic_effect_perf`, the near plane, its type's `pbubble` and an `[EffectLOD]` row's least size.
+      The retail `[EffectType]` table is `RETAIL_EFFECT_TYPES`. Pinned by reading. Retail keeps last frame's
+      answer where it doesn't test, but clears it once an effect draws, so that is taken as unseen; a cruise
+      effect's fade (`FParticleEffectCruise`) isn't built. Retail steps effects by at most 0.1 s. **Uncaptured.**
 - [ ] The screen quads `SpaceEffectsDrawFrame` flushes after every effect, `LEQUAL` with no depth writes
       (`ScreenQuadFlush`): equipment flares, with projectiles.
 - [ ] `level_of_detail` on a space solar's sphere: its level bias and maximum, up to 10, from

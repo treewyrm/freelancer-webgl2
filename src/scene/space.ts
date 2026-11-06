@@ -5,6 +5,12 @@
  */
 import { Matrix4, type Vector3 } from '@treewyrm/freelancer/math'
 import { collectEffect, type EffectDraw } from '#/alchemy/draw.js'
+import {
+  viewEffect,
+  type EffectView,
+  type EffectViewOptions,
+  type PlacedEffect,
+} from './effect-view.js'
 import { lightObject, lightSet, systemAmbient, type SpaceLight } from './light.js'
 import {
   findNebula,
@@ -60,8 +66,18 @@ export interface SpaceObject {
   nebula?: SpaceNebula
 }
 
+/** A space frame, and what became of each of its effects. */
+export interface SpaceFrame extends Frame {
+  /**
+   * In the scene's order: an effect with a `position` is drawn, runs unseen, or ends, as the game
+   * would. The host steps it with `lod` next. Undefined for one with no position, which draws.
+   */
+  effectViews: (EffectView | undefined)[]
+}
+
 /** `EffectTypeInfoByIndex`, from `[EffectType]`: the game's walk is by type. */
-export interface SpaceEffect extends SceneEffect {
+export interface SpaceEffect extends SceneEffect, Partial<Omit<PlacedEffect, 'type'>> {
+  /** `[EffectType]`'s index, `EFT_NONE` 0. With a `position`, the view test decides it. */
   type: number
 }
 
@@ -87,6 +103,8 @@ export interface SpaceScene {
   /** `[System] space_color`, 0 to 1. Deep in a nebula, its fog's colour instead. */
   background?: Vector3
   time?: number
+  /** The options and data the effects' view test reads. */
+  effectView?: EffectViewOptions
   /** Seconds since the last frame, which each nebula's lightning advances by. 0 when absent. */
   step?: number
 }
@@ -206,7 +224,8 @@ export const collectSpaceFrame = ({
   background,
   time = 0,
   step = 0,
-}: SpaceScene): Frame => {
+  effectView,
+}: SpaceScene): SpaceFrame => {
   const resolved = { ...RETAIL_SPACE_LIMITS, ...limits }
   const {
     leastFarClip,
@@ -354,9 +373,18 @@ export const collectSpaceFrame = ({
   }
 
   const effectDraws: EffectDraw[] = []
+  // A placed effect is drawn only if seen. What it is otherwise the host learns from `effectViews`.
+  const views = effects.map((effect): EffectView | undefined => {
+    if (effect.type === SKIPPED_EFFECT_TYPE || !effect.position) return undefined
+    const placed = { ...effect, position: effect.position }
+    return viewEffect(placed, { camera, aspect, view, field, nebulae: states }, effectView)
+  })
   const walked = effects
-    .filter(({ type }) => type !== SKIPPED_EFFECT_TYPE)
     .map((effect, at) => ({ effect, at }))
+    .filter(
+      ({ effect, at }) =>
+        effect.type !== SKIPPED_EFFECT_TYPE && (views[at]?.fate ?? 'draw') === 'draw',
+    )
     .sort((a, b) => a.effect.type - b.effect.type || a.at - b.at)
   for (const { effect } of walked)
     collectEffect(effect.instance, view, effect.texture, effectDraws, unsupported, effect.visible)
@@ -383,6 +411,7 @@ export const collectSpaceFrame = ({
     ...(effectFog && { effectFog }),
     // `SpaceEffectsDrawFrame` (`0x4f7480`) sets `ZFUNC` 4 around every effect.
     effectDepthFunc: 'lequal',
+    effectViews: views,
     unsupported: [...unsupported],
     unregistered: [...unregistered],
   }

@@ -500,3 +500,30 @@ test('with no field and no objects a frame still clears and runs its hooks', () 
     ['begin', 'opaque', 'end'],
   )
 })
+
+test('a placed effect out of view is not drawn, and the frame says what became of each', () => {
+  const { scene } = fixtureScene([{ node: emitter('emitter') }])
+  const drawn: string[] = []
+  const running = (name: string, fields: object = {}) => ({
+    type: 0,
+    instance: new EffectInstance(scene),
+    texture: () => undefined,
+    visible: () => (drawn.push(name), true),
+    ...fields,
+  })
+  const frame = collectSpaceFrame(
+    sceneOf([], {
+      effects: [
+        running('behind', { position: { x: 0, y: 0, z: 100 } }),
+        running('ahead', { position: { x: 0, y: 0, z: -100 } }),
+        running('unplaced'),
+      ],
+    }),
+  )
+  assert.deepEqual(drawn, ['ahead', 'unplaced'])
+  assert.deepEqual(frame.effectViews, [
+    { fate: 'die', lod: 1 },
+    { fate: 'draw', lod: 1 },
+    undefined,
+  ])
+})
