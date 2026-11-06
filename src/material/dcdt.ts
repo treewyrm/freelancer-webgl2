@@ -46,6 +46,8 @@ uniform vec3 lightDirection[${MAX_LIGHTS}];
 uniform vec4 lightPosition[${MAX_LIGHTS}];
 uniform float lightRange[${MAX_LIGHTS}];
 uniform vec3 lightAttenuation[${MAX_LIGHTS}];
+// A spot's cos(theta / 2), cos(phi / 2) and falloff. A falloff of 0 is no spot.
+uniform vec3 lightSpot[${MAX_LIGHTS}];
 
 uniform bool colorVertex;
 uniform bool nomad;
@@ -126,6 +128,13 @@ void main() {
       toLight = offset / d;
       vec3 a = lightAttenuation[i];
       attenuation = 1.0 / (a.x + a.y * d + a.z * d * d);
+      // D3D8's spot: rho against the inner and outer cones' half-angle cosines.
+      vec3 spot = lightSpot[i];
+      if (spot.z > 0.0) {
+        float rho = dot(normalize(mat3(view) * lightDirection[i]), -toLight);
+        if (rho <= spot.y) continue;
+        if (rho <= spot.x) attenuation *= pow((rho - spot.y) / (spot.x - spot.y), spot.z);
+      }
     }
     sum += source.rgb * lightColor[i] * attenuation * max(dot(eyeNormal, toLight), 0.0);
   }
@@ -201,6 +210,7 @@ const UNIFORMS = [
   'lightPosition',
   'lightRange',
   'lightAttenuation',
+  'lightSpot',
   'colorVertex',
   'nomad',
   'unlit',
@@ -297,6 +307,15 @@ export const setLights = (
   gl.uniform3fv(
     uniforms.lightAttenuation,
     vectors(lights.map(({ attenuation }) => attenuation ?? ORIGIN)),
+  )
+  // The cosines of half of each cone, and the falloff. A zero falloff marks no spot.
+  gl.uniform3fv(
+    uniforms.lightSpot,
+    new Float32Array(
+      lights.flatMap(({ spot }) =>
+        spot ? [Math.cos(spot.theta / 2), Math.cos(spot.phi / 2), spot.falloff] : [0, 0, 0],
+      ),
+    ),
   )
 }
 

@@ -9,6 +9,7 @@ import {
 import { EffectInstance } from '#/alchemy/effect.js'
 import { basic, eased, emitter, flat, sceneOf, tint } from '#/alchemy/fixtures.js'
 import type { Fixture } from '#/harness.js'
+import { equipmentLight } from './light.js'
 import { zoneOf } from './nebula.js'
 import { createRenderer } from './render.js'
 import { collectSpaceFrame, type SpaceObject, type SpaceScene } from './space.js'
@@ -21,6 +22,8 @@ export interface SpaceReport {
   withDepth: number[][]
   /** The middle, lit by a point light at full, half and no strength. */
   pointLit: number[]
+  /** The same square under an equipment spot of 179°, 120° and 60°. */
+  spotLit: number[]
   /** The middle, from 100 into a nebula's edge: a white square in it, then a red effect. */
   fogged: { square: number[]; effect: number[]; unfoggedEffect: number[] }
 }
@@ -155,6 +158,21 @@ export default (async (gl) => {
     lightAt({ x: 1, y: 0, z: 0 }, 6.5),
   ]
 
+  // A spot from the same place, down -Z, of range 50.
+  const spotAt = (cone: number) =>
+    shot([square([1, 1, 1], 10, 10, 3)], {
+      ambient: { x: 0, y: 0, z: 0 },
+      lights: [
+        equipmentLight({
+          world: Matrix4.translation({ x: 0, y: 0, z: -5 }),
+          color: { x: 1, y: 1, z: 1 },
+          intensity: 50,
+          cone,
+        })!,
+      ],
+    })[0]![0]!
+  const spotLit = [spotAt(179), spotAt(120), spotAt(60)]
+
   // From 300 out on +Z, 100 into a nebula of 400 whose fog is 200 deep.
   const nebula = {
     zone: zoneOf({ type: 'sphere', center: { x: 0, y: 0, z: 0 }, radius: 400 }),
@@ -211,5 +229,5 @@ export default (async (gl) => {
   }
 
   renderer.dispose()
-  return { error: gl.getError(), beyondFar, noDepth, withDepth, pointLit, fogged }
+  return { error: gl.getError(), beyondFar, noDepth, withDepth, pointLit, spotLit, fogged }
 }) satisfies Fixture<SpaceReport>

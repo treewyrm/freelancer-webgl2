@@ -52,6 +52,20 @@ test('in a nebula, what it holds fades to its fog by depth, and effects fade to 
   assert.deepEqual(effect.slice(1), [0, 0])
 })
 
+test('an equipment spot lights within its outer cone, fading from its inner, per vertex', () => {
+  const [wide, partial, narrow] = report.spotLit
+  // Each corner is √43 away and 40.3° off its axis, by 1 + 16 / 50² · 43.
+  const d = Math.sqrt(43)
+  const lit = (255 * (5 / d / 3)) / (1 + (16 / 2500) * 43)
+  const angle = Math.acos(5 / d)
+  // 179°: inside the inner cone of 89.5°. 120°: between 30° and 60°. 60°: outside 30°.
+  assert.ok(Math.abs(wide! - lit) <= 1, `${wide}`)
+  const cos = (degrees: number) => Math.cos((degrees * Math.PI) / 180)
+  const spot = (Math.cos(angle) - cos(60)) / (cos(30) - cos(60))
+  assert.ok(Math.abs(partial! - lit * spot) <= 1, `${partial}`)
+  assert.equal(narrow, 0)
+})
+
 test('a point light attenuates by distance and stops at its range, per vertex', () => {
   const [full, half, none] = report.pointLit
   const d = Math.sqrt(43)

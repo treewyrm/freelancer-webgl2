@@ -2,8 +2,8 @@
  * A system's lights as the game gives them to one object: `StarSysApplyObjectLighting` (`0x5554d0`) in
  * `src/freelancer/Client/space_scene_obj_draw.cpp`, and `engine_light.cpp`. Pure, no GL.
  */
-import type { Vector3 } from '@treewyrm/freelancer/math'
-import type { SceneLight } from './frame.js'
+import { Matrix4, type Vector3 } from '@treewyrm/freelancer/math'
+import type { SceneLight, Spot } from './frame.js'
 
 /** An `[IGraph]`'s `point = x, value` keys, in file order. A colour graph's values are `0xAARRGGBB`. */
 export interface Graph {
@@ -27,6 +27,51 @@ export interface SpaceLight {
   ambientCurve?: Graph
   /** `color_curve`: a tint over the host's clock, repeating every `period` seconds. */
   colorCurve?: { graph: Graph; period: number }
+  /** A cone's angles. A `[LightSource]` has none, so its cone lights nothing; equipment's has. */
+  spot?: Spot
+}
+
+/** A `[Light]` equipment's keys, and where its hardpoint is. */
+export interface EquipmentLight {
+  /** The hardpoint's frame in the world: it shines down its -Z. */
+  world: Matrix4
+  /** `color`, 0 to 1. */
+  color: Vector3
+  /** `intensity`: its range. No light at all at 0 or less. */
+  intensity: number
+  /** `lightsource_cone`, a full angle in degrees: a spot below 180, a point light otherwise. */
+  cone?: number
+}
+
+/**
+ * `CliEquipLightInit` (`0x4fda00`): the light a `[Light]` carries, which retail makes only for the
+ * player's own ship. Its range is its intensity, falling off by 16 / range² (`EngineLightSetRadius`).
+ */
+export const equipmentLight = ({
+  world,
+  color,
+  intensity,
+  cone = 180,
+}: EquipmentLight): SpaceLight | undefined => {
+  if (!(intensity > 0)) return undefined
+  // `LightColorByte`: rounded, and only the low byte kept.
+  const byte = (value: number) => Math.floor(Math.fround(value) * 255 + 0.5) & 0xff
+  const position = Matrix4.transformPoint({ x: 0, y: 0, z: 0 }, world)
+  const axis = Matrix4.transformDirection({ x: 0, y: 0, z: -1 }, world)
+  const light: SpaceLight = {
+    type: cone < 180 ? 'cone' : 'point',
+    position,
+    direction: unit(axis),
+    color: { x: byte(color.x), y: byte(color.y), z: byte(color.z) },
+    range: intensity,
+    attenuation: { x: 1, y: 0, z: Math.fround(16 / (intensity * intensity)) },
+  }
+  // `EngineLightSetConeAngle` (`0x411670`): the inner cone half the outer.
+  if (cone < 180) {
+    const phi = Math.fround(Math.fround(cone) * Math.fround(Math.PI / 180))
+    light.spot = { phi, theta: Math.fround(phi * 0.5), falloff: 1 }
+  }
+  return light
 }
 
 /** What one object is lit by: at most four lights, and the ambient, 0 to 1. */
@@ -352,21 +397,21 @@ export const lightObject = (
     // Under a byte's worth, it's left off.
     if (color.z + color.y + color.x < 1 / 255) continue
     // A cone from `[LightSource]` has no angles, and D3D's spot falloff gives nothing outside 0°.
-    if (light.type === 'cone') continue
+    if (light.type === 'cone' && !light.spot) continue
 
-    if (light.type === 'point')
-      lit.push({
-        color,
-        direction: FORWARD,
-        position: light.position,
-        range: light.range,
-        attenuation: light.attenuation ?? { x: 0, y: 1, z: 0 },
-      })
+    // A curve turns it to shine from its position at the object.
+    const direction = turns(light)
+      ? unit({ x: dx, y: dy, z: dz })
+      : unit(light.direction ?? FORWARD)
+    if (light.type === 'directional') lit.push({ color, direction })
     else
       lit.push({
         color,
-        // A curve turns it to shine from its position at the object.
-        direction: turns(light) ? unit({ x: dx, y: dy, z: dz }) : unit(light.direction ?? FORWARD),
+        direction: light.type === 'cone' ? direction : FORWARD,
+        position: light.position,
+        range: light.range,
+        attenuation: light.attenuation ?? { x: 0, y: 1, z: 0 },
+        ...(light.type === 'cone' && { spot: light.spot }),
       })
   }
   const byte = (value: number) => Math.min(Math.max(Math.trunc(value * 255), 0), 255) / 255

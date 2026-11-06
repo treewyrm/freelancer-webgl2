@@ -43,6 +43,15 @@ export interface SceneLight {
   range?: number
   /** Constant, linear and quadratic, of the distance. */
   attenuation?: Vector3
+  /** With a position, a spot along `direction`: D3D8's angles, inner and outer, in radians. */
+  spot?: Spot
+}
+
+/** `D3DLIGHT8`'s `Theta`, `Phi` and `Falloff`: full angles in radians, no light outside `phi`. */
+export interface Spot {
+  theta: number
+  phi: number
+  falloff: number
 }
 
 /** What a skinned mesh adds: `skinMesh`'s influences and `boneTable`'s matrices, column-major. */

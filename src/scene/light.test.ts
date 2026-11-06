@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import type { Vector3 } from '@treewyrm/freelancer/math'
+import { Matrix4, Quat, type Vector3 } from '@treewyrm/freelancer/math'
 import {
+  equipmentLight,
   evaluateColorGraph,
   evaluateGraph,
   lightObject,
@@ -178,4 +179,30 @@ test('a colour curve tints over the host clock', () => {
   const light = point(1, 10, { colorCurve: { graph: flicker, period: 2 } })
   assert.deepEqual(lit([light], ORIGIN, 1, BLACK, 1.5).lights[0]!.color, { x: 1, y: 1, z: 1 })
   assert.deepEqual(lit([light], ORIGIN, 1, BLACK, 0.5).lights, [])
+})
+
+test("an equipment light shines down its hardpoint's -Z, a spot below 180°, its range its intensity", () => {
+  // A quarter turn about Y takes -Z to -X.
+  const turn = Quat.axisAngle({ axis: { x: 0, y: 1, z: 0 }, angle: Math.PI / 2 })
+  const world = Matrix4.fromTRS({ x: 1, y: 2, z: 3 }, turn)
+  const spot = equipmentLight({ world, color: { x: 0.5, y: 1, z: 0 }, intensity: 40, cone: 60 })!
+  assert.equal(spot.type, 'cone')
+  assert.deepEqual(spot.position, { x: 1, y: 2, z: 3 })
+  assert.ok(Math.abs(spot.direction!.x + 1) < 1e-6 && Math.abs(spot.direction!.z) < 1e-6)
+  // Rounded to bytes.
+  assert.deepEqual(spot.color, { x: 128, y: 255, z: 0 })
+  assert.deepEqual(spot.attenuation, { x: 1, y: 0, z: Math.fround(16 / 1600) })
+  assert.equal(spot.range, 40)
+  assert.ok(Math.abs(spot.spot!.phi - Math.PI / 3) < 1e-6)
+  assert.ok(Math.abs(spot.spot!.theta - Math.PI / 6) < 1e-6)
+
+  const point = equipmentLight({ world, color: { x: 1, y: 1, z: 1 }, intensity: 40 })!
+  assert.equal(point.type, 'point')
+  assert.equal(point.spot, undefined)
+  assert.equal(equipmentLight({ world, color: { x: 1, y: 1, z: 1 }, intensity: 0 }), undefined)
+
+  // Through `lightObject` a spot keeps its way and its angles.
+  const [lit] = lightObject(lightSet([spot]), { x: -10, y: 2, z: 3 }, 1, BLACK, 0).lights
+  assert.deepEqual(lit!.spot, spot.spot)
+  assert.deepEqual(lit!.direction, spot.direction)
 })

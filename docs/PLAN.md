@@ -328,10 +328,14 @@ renderer. Random streams need not match retail; each appearance's sizes, colours
       background flashes (`NebulaAmbientTick`, `0x5097c0`). Every nebula has one by default, checked in
       `Freelancer-original.exe` (`0x504b4e`). It joins the system's lights after them. Pinned by reading.
       **Uncaptured.**
-- [ ] Lights equipment and effects carry: player-owned `[Light]` equipment with an `intensity` is a point
-      light of that range, or a spot under 180° of `lightsource_cone` (`client_equip_fx.cpp`, `0x4fdb38`),
-      which needs D3D's spot falloff in the shader. An effect's `lgt_*` is a point light with an animation
-      (`CreateEffectStart`, `0x544299`).
+- [x] Lights equipment carries: `equipmentLight`, from `CliEquipLightInit` (`0x4fda00`). A `[Light]` with an
+      `intensity` is a point light of that range falling off by 16 / range² (`EngineLightSetRadius`), or a
+      spot under 180° of `lightsource_cone`, its inner cone half the outer (`EngineLightSetConeAngle`).
+      D3D8's spot factor in the shader. Retail makes one only for the player's ship, which the host decides.
+      Pinned by reading and by pixels. **Uncaptured.** Its bulb and flare are drawing of their own, with
+      projectiles.
+- [ ] Lights effects carry: a `[VisEffect]`'s `lgt_*` is a point light of `lgt_radius`, run by its named
+      light animation (`CreateEffectStart`, `0x544299`, `GameLightAttachAnim`).
 - [ ] Compute `lodRange` from an archetype's lists (`ComputeLodPickThis`, `ApplyArchLodRanges`), far clamp included.
 - [ ] What `SpaceEffectsDrawFrame` does around effects: `ZFUNC` 4 where the program has `LESS`, the view test
       and `EXIST_OFFSCREEN` (`EffectTypeBucketWalk`), and the screen quads it flushes last (`ScreenQuadFlush`).

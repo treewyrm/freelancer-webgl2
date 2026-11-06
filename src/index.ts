@@ -20,6 +20,7 @@ export {
   type SceneEffect,
   type SceneLight,
   type SceneModel,
+  type Spot,
 } from '#/scene/frame.js'
 export {
   collectSpaceFrame,
@@ -30,11 +31,13 @@ export {
   type SpaceScene,
 } from '#/scene/space.js'
 export {
+  equipmentLight,
   evaluateColorGraph,
   evaluateGraph,
   lightObject,
   lightSet,
   systemAmbient,
+  type EquipmentLight,
   type Graph,
   type LightSet,
   type NebulaAmbient,
