@@ -110,6 +110,14 @@ test('asteroids: each save stands where it says, in or out of the field, the neb
   assert.deepEqual(where('asteroid_inside'), [true, false, false, false])
   assert.deepEqual(where('asteroid_nebula'), [true, true, false, false])
   assert.deepEqual(where('asteroid_outside'), [false, false, false, false])
+  // In the hole, which is in the nebula and the field: deep in it, and in its edge's last 20%.
+  assert.deepEqual(where('asteroid_hole'), [true, true, true, false])
+  assert.deepEqual(where('asteroid_hole_edge'), [true, true, true, false])
+  const hole = zoneOf('asteroid_hole', 'Lab_nebula_hole')
+  const fromHole = (name: string) =>
+    distance(systems.get(name)!.player.position.map((c, at) => c - hole.position[at]!))
+  assert.ok(fromHole('asteroid_hole') < 600 * 0.8)
+  assert.ok(fromHole('asteroid_hole_edge') > 600 * 0.8 && fromHole('asteroid_hole_edge') < 600)
   // Outside, farther than the field's radius and its fill distance of 1650: no cube near enough.
   const { position } = zoneOf('asteroid_outside', 'Lab_field')
   const ship = systems.get('asteroid_outside')!.player.position

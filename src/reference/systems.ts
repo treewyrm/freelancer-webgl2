@@ -433,6 +433,20 @@ export const systems: ReadonlyMap<string, ReferenceSystem> = new Map(
       player: { ...RING_PLAYER, position: [0, 0, 9000] },
     } satisfies ReferenceSystem,
     {
+      // In the nebula's hole, the camera 427 from its centre: past the edge's ramp, so the shell
+      // (`DrawExclusionShell`) is at its full `max_alpha`, the plant 400 ahead.
+      name: 'asteroid_hole',
+      ...ASTEROIDS,
+      player: { ...RING_PLAYER, position: [-3500, 0, -2800] },
+    } satisfies ReferenceSystem,
+    {
+      // In the hole's edge: the camera about 527 out of 600, an immersion near 0.6 of an
+      // `edge_fraction` of 0.2, so the shell at about half.
+      name: 'asteroid_hole_edge',
+      ...ASTEROIDS,
+      player: { ...RING_PLAYER, position: [-3500, 0, -2700] },
+    } satisfies ReferenceSystem,
+    {
       // In the field, 1500 from the station: the exclusion band about it, partly faded, at full.
       name: 'asteroid_exband',
       ...ASTEROIDS_EXBAND,
