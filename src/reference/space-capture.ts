@@ -67,6 +67,23 @@ export const RUNS = {
     effectRate: 96,
     animationSeconds: 0,
   },
+  // No solar stands where its draw's translation says: the first asteroid cube does, a grid point.
+  asteroid_inside: {
+    far: [-1000, -600, -1000],
+    farDraw: 87,
+    hullDraw: 65,
+    effectSeconds: 20,
+    effectRate: 96,
+    animationSeconds: 0,
+  },
+  asteroid_nebula: {
+    far: [-4600, -600, -3400],
+    farDraw: 55,
+    hullDraw: 33,
+    effectSeconds: 20,
+    effectRate: 96,
+    animationSeconds: 0,
+  },
   ring_outside: {
     far: 'Lab_ringed_planet',
     farDraw: 32,
@@ -92,7 +109,7 @@ export const readSpaceRun = (
     effectRate,
     animationSeconds,
   }: {
-    far: string
+    far: string | readonly [number, number, number]
     farDraw: number
     hullDraw: number
     effectSeconds: number
@@ -103,7 +120,11 @@ export const readSpaceRun = (
   const draws = readCapture(readFileSync(join(folder, 'd3d8log.jsonl'), 'utf8')).frames.at(
     -1,
   )!.draws
-  const position = system.objects.find(({ nickname }) => nickname === far)!.position
+  // A solar the system places, or a cube of a field: a cube's centre is a grid point.
+  const position =
+    typeof far === 'string'
+      ? system.objects.find(({ nickname }) => nickname === far)!.position
+      : far
   const camera = cameraOf(draws, position, farDraw)
   // The game moves the ship a little as it loads, so the save's position isn't where it drew.
   const [x, y, z] = draws[hullDraw]!.world!.slice(12, 15) as [number, number, number]

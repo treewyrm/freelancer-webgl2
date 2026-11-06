@@ -107,6 +107,23 @@ export {
   type SpaceFlare,
 } from '#/scene/flare.js'
 export {
+  closestCubePosition,
+  cubeId,
+  cubeOrientation,
+  cubeRotations,
+  entryOrientation,
+  fieldCubes,
+  mergeCube,
+  nearField,
+  RETAIL_CUBE_ROTATIONS,
+  type CubeAsteroid,
+  type CubeDraw,
+  type CubeExclusion,
+  type CubeField,
+  type CubeRotations,
+  type SpaceAsteroidField,
+} from '#/scene/asteroids.js'
+export {
   Clouds,
   NEBULA_CLOUD_VISIBILITY,
   RING_CLOUD_VISIBILITY,

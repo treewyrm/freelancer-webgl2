@@ -13,6 +13,7 @@ import {
   type PlacedEffect,
 } from './effect-view.js'
 import { ringImmersion, ringPieceDraw, type PlanetRing, type RingPiece } from './ring.js'
+import { fieldCubes, type SpaceAsteroidField } from './asteroids.js'
 import { flareQuads, type FrameRect, type ScreenQuad, type SpaceFlare } from './flare.js'
 import { lightObject, lightSet, systemAmbient, type SpaceLight } from './light.js'
 import {
@@ -83,9 +84,11 @@ export interface SpaceObject {
   lodRange?: number
   /**
    * The nebula it was last in, which retail keeps and tries first. It matters only where nebulae
-   * overlap, and none do in retail. The first that holds it when absent.
+   * overlap, and none do in retail. The first that holds it when absent. `null` for none at all: a
+   * solar finds its nebula once, as its `[Object]` is read (`FUN_005485c0`), so one listed before
+   * the system's `[Nebula]` sections has none (`asteroid_nebula`'s plant).
    */
-  nebula?: SpaceNebula
+  nebula?: SpaceNebula | null
 }
 
 /** A space frame, and what became of each of its effects. */
@@ -137,6 +140,8 @@ export interface SpaceScene {
   step?: number
   /** The camera cut to this frame, as it does entering a system: clouds are placed afresh. */
   cut?: boolean
+  /** Its asteroid fields, in the order the system lists them. */
+  asteroids?: readonly SpaceAsteroidField[]
   /** Its planets' rings, which the effects option shows (`0x25`). */
   rings?: readonly PlanetRing[]
   /** The viewport in pixels, which flares are sized and clipped in. No flares when absent. */
@@ -309,6 +314,7 @@ export const collectSpaceFrame = ({
   shine,
   rings = [],
   cut = false,
+  asteroids = [],
 }: SpaceScene): SpaceFrame => {
   const resolved = { ...RETAIL_SPACE_LIMITS, ...limits }
   const {
@@ -355,7 +361,8 @@ export const collectSpaceFrame = ({
       if (squared >= reach * reach) continue
     }
 
-    const within = findNebula(states, object.position, object.nebula)
+    const within =
+      object.nebula === null ? undefined : findNebula(states, object.position, object.nebula)
     if (squared >= range * range) {
       // A far object in any nebula, or seen from a core, isn't drawn.
       if (!object.solar || inCore || within) continue
@@ -428,6 +435,79 @@ export const collectSpaceFrame = ({
   const linked: SpaceFlare[] = []
   const farProjection = projectionMatrix(farCamera, aspect)
   const lighting = lightSet(flashes.length ? [...lights, ...flashes] : lights)
+
+  /**
+   * `CliAsteroidTickOne`'s cubes. The field is lit once, at a point 100 behind the camera with a
+   * radius of 250 (`CliAsteroidAmbientPass`), its ambient raised by `ambient_increase`; each cube
+   * then sets only the material's colours and its fade, over the material's own stages, and is
+   * drawn whole with no part test (`AsteroidUploadMesh`, `AsteroidDrawCube`).
+   */
+  const drawField = (asteroid: SpaceAsteroidField) => {
+    const cubes = fieldCubes(asteroid, given, aspect)
+    if (!cubes.length) return
+    const frame = Matrix4.fromRotationTranslation(given.orientation, eye)
+    const point = Matrix4.transformPoint({ x: 0, y: 0, z: 100 }, frame)
+    // Fogged and lit by the nebula only with `contains_fog_zone`, and the camera in its field.
+    const nebula =
+      asteroid.containsFogZone && field && field.enclosure !== 0 ? field.state : undefined
+    const lit = lightObject(
+      lighting,
+      { x: Math.fround(point.x), y: Math.fround(point.y), z: Math.fround(point.z) },
+      250,
+      ambient,
+      time,
+      nebula?.nebula.ambient && { ambient: nebula.nebula.ambient, factor: nebula.depth },
+    )
+    const raise = asteroid.ambientIncrease ?? { x: 0, y: 0, z: 0 }
+    const byte = (value: number, increase: number) =>
+      Math.min(Math.round(value * 255) + Math.trunc(increase), 255) / 255
+    const sceneAmbient = {
+      x: byte(lit.ambient.x, raise.x),
+      y: byte(lit.ambient.y, raise.y),
+      z: byte(lit.ambient.z, raise.z),
+    }
+    const fog = nebula && fogOf(nebula.start, fogEnd(nebula, point), nebula.nebula.fog.color)
+    const fading = (asteroid.maxAlpha ?? 1) < 1
+    const { diffuse, ambient: tint } = asteroid
+    for (const { position, orientation, alpha } of cubes) {
+      const first = draws.length
+      const world = Matrix4.multiply(Matrix4.translation(position), orientation)
+      const { mesh, reference, ...lookups } = asteroid.cube
+      collectModel(
+        { ...lookups, mesh: () => mesh, parts: [{ reference, world, mesh }] },
+        camera,
+        aspect,
+        view,
+        time,
+        draws,
+        queued,
+        unsupported,
+        unregistered,
+        resolved,
+        true,
+      )
+      for (let index = first; index < draws.length; index++) {
+        const blended = alpha < 1
+        draws[index] = {
+          ...draws[index]!,
+          diffuse: [diffuse.x, diffuse.y, diffuse.z, alpha],
+          // With lighting on and no fade, its own ambient; fading, the diffuse.
+          ambient: fading ? diffuse : tint,
+          emissive: { x: 0, y: 0, z: 0 },
+          // A fading field clears the lights and sets a white ambient (`0x5237f4`).
+          lights: fading ? [] : lit.lights,
+          sceneAmbient: fading ? { x: 1, y: 1, z: 1 } : sceneAmbient,
+          depthFunc: 'lequal',
+          depthWrite: !fading,
+          blend: blended,
+          blendMode: 'alpha',
+          alphaFunction: 'greater',
+          alphaReference: blended ? 5 : 127,
+          ...(fog ? { fog } : {}),
+        }
+      }
+    }
+  }
   for (const at of !field || field.enclosure === 0 ? OUTSIDE_ORDER : INSIDE_ORDER) {
     const onFarList = at === FAR
     const passCamera = onFarList ? farCamera : camera
@@ -516,6 +596,13 @@ export const collectSpaceFrame = ({
             projection: farProjection,
           }
     }
+    // `CliAsteroidTickFields`: outside a field after the main list and the rings' clouds, inside one
+    // after its own list.
+    if (
+      (at === MAIN && (!field || field.enclosure === 0)) ||
+      (at === FIELD && field && field.enclosure !== 0)
+    )
+      for (const asteroid of asteroids) drawField(asteroid)
     // `DrainMeshAndAsteroids` outside a field: the main list, then every ring's clouds while the
     // camera is in it (`TexturePanelsDrawAll`, `DrawPanels`). In a field, no ring's clouds draw.
     if (at === MAIN && (!field || field.enclosure === 0))

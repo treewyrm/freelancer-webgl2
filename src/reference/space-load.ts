@@ -27,6 +27,16 @@ import { lodRange, type LodList } from '#/scene/level.js'
 import type { Graph, SpaceLight } from '#/scene/light.js'
 import { Clouds, RING_CLOUD_VISIBILITY, type CloudSettings } from '#/scene/clouds.js'
 import {
+  cubeRotations,
+  entryOrientation,
+  mergeCube,
+  type CubeAsteroid,
+  type CubeExclusion,
+  type SpaceAsteroidField,
+} from '#/scene/asteroids.js'
+import { NebulaLightning } from '#/scene/lightning.js'
+import { zoneOf, type NebulaExclusion, type SpaceNebula, type Zone } from '#/scene/nebula.js'
+import {
   buildRing,
   ringImmersion,
   textureShape,
@@ -483,9 +493,194 @@ const loadRing = async (
   }
 }
 
+/** A system's zone as the scene's code reads one, and its `edge_fraction`. */
+const zoneFor = (
+  system: ReferenceSystem,
+  nickname: string,
+): { zone: Zone; edgeFraction: number } => {
+  const found = system.zones!.find(
+    (entry) => entry.nickname.toLowerCase() === nickname.toLowerCase(),
+  )!
+  const [x, y, z] = found.position
+  const center = { x, y, z }
+  // `EulerMatrix` of a pitch alone: a turn about X.
+  const orientation = Quat.axisAngle({
+    axis: { x: 1, y: 0, z: 0 },
+    angle: (found.pitch * Math.PI) / 180,
+  })
+  const [a = 0, b = a, c = a] = found.size
+  const zone =
+    found.shape === 'SPHERE'
+      ? zoneOf({ type: 'sphere', center, radius: a })
+      : zoneOf({ type: 'ellipsoid', center, orientation, radii: { x: a, y: b, z: c } })
+  return { zone, edgeFraction: found.edgeFraction ?? 0 }
+}
+
+/** The values of a section's lines, in order, each as numbers or strings. */
+const linesOf = (section: Section) =>
+  section.properties.map(({ name, values }) => ({
+    name: name.toLowerCase(),
+    numbers: values.map(({ value }) => Number(value)),
+    strings: values.map(({ value }) => String(value)),
+  }))
+
+/** A `[Nebula]` file: `[Fog]`, `[NebulaLight]`, `[Exclusion Zones]` and its lightning. */
+const loadNebula = async (
+  read: ReadAsset,
+  system: ReferenceSystem,
+  file: string,
+  zoneName: string,
+): Promise<SpaceNebula> => {
+  const { zone } = zoneFor(system, zoneName)
+  let fog: SpaceNebula['fog'] = { color: { x: 0, y: 0, z: 0 } }
+  let ambient: Vector3 | undefined
+  const exclusions: NebulaExclusion[] = []
+  const background: { duration?: number } = {}
+  const dynamic: { duration?: number } = {}
+  for (const section of Document.read(await read(pathOf(file)))) {
+    const kind = section.name.toLowerCase()
+    for (const { name, numbers, strings } of linesOf(section)) {
+      if (kind === 'fog') {
+        if (name === 'near') fog = { ...fog, near: numbers[0]! }
+        if (name === 'distance') fog = { ...fog, distance: numbers[0]! }
+        if (name === 'color') {
+          const [r, g, b] = numbers.map((c) => Math.fround(c / 255))
+          fog = { ...fog, color: { x: r!, y: g!, z: b! } }
+        }
+      }
+      if (kind === 'nebulalight' && name === 'ambient') {
+        const [r, g, b] = numbers
+        ambient = { x: r!, y: g!, z: b! }
+      }
+      if (kind === 'exclusion zones') {
+        if (name === 'exclusion') {
+          const found = zoneFor(system, strings[0]!)
+          exclusions.push({ zone: found.zone, edgeFraction: found.edgeFraction })
+        }
+        if (name === 'fog_far' && exclusions.length)
+          exclusions[exclusions.length - 1] = { ...exclusions.at(-1)!, fogFar: numbers[0]! }
+      }
+      if (kind === 'backgroundlightning' && name === 'duration') background.duration = numbers[0]!
+      if (kind === 'dynamiclightning' && name === 'duration') dynamic.duration = numbers[0]!
+    }
+  }
+  return {
+    zone,
+    fog,
+    ...(ambient ? { ambient } : {}),
+    exclusions,
+    lightning: new NebulaLightning({ background, dynamic }),
+  }
+}
+
+/**
+ * An `[Asteroids]` file's `[Field]`, `[Cube]` and `[Exclusion Zones]` (`CliAsteroid::Load`), its
+ * cube merged from each asteroid's top level with its own materials.
+ */
+const loadField = async (
+  read: ReadAsset,
+  system: ReferenceSystem,
+  file: string,
+  zoneName: string,
+): Promise<SpaceAsteroidField> => {
+  const asteroidArchetypes = await sectionsOf(read, ['SOLAR/asteroidarch.ini'])
+  const { zone, edgeFraction } = zoneFor(system, zoneName)
+  const keys: Record<string, number[]> = {}
+  const degrees: number[][] = [
+    [0, 90, 180, 270],
+    [0, 90, 180, 270],
+    [0, 90, 180, 270],
+  ]
+  const lines: { name: string; numbers: number[] }[] = []
+  const exclusions: CubeExclusion[] = []
+  for (const section of Document.read(await read(pathOf(file)))) {
+    const kind = section.name.toLowerCase()
+    for (const line of linesOf(section)) {
+      if (kind === 'field') keys[line.name] = line.numbers
+      if (kind === 'cube') {
+        const axis = ['xaxis_rotation', 'yaxis_rotation', 'zaxis_rotation'].indexOf(line.name)
+        if (axis >= 0) degrees[axis] = line.numbers
+        if (line.name === 'asteroid') lines.push({ name: line.strings[0]!, numbers: line.numbers })
+      }
+      if (kind === 'exclusion zones') {
+        if (line.name === 'exclusion') {
+          const found = zoneFor(system, line.strings[0]!)
+          exclusions.push({ zone: found.zone, edgeFraction: found.edgeFraction })
+        }
+        if (line.name === 'empty_cube_frequency' && exclusions.length)
+          exclusions[exclusions.length - 1] = {
+            ...exclusions.at(-1)!,
+            emptyFrequency: line.numbers[0]!,
+          }
+      }
+    }
+  }
+  const cubeSize = Math.trunc(keys['cube_size']?.[0] ?? 400)
+  const half = cubeSize * 0.5
+  const clamp = (value: number) => Math.min(Math.max(value, -1), 1)
+  const libraries: Directory[] = []
+  const asteroids: CubeAsteroid[] = []
+  for (const { name, numbers } of lines) {
+    const section = asteroidArchetypes.get(name.toLowerCase())!
+    const root = Directory.read(await read(pathOf(strings(section, 'DA_archetype')[0]!)))
+    libraries.push(root)
+    for (const path of strings(section, 'material_library'))
+      libraries.push(Directory.read(await read(pathOf(path))))
+    const model = readRigidModel(root)
+    const source = model.type === 'rigid' ? model.part : undefined
+    if (!source) continue
+    const level = source.type === 'multilevel' ? source.levels[0]! : source
+    const mesh = getMesh(readVMeshLibrary(root), level.reference.meshId)!
+    const [, x = 0, y = 0, z = 0, ax = 0, ay = 0, az = 0] = numbers
+    asteroids.push({
+      mesh,
+      reference: level.reference,
+      offset: {
+        x: Math.fround(half * Math.fround(clamp(x))),
+        y: Math.fround(half * Math.fround(clamp(y))),
+        z: Math.fround(half * Math.fround(clamp(z))),
+      },
+      orientation: entryOrientation(ax, ay, az),
+    })
+  }
+  const merged = mergeCube(asteroids)!
+  const materials = libraries.flatMap((library) => [...readMaterialLibrary(library)])
+  const textures = libraries.flatMap((library) => [...readTextureLibrary(library)])
+  const color = (key: string) => {
+    const value = keys[key]
+    return (
+      value && {
+        x: Math.fround(value[0]! / 255),
+        y: Math.fround(value[1]! / 255),
+        z: Math.fround(value[2]! / 255),
+      }
+    )
+  }
+  const tint = color('tint_field')
+  const increase = keys['ambient_increase']
+  return {
+    zone,
+    edgeFraction,
+    cubeSize,
+    fillDistance: Math.trunc(keys['fill_dist']?.[0] ?? 1200),
+    ...(keys['empty_cube_frequency'] ? { emptyFrequency: keys['empty_cube_frequency'][0]! } : {}),
+    ...(keys['max_alpha'] ? { maxAlpha: keys['max_alpha'][0]! } : {}),
+    rotations: cubeRotations(degrees),
+    exclusions,
+    cube: {
+      ...merged,
+      material: (id) => getMaterial(materials, id),
+      texture: (name) => textures.find((entry) => entry.name.toLowerCase() === name.toLowerCase()),
+    },
+    diffuse: color('diffuse_color') ?? tint ?? { x: 0, y: 0, z: 0 },
+    ambient: color('ambient_color') ?? tint ?? { x: 0, y: 0, z: 0 },
+    ...(increase ? { ambientIncrease: { x: increase[0]!, y: increase[1]!, z: increase[2]! } } : {}),
+  }
+}
+
 export const loadSystem = async (
   system: ReferenceSystem,
-  read: ReadAsset,
+  readData: ReadAsset,
   {
     camera,
     ship,
@@ -498,6 +693,14 @@ export const loadSystem = async (
     highDetailTextures,
   }: SystemOptions,
 ): Promise<SpaceScene> => {
+  // The system's own files, which the mount writes to the lab install, read from it first.
+  const own = new Map(
+    (system.files ?? []).map(({ path, text }) => [pathOf(path).toLowerCase(), text]),
+  )
+  const read: ReadAsset = async (path) => {
+    const text = own.get(path.toLowerCase())
+    return text === undefined ? readData(path) : Uint8Array.from(text, (c) => c.charCodeAt(0))
+  }
   const archetypes = await sectionsOf(read, ['SOLAR/solararch.ini', 'SHIPS/shiparch.ini'])
   const graphs = await sectionsOf(read, ['igraph.ini'])
   const graph = (name: string): Graph => ({
@@ -667,6 +870,8 @@ export const loadSystem = async (
       position: at,
       sphere,
       solar: { large: radius > 200, planet },
+      // `systemIni` writes every `[Object]` before any `[Nebula]`: no solar finds one.
+      ...(system.nebulae?.length ? { nebula: null } : {}),
       ...(range > 0 ? { lodRange: range } : {}),
     })
   }
@@ -795,5 +1000,11 @@ export const loadSystem = async (
     viewport: { width: 1024, height: 768 },
     rings,
     shine: { texture: await shapeOf(read, 'shine') },
+    asteroids: await Promise.all(
+      (system.asteroids ?? []).map(({ file, zone }) => loadField(read, system, file, zone)),
+    ),
+    nebulae: await Promise.all(
+      (system.nebulae ?? []).map(({ file, zone }) => loadNebula(read, system, file, zone)),
+    ),
   }
 }

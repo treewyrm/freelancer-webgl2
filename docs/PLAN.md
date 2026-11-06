@@ -408,13 +408,30 @@ renderer. Random streams need not match retail; each appearance's sizes, colours
       count, sizes, colours, order and sphere hold for retail's puffs and ours alike. Its picture
       can't be held pixel for pixel. A nebula's clouds, with bolts and exclusion zones, use the same
       class but aren't wired in.
-- [ ] **You:** capture `asteroid_inside`, `asteroid_nebula` and `asteroid_outside` (mounted): a field
-      of Cornwall's cubes and band with no `rand()` in it, a station in its exclusion zone, and a
-      nebula over part of it, fog only, lightning off, with a shelled hole around a plant. From in
-      the field, from in the field and the nebula, and from outside.
-- [ ] Asteroid fields: cubes, their exclusion zones and what a nebula does to them
-      (`cli_asteroid.cpp`, `common_casteroidfield.cpp`).
-- [ ] An asteroid field's band and exterior, then its billboards and dynamic asteroids.
+- [x] **You:** `asteroid_inside`, `asteroid_nebula` and `asteroid_outside` (`src/reference/systems.ts`):
+      a field of Cornwall's cubes and band with no `rand()` in it, a station in its exclusion zone,
+      and a nebula over part of it, fog only, lightning off, with a shelled hole around a plant. A
+      nebula file must have an `[Exterior]`: with none, `plane_slices` stays 1 and its bits pick from
+      no shapes, which crashed the game.
+- [x] Asteroid fields' cubes: `fieldCubes`, `mergeCube` and `SpaceScene.asteroids`, from
+      `CliAsteroidDrawNearField` (`FUN_00522a60`), `CliAsteroidMergeCubeMesh` and Common's grid
+      (`closest_cube_pos`, `compute_cube_id`, `compute_cube_orientation`). The `[Cube]`'s asteroids
+      merged, each at its top level, drawn once per cube with the first's material; a box of cubes
+      over the view out to `fill_dist`, kept by the side planes, the zone, the exclusion zones
+      (nearest first, to `fill_dist · 1.25`, taking a cube or thinning it to their own
+      `empty_cube_frequency`), and the id's LCG, which empties and turns it; faded over the last half
+      cube; the camera's own cube if missed. Lit once at a point 100 behind the camera, ambient raised
+      by `ambient_increase`; the D3D material the field's colours; fogged only with
+      `contains_fog_zone`. Drawn after the main list, or inside a field after its own. **Matched in
+      `asteroid_inside` and `asteroid_nebula`** (`src/reference/asteroids.test.ts`): all 87 cubes in
+      order, place and turn to 6e-5, lights, ambient and state, and every other draw of both frames
+      but the band and the nebula's overlay. It found: a solar finds its nebula once, as its
+      `[Object]` is read (`FUN_005485c0`), so one listed before a `[Nebula]` has none
+      (`SpaceObject.nebula = null`); and a nebula's fog, linear on depth, matched on the ship.
+- [ ] An asteroid field's band (`asteroid_inside`'s draws 10 to 12, `asteroid_outside`'s five).
+- [ ] A nebula's fog overlay, which hides the sky and what's behind from inside (`asteroid_nebula`'s
+      draw 30), its exclusion shells, and its exterior from outside.
+- [ ] An asteroid field's billboards and dynamic asteroids, which `rand()` drives.
 - [ ] Space dust.
 - [ ] Gate tunnels.
 - [ ] Projectiles and beams; the cockpit pass with its depth clear.
