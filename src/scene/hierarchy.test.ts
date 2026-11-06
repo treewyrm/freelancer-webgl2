@@ -110,41 +110,57 @@ test('two revolute hardpoints join by the narrower range, a full turn or more op
   assert.deepEqual(limits(fixedParent, revolutePoint(-2 * pi, 2 * pi)), [-2 * pi, 2 * pi])
 })
 
-test("a fixed child lands its hardpoint's point and frame on the parent's", () => {
+/** A hardpoint's frame in its part, read the way `Matrix4` reads a `Matrix3`. */
+const frameOf = ({ orientation, position }: Hardpoint): Matrix4 =>
+  Matrix4.fromRotationTranslation(orientation, position ?? zero)
+
+const near = (a: Matrix4, b: Matrix4) => {
+  for (const axis of ['x', 'y', 'z', 'w'] as const)
+    for (const cell of ['x', 'y', 'z', 'w'] as const)
+      assert.ok(Math.abs(a[axis][cell] - b[axis][cell]) < 1e-9, `${axis}.${cell}`)
+}
+
+// A quarter turn about +X, as a `Matrix3`'s rows.
+const ABOUT_X: Matrix3 = {
+  x: { x: 1, y: 0, z: 0 },
+  y: { x: 0, y: 0, z: -1 },
+  z: { x: 0, y: 1, z: 0 },
+}
+
+test("a fixed child lands its hardpoint's frame on the parent's: HpA · HpB⁻¹", () => {
   const parent: Hardpoint = {
     type: 'fixed',
     name: 'HpMount',
-    position: { x: 5, y: 0, z: 0 },
+    position: { x: 5, y: 1, z: 0 },
     orientation: QUARTER,
   }
   const child: Hardpoint = {
     type: 'fixed',
     name: 'HpConnect',
-    position: { x: 0, y: 2, z: 0 },
-    orientation: QUARTER,
+    position: { x: 0, y: 2, z: 3 },
+    orientation: ABOUT_X,
   }
-  const joint = getJointMatrix(attachJoint(parent, child))
-  const landed = Matrix4.transformPoint({ x: 0, y: 2, z: 0 }, joint)
-  assert.ok(Math.abs(landed.x - 5) < 1e-9 && Math.abs(landed.y) < 1e-9, JSON.stringify(landed))
-  // Equal frames cancel: the child is unturned.
-  const along = Matrix4.transformPoint({ x: 1, y: 2, z: 0 }, joint)
-  assert.ok(Math.abs(along.x - 6) < 1e-9 && Math.abs(along.y) < 1e-9, JSON.stringify(along))
+  near(
+    getJointMatrix(attachJoint(parent, child)),
+    Matrix4.multiply(frameOf(parent), Matrix4.invert(frameOf(child))),
+  )
 })
 
-test("a revolute child turns about its axis at the parent's point", () => {
-  const joint = attachJoint(revolutePoint(-1, 1, 3), {
-    ...revolutePoint(-1, 1),
-    position: { x: 0, y: -2, z: 0 },
-  })
-  const rest = Matrix4.transformPoint({ x: 0, y: -2, z: 0 }, getJointMatrix(joint))
-  assert.ok(Math.abs(rest.x - 3) < 1e-9 && Math.abs(rest.y) < 1e-9, JSON.stringify(rest))
-  const turned = Matrix4.transformPoint(
-    { x: 1, y: -2, z: 0 },
-    getJointMatrix(joint, { value: Math.PI / 2 }),
-  )
-  // Asked for a quarter turn about +Y, the joint's limit of 1 holds it: +X goes to (cos 1, 0, -sin 1).
-  assert.ok(
-    Math.abs(turned.x - 3 - Math.cos(1)) < 1e-9 && Math.abs(turned.z + Math.sin(1)) < 1e-9,
-    JSON.stringify(turned),
-  )
+test("a revolute child turns about its own axis, carried by the parent's frame", () => {
+  const parent = { ...revolutePoint(-1, 1, 3), orientation: ABOUT_X }
+  const child: Hardpoint = { ...revolutePoint(-1, 1), position: { x: 0, y: -2, z: 0 } }
+  const joint = attachJoint(parent, child)
+  // The child's frame is the identity, so retail's untransposed product is HpA · R(axis) · HpB⁻¹.
+  const expected = (angle: number) =>
+    Matrix4.multiply(
+      frameOf(parent),
+      Matrix4.multiply(
+        Matrix4.fromRotationTranslation(Matrix3.axisAngle({ x: 0, y: 1, z: 0 }, angle)),
+        Matrix4.invert(frameOf(child)),
+      ),
+    )
+  near(getJointMatrix(joint), expected(0))
+  near(getJointMatrix(joint, { value: 0.5 }), expected(0.5))
+  // Asked for more than its limit of 1, it holds there.
+  near(getJointMatrix(joint, { value: Math.PI / 2 }), expected(1))
 })

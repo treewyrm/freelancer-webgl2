@@ -50,6 +50,12 @@ const limitsOf = ({ min, max }: { min: number; max: number }) => {
     : { range: wrapRange(range), min, max }
 }
 
+/** Retail's `A · B`, row-major, for two `Matrix3`s whose triples are rows (RENDERER.md). */
+const product = (a: Matrix3, b: Matrix3): Matrix3 => Matrix3.multiply(b, a)
+
+/** Retail's `M · v`: `Matrix3.transform` applies the transpose. */
+const rotate = (v: Vector3, m: Matrix3): Vector3 => Matrix3.transform(v, Matrix3.transpose(m))
+
 /**
  * The joint that hangs `child`'s hardpoint on `parent`'s, as attached equipment is connected
  * (`ConnectAttachedHardpoints`, `0x62940c0`, then `HardpointConnect`, `EngBase` `IHardpoint` slot 6).
@@ -62,12 +68,12 @@ export const attachJoint = (parent: Hardpoint, child: Hardpoint): Joint => {
   const parentAt = parent.position ?? Vector3.zero
   const childAt = child.position ?? Vector3.zero
   if (child.type === 'fixed') {
-    const orientation = Matrix3.multiply(parent.orientation, Matrix3.transpose(child.orientation))
-    const position = Vector3.subtract(parentAt, Matrix3.transform(childAt, orientation))
+    const orientation = product(parent.orientation, Matrix3.transpose(child.orientation))
+    const position = Vector3.subtract(parentAt, rotate(childAt, orientation))
     return { type: 'fixed', position, orientation }
   }
-  const orientation = Matrix3.multiply(parent.orientation, child.orientation)
-  const axis = Matrix3.transform(child.axis, orientation)
+  const orientation = product(parent.orientation, child.orientation)
+  const axis = rotate(child.axis, orientation)
   const joint = {
     type: 'revolute',
     position: parentAt,
