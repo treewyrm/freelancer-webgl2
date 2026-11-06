@@ -27,6 +27,17 @@ export interface SpaceNebula {
   }
   /** `[NebulaLight] ambient`, as written, 0 to 255. */
   ambient?: Vector3
+  /** `[Exclusion Zones]`, in file order: holes in its fog. */
+  exclusions?: readonly NebulaExclusion[]
+}
+
+/** An `exclusion` of a nebula's file, and its zone, which retail requires to be a sphere. */
+export interface NebulaExclusion {
+  zone: Zone
+  /** The zone's `edge_fraction`, 0 to 1: how far in from its surface the hole deepens. 0 when absent. */
+  edgeFraction?: number
+  /** `fog_far`: where the fog ends deep in it. None when absent (`NebulaExclusionZone`'s -1). */
+  fogFar?: number
 }
 
 /** What retail hardcodes about nebulae, and a mod can patch. */
@@ -37,12 +48,15 @@ export interface NebulaLimits {
   nebulaFarMargin: number
   /** The least far plane in a core (`+0x2bc`, set by `FNebulaEffect`'s constructor). */
   nebulaLeastFar: number
+  /** Past an exclusion zone's diameter, the least far plane in it (`FogFarClamp`, `0x5db0c0`). */
+  exclusionFarMargin: number
 }
 
 export const RETAIL_NEBULA_LIMITS: Readonly<NebulaLimits> = {
   nebulaFogDistance: 10000,
   nebulaFarMargin: 500,
   nebulaLeastFar: 5000,
+  exclusionFarMargin: 500,
 }
 
 /** D3D's linear fog: none nearer than `start`, all of `color` from `end`. */
@@ -140,6 +154,61 @@ export const exteriorFactor = (zone: Zone, distance: number, point: Vector3): nu
   return f(f(edge) / distance)
 }
 
+/**
+ * `ZONE::GetImmersion` (`0x633ac30`) for a zone `radiusAlong` describes, as a sphere is: 0 outside,
+ * rising to 1 an edge fraction of the way in.
+ */
+export const immersion = (zone: Zone, edgeFraction: number, point: Vector3): number => {
+  const offset = sub(point, zone.position)
+  const squared = offset.x * offset.x + offset.z * offset.z + offset.y * offset.y
+  if (zone.radius * zone.radius < squared) return 0
+  // `ClassifyPoint`: how far out it is, over the reach that way.
+  const length = Math.sqrt(offset.y * offset.y + offset.z * offset.z + offset.x * offset.x)
+  let value = 0
+  if (!(length < f(1e-4))) {
+    const reach = zone.radiusAlong(scaled(offset, 1 / f(length)))
+    value = reach > f(1e-4) ? f(length) / reach : 0
+  }
+  if (value >= 1) return 0
+  if (1 - edgeFraction > f(value)) return 1
+  if (edgeFraction < 1e-4) return 1
+  return (1 - f(value)) / edgeFraction
+}
+
+/** The exclusion zone the camera is in, and its immersion there (`+0x24`, `+0x28`). */
+export interface InExclusion {
+  exclusion: NebulaExclusion
+  immersion: number
+}
+
+// `sort`'s key: the squared distance from a zone's sphere, 0 inside.
+const sortKey = ({ zone }: NebulaExclusion, eye: Vector3): number => {
+  const offset = sub(eye, zone.position)
+  const length = f(Math.sqrt(offset.y * offset.y + offset.z * offset.z + offset.x * offset.x))
+  const distance = length - zone.radius
+  return distance < 0 ? 0 : f(distance * distance)
+}
+
+/**
+ * `NebulaExclusionZoneMgr::is_in_exclusion_zone` over the zones sorted around the camera. Retail
+ * keeps the one it found while its immersion stays at 1e-4 or more, and sorts now and then; this
+ * looks afresh each frame, and an equal distance keeps file order, where retail's sort isn't stable.
+ */
+const exclusionAt = (
+  exclusions: readonly NebulaExclusion[],
+  eye: Vector3,
+): InExclusion | undefined => {
+  const sorted = exclusions
+    .map((exclusion) => ({ exclusion, key: sortKey(exclusion, eye) }))
+    .sort((a, b) => a.key - b.key)
+  for (const { exclusion, key } of sorted) {
+    if (key > 10) return undefined
+    const value = immersion(exclusion.zone, exclusion.edgeFraction ?? 0, eye)
+    if (value > f(1e-5)) return { exclusion, immersion: f(value) }
+  }
+  return undefined
+}
+
 /** What `FNebulaEffect::Update` keeps from where the camera is, each frame. */
 export interface NebulaState {
   nebula: SpaceNebula
@@ -150,9 +219,11 @@ export interface NebulaState {
   start: number
   /** `+0x2b0`, the fog's end. */
   end: number
+  /** Only while the camera is in the nebula. */
+  inExclusion?: InExclusion
 }
 
-/** `FNebulaEffect::Update`'s depth and fog range, before an exclusion zone moves the end. */
+/** `FNebulaEffect::Update`'s depth and fog range. */
 export const nebulaState = (
   nebula: SpaceNebula,
   eye: Vector3,
@@ -166,7 +237,16 @@ export const nebulaState = (
   const span = f(fogDistance + near)
   const surface = f(length - zone.radiusAlong(scaled(offset, 1 / length)))
   const depth = surface > 0 ? 0 : -surface > span ? 1 : f(-surface / span)
-  if (depth > 0) return { nebula, fogDistance, depth, start: near, end: span }
+  if (depth > 0) {
+    const state: NebulaState = { nebula, fogDistance, depth, start: near, end: span }
+    const inExclusion = exclusionAt(nebula.exclusions ?? [], eye)
+    if (!inExclusion) return state
+    // Its `fog_far` pulls the end towards it, as deep as the camera is in it.
+    const { exclusion, immersion: by } = inExclusion
+    const far = exclusion.fogFar ?? -1
+    const end = by > 0 && far > near ? f((1 - by) * span + far * by) : span
+    return { ...state, end, inExclusion }
+  }
   // Outside, the fog's range follows the camera's distance from the surface.
   const start = surface + near
   return { nebula, fogDistance, depth, start: f(start), end: f(start + fogDistance) }
@@ -174,6 +254,13 @@ export const nebulaState = (
 
 /** `FNebulaEffect::FogFactor`: where the fog ends for what stands at `point`. */
 export const fogEnd = (state: NebulaState, point: Vector3): number => {
+  if (state.inExclusion) {
+    // From the fog's own span, out to the end, by how deep the point is in the camera's zone.
+    const { zone, edgeFraction = 0 } = state.inExclusion.exclusion
+    const by = immersion(zone, edgeFraction, point)
+    const span = f(f(state.nebula.fog.near ?? 0) + state.fogDistance)
+    return f((1 - by) * span + by * state.end)
+  }
   const factor = exteriorFactor(state.nebula.zone, state.fogDistance, point)
   if (!(factor < 1)) return state.end
   return f(state.end / Math.max(factor * factor, f(1e-4)))
@@ -182,7 +269,12 @@ export const fogEnd = (state: NebulaState, point: Vector3): number => {
 /** `FNebulaEffect::FogFarClamp`: the pass's far plane in its core, before the system's cuts it. */
 export const fogFar = (state: NebulaState, limits: NebulaLimits = RETAIL_NEBULA_LIMITS): number => {
   const sum = state.end + limits.nebulaFarMargin
-  return sum < limits.nebulaLeastFar ? limits.nebulaLeastFar : f(sum)
+  const far = sum < limits.nebulaLeastFar ? limits.nebulaLeastFar : f(sum)
+  if (!state.inExclusion) return far
+  // At least across the camera's zone and a margin.
+  const { radius } = state.inExclusion.exclusion.zone
+  const least = radius + radius + limits.exclusionFarMargin
+  return far > least ? far : f(least)
 }
 
 // `FogApplyColorAndRange`: each channel to a byte, by truncation.

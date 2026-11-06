@@ -309,8 +309,12 @@ renderer. Random streams need not match retail; each appearance's sizes, colours
       shaders, as retail picks it on a T&L device. `zoneOf` gives `ZONE`'s reach for each shape. Pinned by
       reading and by pixels (`src/scene/nebula.*`, `space.*`). **Uncaptured**, so the hardware's fog-factor
       precision is a guess. The host reads `[Fog]` and `[NebulaLight]` into `SpaceNebula`.
-- [ ] A nebula's exclusion zones: the camera's moves the fog's end toward its `fog_far` and widens
-      `FogFarClamp`, and `FogFactor` blends by its immersion (`FNebulaEffect::Update`, `0x507194` on).
+- [x] A nebula's exclusion zones: the camera's moves the fog's end toward its `fog_far` and widens
+      `FogFarClamp`, and `FogFactor` blends by its immersion (`FNebulaEffect::Update`, `0x507194` on;
+      `ZONE::GetImmersion`; `is_in_exclusion_zone`). Pinned by reading (`src/scene/nebula.*`). Retail
+      keeps the camera's zone between frames while its immersion stays at 1e-4, and finds one above 1e-5;
+      this finds it afresh, so only that band and overlapping zones can differ. **Uncaptured.** The host
+      reads `[Exclusion Zones]` into `NebulaExclusion`.
 - [ ] `[BackgroundLightning]`: `FillFogRgb` flashes the clear colour on a timer and `rand()`, by default
       too (a duration of 0.5 every 10 or so). Needs the frame's time step and a random source from the host.
 - [ ] An object's nebula is found each frame here, while retail keeps it from when the object moved and tries

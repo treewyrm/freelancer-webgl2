@@ -6,6 +6,7 @@ import {
   findNebula,
   fogEnd,
   fogFar,
+  immersion,
   nebulaState,
   pickField,
   zoneOf,
@@ -20,8 +21,12 @@ const IDENTITY = { x: 0, y: 0, z: 0, w: 1 }
 // A quarter turn about Y: its local Z points along world X.
 const TURNED = { x: 0, y: Math.SQRT1_2, z: 0, w: Math.SQRT1_2 }
 
+// Within a float's precision, at any magnitude.
 const close = (actual: number, expected: number) =>
-  assert.ok(Math.abs(actual - expected) < 1e-4, `${actual} is not ${expected}`)
+  assert.ok(
+    Math.abs(actual - expected) < 1e-4 * Math.max(1, Math.abs(expected)),
+    `${actual} is not ${expected}`,
+  )
 
 const sphereAt = (center: Vector3, radius: number, distance: number, near = 0): SpaceNebula => ({
   zone: zoneOf({ type: 'sphere', center, radius }),
@@ -134,4 +139,41 @@ test('the camera answers to the first nebula it is in, or the nearest within ran
   })
   assert.equal(pickField([far!], ORIGIN, 700), undefined)
   assert.deepEqual(pickField([far!], ORIGIN, 900), { state: far, enclosure: 0 })
+})
+
+test("an exclusion zone's immersion rises from its surface over its edge fraction", () => {
+  const zone = zoneOf({ type: 'sphere', center: ORIGIN, radius: 100 })
+  assert.equal(immersion(zone, 0.2, { x: 0, y: 0, z: 110 }), 0)
+  close(immersion(zone, 0.2, { x: 0, y: 0, z: 90 }), 0.5)
+  assert.equal(immersion(zone, 0.2, { x: 0, y: 0, z: 50 }), 1)
+  assert.equal(immersion(zone, 0, { x: 0, y: 0, z: 99 }), 1)
+  assert.equal(immersion(zone, 0.2, ORIGIN), 1)
+})
+
+test('in an exclusion zone the fog ends towards its fog_far, and the far plane spans it', () => {
+  const hole = { zone: zoneOf({ type: 'sphere', center: ORIGIN, radius: 4000 }), edgeFraction: 0.2 }
+  const nebula = (fogFar?: number): SpaceNebula => ({
+    ...sphereAt(ORIGIN, 10000, 1000),
+    exclusions: [
+      { zone: zoneOf({ type: 'sphere', center: { x: 9000, y: 0, z: 0 }, radius: 500 }) },
+      { ...hole, ...(fogFar === undefined ? {} : { fogFar }) },
+    ],
+  })
+  // Half in: half the fog's span, half the zone's.
+  const eye = { x: 0, y: 0, z: 3600 }
+  const state = nebulaState(nebula(5000), eye)
+  close(state.inExclusion!.immersion, 0.5)
+  close(state.end, 3000)
+  // What is deep in it fogs to that end, and what's outside it to the fog's own span.
+  close(fogEnd(state, ORIGIN), 3000)
+  close(fogEnd(state, { x: 0, y: 0, z: 5000 }), 1000)
+  close(fogEnd(state, eye), 2000)
+  // At least the zone's diameter and 500.
+  assert.equal(fogFar(state), 8500)
+  // With no fog_far it keeps the span, and the zone is still the one the camera is in.
+  const plain = nebulaState(nebula(), eye)
+  assert.equal(plain.end, 1000)
+  assert.equal(plain.inExclusion?.exclusion.zone, hole.zone)
+  // From outside the nebula, its exclusion zones play no part.
+  assert.equal(nebulaState(nebula(5000), { x: 0, y: 0, z: 20000 }).inExclusion, undefined)
 })
