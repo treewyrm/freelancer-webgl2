@@ -358,9 +358,11 @@ renderer. Random streams need not match retail; each appearance's sizes, colours
       effect's fade (`FParticleEffectCruise`) isn't built. Retail steps effects by at most 0.1 s. **Uncaptured.**
 - [ ] The screen quads `SpaceEffectsDrawFrame` flushes after every effect, `LEQUAL` with no depth writes
       (`ScreenQuadFlush`): equipment flares, with projectiles.
-- [ ] `level_of_detail` on a space solar's sphere: its level bias and maximum, up to 10, from
-      `SolarSpheresApplyDetail`. `placeSphere` takes them as `levels` over the menu's 1.5 and 9, so
-      what's left is the option's mapping onto them.
+- [x] `level_of_detail` on a space solar's sphere: `solarSphereLevels`, from `SolarSpheresApplyDetail`
+      (`0x5488a0`), a maximum of 7 to 10 and a bias of 3 to 1. Retail applies it only as the option changes,
+      to the solars then loaded (`SetPerfOptionValue`): none exist at startup, so in play a planet keeps
+      `RETAIL_SPHERE_LEVELS` unless the slider moves in its system. The host decides; `placeSphere` takes
+      either as `levels`. Pinned by reading.
 - [ ] Planet rings, asteroid field exteriors and billboards, space dust, gate tunnels.
 - [ ] Projectiles and beams; the cockpit pass with its depth clear.
 - [ ] Measure effects' CPU cost in a whole system. A pushed lane steps on the CPU, by choice: bring back

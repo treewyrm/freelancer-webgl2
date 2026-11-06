@@ -7,6 +7,7 @@ import { mapMaterialType, type MaterialMapRule } from '#/material/map.js'
 import { spherePatch } from '#/mesh/sphere.js'
 import type { Camera } from './camera.js'
 import { DEFAULT_SHELL_SCALE, type PlacedPart } from './frame.js'
+import { lodScale } from './level.js'
 
 export interface SphereOptions {
   /** Decides the level and which faces draw. */
@@ -30,9 +31,20 @@ export interface SphereLevels {
   bias: number
 }
 
-// The `level_of_detail` option changes the last two, on a space solar only (`SolarSpheresApplyDetail`):
-// M7's. The menu's planets, with that option at 1, keep these.
+// What a sphere starts with, and keeps unless `solarSphereLevels` reaches it.
 export const RETAIL_SPHERE_LEVELS: Readonly<SphereLevels> = { minimum: 3, maximum: 9, bias: 1.5 }
+
+/**
+ * `SolarSpheresApplyDetail` (`0x5488a0`): the maximum, 7 to 10, and the bias, 3 to 1, the
+ * `level_of_detail` option gives a solar's sphere. Retail applies it only as the option changes, to the
+ * solars that exist then (`SetPerfOptionValue`): at startup none do, so a system's planets keep
+ * `RETAIL_SPHERE_LEVELS` until the player moves the slider in it, and lose it when it reloads.
+ */
+export const solarSphereLevels = (detail: number): Pick<SphereLevels, 'maximum' | 'bias'> => {
+  const { scale } = lodScale(detail)
+  const t = Math.min(Math.max(scale + scale - 1, 0), 1)
+  return { maximum: Math.trunc(3 * t + 7), bias: Math.trunc(3.5 - (t + t)) }
+}
 
 const K = Math.sqrt(1 / 3)
 

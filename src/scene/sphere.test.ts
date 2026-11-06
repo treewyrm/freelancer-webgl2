@@ -7,7 +7,7 @@ import type { Sphere } from '@treewyrm/freelancer/rigid'
 import { spherePatch } from '#/mesh/sphere.js'
 import type { Camera } from './camera.js'
 import { collectFrame, type SceneModel } from './frame.js'
-import { placeSphere, sphereLevel } from './sphere.js'
+import { placeSphere, solarSphereLevels, sphereLevel } from './sphere.js'
 
 const SIDES = ['m0', 'm1', 'm2', 'm3', 'm4', 'm5']
 const sphere = (sides = SIDES, radius = 100): Sphere => ({
@@ -193,4 +193,13 @@ test('a face whose material the host lacks is reported, by the name its file wri
   })
   assert.deepEqual(frame.draws, [])
   assert.deepEqual(frame.unsupported, ['material m0'])
+})
+
+test('level_of_detail gives a solar sphere a maximum of 7 to 10 and a bias of 3 to 1', () => {
+  // A scale of 0.5 and below is the least; 1 and above, the most.
+  assert.deepEqual(solarSphereLevels(0), { maximum: 7, bias: 3 })
+  assert.deepEqual(solarSphereLevels(0.75), { maximum: 10, bias: 1 })
+  assert.deepEqual(solarSphereLevels(1), { maximum: 10, bias: 1 })
+  // At 0.5 the scale is a float just under 5/6, so 3T + 7 falls just short of 9.
+  assert.deepEqual(solarSphereLevels(0.5), { maximum: 8, bias: 2 })
 })

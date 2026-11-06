@@ -126,6 +126,7 @@ export type { TriangleDraw, EffectDraw, SpriteDraw } from '#/alchemy/draw.js'
 export {
   placeSphere,
   RETAIL_SPHERE_LEVELS,
+  solarSphereLevels,
   sphereLevel,
   type SphereLevels,
   type SphereOptions,
