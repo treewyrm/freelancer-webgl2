@@ -34,6 +34,7 @@ import {
   type CubeExclusion,
   type SpaceAsteroidField,
 } from '#/scene/asteroids.js'
+import { AsteroidBand, type BandSettings } from '#/scene/band.js'
 import { NebulaLightning } from '#/scene/lightning.js'
 import { zoneOf, type NebulaExclusion, type SpaceNebula, type Zone } from '#/scene/nebula.js'
 import {
@@ -373,10 +374,68 @@ const startEffect = async (
 }
 
 /**
- * A ring file's `[TexturePanels]` shapes (`FShapeDB::Load`): a `[Texture]` names the current texture
- * and may cut shapes from it by `shape_name` and `dim`, and each `[Shape]` cuts one by `x`, `y`, `w`
- * and `h`. Then its `[Exterior]`.
+ * `[TexturePanels]` shapes (`FShapeDB::Load`), key by key: `file` adds a library, `name` or
+ * `texture_name` picks a texture from those read so far, `shape_name` cuts all of it until a `dim`
+ * says otherwise, and `tex_shape` names a texture that is its own shape. A `[Shape]` cuts one from
+ * the current texture by `x`, `y`, `w` and `h`. The first shape of a name is kept.
  */
+const loadShapes = async (
+  read: ReadAsset,
+  paths: readonly string[],
+): Promise<Map<string, TextureShape>> => {
+  const shapes = new Map<string, TextureShape>()
+  const library: Texture[] = []
+  const find = (name: string) =>
+    library.find((entry) => entry.name.toLowerCase() === name.toLowerCase())
+  const add = (name: string, shape: TextureShape) => {
+    if (!shapes.has(name.toLowerCase())) shapes.set(name.toLowerCase(), shape)
+  }
+  for (const path of paths) {
+    let texture: Texture | undefined
+    let current: string | undefined
+    for (const part of Document.read(await read(pathOf(path)))) {
+      const kind = part.name.toLowerCase()
+      if (kind === 'texture')
+        for (const { name, values } of part.properties) {
+          const key = name.toLowerCase()
+          const value = String(values[0]?.value ?? '')
+          if (key === 'file')
+            for (const entry of readTextureLibrary(Directory.read(await read(pathOf(value)))))
+              if (entry.type === 'image') library.push(entry)
+          if (key === 'name' || key === 'texture_name') {
+            texture = find(value)
+            current = undefined
+          }
+          if (key === 'shape_name' && texture) {
+            current = shapes.has(value.toLowerCase()) ? undefined : value
+            if (current) add(current, textureShape(texture, {}))
+          }
+          if (key === 'tex_shape') {
+            texture = undefined
+            current = undefined
+            const found = find(value)
+            if (found) add(value, textureShape(found, {}))
+          }
+          if (key === 'dim' && texture && current) {
+            const [x, y, w, h] = values.map(({ value }) => Number(value))
+            shapes.set(current.toLowerCase(), textureShape(texture, { x, y, w, h }))
+          }
+        }
+      else if (kind === 'shape' && texture) {
+        const value = (key: string) => Number(part.getValue(key)?.value ?? 0)
+        const cut = strings(part, 'name')[0] ?? strings(part, 'shape_name')[0]
+        if (cut)
+          add(
+            cut,
+            textureShape(texture, { x: value('x'), y: value('y'), w: value('w'), h: value('h') }),
+          )
+      }
+    }
+  }
+  return shapes
+}
+
+/** A ring file: its `[TexturePanels]` shapes, its `[Exterior]` and its `[Clouds]`. */
 const loadRing = async (
   read: ReadAsset,
   file: string,
@@ -390,39 +449,8 @@ const loadRing = async (
   for (const section of Document.read(await read(pathOf(file)))) {
     const name = section.name.toLowerCase()
     if (name === 'texturepanels')
-      for (const path of strings(section, 'file')) {
-        let texture: Texture | undefined
-        for (const part of Document.read(await read(pathOf(path)))) {
-          const kind = part.name.toLowerCase()
-          if (kind === 'texture') {
-            const library = strings(part, 'file')[0]
-            const named = strings(part, 'name')[0] ?? strings(part, 'texture_name')[0]
-            if (!library || !named) continue
-            const entries = [...readTextureLibrary(Directory.read(await read(pathOf(library))))]
-            const found = entries.find((entry) => entry.name.toLowerCase() === named.toLowerCase())
-            texture = found?.type === 'image' ? found : undefined
-            const cuts = strings(part, 'shape_name')
-            const dims = part.filterProperties('dim')
-            cuts.forEach((cut, at) => {
-              const [x, y, w, h] = dims[at]!.values.map(({ value }) => Number(value))
-              if (texture) shapes.set(cut.toLowerCase(), textureShape(texture, { x, y, w, h }))
-            })
-          } else if (kind === 'shape' && texture) {
-            const value = (key: string) => Number(part.getValue(key)?.value ?? 0)
-            const cut = strings(part, 'name')[0] ?? strings(part, 'shape_name')[0]
-            if (cut)
-              shapes.set(
-                cut.toLowerCase(),
-                textureShape(texture, {
-                  x: value('x'),
-                  y: value('y'),
-                  w: value('w'),
-                  h: value('h'),
-                }),
-              )
-          }
-        }
-      }
+      for (const [key, value] of await loadShapes(read, strings(section, 'file')))
+        shapes.set(key, value)
     if (name === 'clouds') clouds.push(section)
     if (name === 'exterior')
       for (const { name: key, values } of section.properties)
@@ -593,9 +621,23 @@ const loadField = async (
   ]
   const lines: { name: string; numbers: number[] }[] = []
   const exclusions: CubeExclusion[] = []
+  const shapes = new Map<string, TextureShape>()
+  let band:
+    | { numbers: Record<string, number[]>; shape?: string; offset?: BandSettings['offset'] }
+    | undefined
   for (const section of Document.read(await read(pathOf(file)))) {
     const kind = section.name.toLowerCase()
+    if (kind === 'texturepanels')
+      for (const [key, value] of await loadShapes(read, strings(section, 'file')))
+        shapes.set(key, value)
+    if (kind === 'band') band = { numbers: {} }
     for (const line of linesOf(section)) {
+      if (kind === 'band' && band) {
+        band.numbers[line.name] = line.numbers
+        if (line.name === 'shape') band.shape = line.strings[0]!
+        if (line.name === 'offset_dist') band.offset = { distance: line.numbers[0]! }
+        if (line.name === 'offset_percent') band.offset = { percent: line.numbers[0]! }
+      }
       if (kind === 'field') keys[line.name] = line.numbers
       if (kind === 'cube') {
         const axis = ['xaxis_rotation', 'yaxis_rotation', 'zaxis_rotation'].indexOf(line.name)
@@ -658,6 +700,47 @@ const loadField = async (
   }
   const tint = color('tint_field')
   const increase = keys['ambient_increase']
+  const diffuse = color('diffuse_color') ?? tint ?? { x: 0, y: 0, z: 0 }
+  const ambient = color('ambient_color') ?? tint ?? { x: 0, y: 0, z: 0 }
+  const ambientIncrease = increase && { x: increase[0]!, y: increase[1]!, z: increase[2]! }
+  const zoneEntry = system.zones!.find(
+    ({ nickname }) => nickname.toLowerCase() === zoneName.toLowerCase(),
+  )!
+  const bandOf = ({ numbers, shape, offset }: NonNullable<typeof band>) => {
+    const one = (key: string) => numbers[key]?.[0]
+    const shift = numbers['color_shift']
+    const fade = numbers['fade']
+    const settings: BandSettings = {
+      ...(shape && shapes.get(shape.toLowerCase())
+        ? { shape: shapes.get(shape.toLowerCase())! }
+        : {}),
+      ...(one('texture_aspect') !== undefined ? { textureAspect: one('texture_aspect')! } : {}),
+      ...(one('height') !== undefined ? { height: one('height')! } : {}),
+      ...(offset ? { offset } : {}),
+      ...(shift ? { colorShift: { x: shift[0]!, y: shift[1]!, z: shift[2]! } } : {}),
+      ...(fade ? { fade: [fade[0]!, fade[1]!, fade[2]!, fade[3]!] as const } : {}),
+      ...(one('vert_increase') !== undefined ? { vertIncrease: one('vert_increase')! } : {}),
+      ...(one('render_parts') !== undefined ? { renderParts: one('render_parts')! } : {}),
+      ...(one('cull_mode') !== undefined ? { cullMode: one('cull_mode')! } : {}),
+      ...(one('ambient_intensity') !== undefined
+        ? { ambientIntensity: one('ambient_intensity')! }
+        : {}),
+    }
+    const [x, y, z] = zoneEntry.position
+    const [a = 0, b = 0, c = 0] = zoneEntry.size
+    return new AsteroidBand(settings, {
+      position: { x, y, z },
+      // `EulerMatrix` of a pitch alone: a turn about X.
+      orientation: Quat.axisAngle({
+        axis: { x: 1, y: 0, z: 0 },
+        angle: (zoneEntry.pitch * Math.PI) / 180,
+      }),
+      size: { x: a, y: b, z: c },
+      diffuse,
+      ambient,
+      ...(ambientIncrease ? { ambientIncrease } : {}),
+    })
+  }
   return {
     zone,
     edgeFraction,
@@ -672,9 +755,10 @@ const loadField = async (
       material: (id) => getMaterial(materials, id),
       texture: (name) => textures.find((entry) => entry.name.toLowerCase() === name.toLowerCase()),
     },
-    diffuse: color('diffuse_color') ?? tint ?? { x: 0, y: 0, z: 0 },
-    ambient: color('ambient_color') ?? tint ?? { x: 0, y: 0, z: 0 },
-    ...(increase ? { ambientIncrease: { x: increase[0]!, y: increase[1]!, z: increase[2]! } } : {}),
+    diffuse,
+    ambient,
+    ...(ambientIncrease ? { ambientIncrease } : {}),
+    ...(band ? { band: bandOf(band) } : {}),
   }
 }
 

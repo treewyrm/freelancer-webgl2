@@ -15,7 +15,14 @@ import {
 import { ringImmersion, ringPieceDraw, type PlanetRing, type RingPiece } from './ring.js'
 import { fieldCubes, type SpaceAsteroidField } from './asteroids.js'
 import { flareQuads, type FrameRect, type ScreenQuad, type SpaceFlare } from './flare.js'
-import { lightObject, lightSet, systemAmbient, type SpaceLight } from './light.js'
+import type { AsteroidBand } from './band.js'
+import {
+  directionalLightsAt,
+  lightObject,
+  lightSet,
+  systemAmbient,
+  type SpaceLight,
+} from './light.js'
 import {
   findNebula,
   fogEnd,
@@ -28,6 +35,7 @@ import {
   type SpaceField,
   type SpaceNebula,
   type Within,
+  type Zone,
 } from './nebula.js'
 import { classifySphere, projectionMatrix, viewMatrix, type Camera } from './camera.js'
 import {
@@ -273,7 +281,35 @@ interface ListedPiece {
   key: number
 }
 
+/** A field's band piece, a draw node of the field's kind (`0x005dc034`). */
+interface ListedBand {
+  band: AsteroidBand
+  piece: number
+  key: number
+}
+
 const BLACK: Vector3 = { x: 0, y: 0, z: 0 }
+
+/**
+ * A one-piece band's key (`0x51babc`): how far past its zone's surface the camera is, squared, by a
+ * length from one Newton step of the `0x5f3759df` estimate; within a quarter of the range, that.
+ */
+const bandSurfaceKey = (zone: Zone, eye: Vector3, nearSquared: number): number => {
+  const f = Math.fround
+  const dx = f(zone.position.x - eye.x)
+  const dy = f(zone.position.y - eye.y)
+  const dz = f(zone.position.z - eye.z)
+  const sum = dy * dy + dz * dz + dx * dx
+  const bits = new DataView(new ArrayBuffer(4))
+  bits.setFloat32(0, sum, true)
+  bits.setInt32(0, 0x5f3759df - (bits.getInt32(0, true) >> 1), true)
+  const estimate = bits.getFloat32(0, true)
+  const length = f((1.5 - estimate * estimate * sum * 0.5) * estimate * sum)
+  const inverse = 1 / length
+  const surface = zone.radiusAlong({ x: f(dx * inverse), y: f(dy * inverse), z: f(dz * inverse) })
+  const key = length <= surface ? nearSquared : f((length - surface) * (length - surface))
+  return key < nearSquared ? nearSquared : key
+}
 
 const withoutEnvironment = ({ environment: _, ...model }: SceneModel): SceneModel => model
 
@@ -347,7 +383,10 @@ export const collectSpaceFrame = ({
   const farCamera: Camera = { ...given, far: farListPlane }
   const view = viewMatrix(camera)
 
-  const lists: (Listed | ListedPiece)[][] = Array.from({ length: LIST_COUNT }, () => [])
+  const lists: (Listed | ListedPiece | ListedBand)[][] = Array.from(
+    { length: LIST_COUNT },
+    () => [],
+  )
   for (const object of objects) {
     const dx = object.position.x - eye.x
     const dy = object.position.y - eye.y
@@ -406,6 +445,37 @@ export const collectSpaceFrame = ({
       const radius = piece.radius * piece.radius
       lists[MAIN]!.push({ ring, piece, key: Math.fround(squared < radius ? 0 : squared - radius) })
     }
+  // `CliAsteroidUpdate` moves each band's fade to the camera, and the first frame bakes its light.
+  // Then `SpaceObjDrawPass` (`0x51ba40`) lists its pieces: one keyed by the zone's surface, or each
+  // the view keeps by distance, those within a quarter of the range nearest first.
+  const lighting = lightSet(flashes.length ? [...lights, ...flashes] : lights)
+  const rangeSquared = Math.fround(range * range)
+  const quarter = range * 0.25
+  const nearSquared = Math.fround(quarter * quarter)
+  for (const { band, zone } of asteroids) {
+    if (!band) continue
+    band.update(eye)
+    if (!band.isBaked) band.bake({ ambient, ...directionalLightsAt(lighting, zone.position, time) })
+    if (band.pieces.length === 1) {
+      const key = bandSurfaceKey(zone, eye, nearSquared)
+      lists[key < rangeSquared ? MAIN : FAR]!.push({ band, piece: 0, key })
+      continue
+    }
+    band.pieces.forEach(({ center, radius }, piece) => {
+      if (classifySphere(Matrix4.transformPoint(center, view), radius, camera, aspect) < 3) return
+      const dx = center.x - eye.x
+      const dy = center.y - eye.y
+      const dz = center.z - eye.z
+      let squared = dz * dz + dx * dx + dy * dy
+      if (rangeSquared < squared) {
+        lists[FAR]!.push({ band, piece, key: Math.fround(squared) })
+        return
+      }
+      // `DAT_005dc028`: 0.05f widened to a double.
+      if (nearSquared > squared) squared = (nearSquared - squared) * Math.fround(0.05) + nearSquared
+      lists[MAIN]!.push({ band, piece, key: Math.fround(squared) })
+    })
+  }
   // Retail's sort isn't stable, but equal keys are left in an order the object database decides.
   for (const list of lists) list.sort((a, b) => b.key - a.key)
 
@@ -434,8 +504,6 @@ export const collectSpaceFrame = ({
 
   const linked: SpaceFlare[] = []
   const farProjection = projectionMatrix(farCamera, aspect)
-  const lighting = lightSet(flashes.length ? [...lights, ...flashes] : lights)
-
   /**
    * `CliAsteroidTickOne`'s cubes. The field is lit once, at a point 100 behind the camera with a
    * radius of 250 (`CliAsteroidAmbientPass`), its ambient raised by `ambient_increase`; each cube
@@ -513,6 +581,11 @@ export const collectSpaceFrame = ({
     const passCamera = onFarList ? farCamera : camera
     for (const listed of lists[at]!) {
       const first = draws.length
+      if ('band' in listed) {
+        const draw = listed.band.pieceDraw(listed.piece)
+        if (draw) draws.push({ ...draw, projection: farProjection })
+        continue
+      }
       if ('ring' in listed) {
         const draw = ringPieceDraw(listed.ring, listed.piece)
         if (!draw) continue

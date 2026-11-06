@@ -329,7 +329,7 @@ class LightGrid {
   }
 }
 
-// `CollectNearbyLights`' second argument at every caller.
+// `CollectNearbyLights`' second argument for an object; a band's bake asks for 16 (`0x54cfb0`).
 const MOST_LIGHTS = 4
 const SORTED_LIMIT = 0x100
 
@@ -349,12 +349,12 @@ const reaches = (light: SpaceLight, point: Vector3, radius: number): boolean => 
   return reach * reach > dx * dx + dz * dz + dy * dy
 }
 
-/** `CollectNearbyLights` (`0x537f40`): the widest-reaching lights first, four at most. */
-const nearbyLights = (
+/** `CollectNearbyLights` (`0x537f40`): the widest-reaching lights first, `most` at most. */
+const collectLights = (
   grid: LightGrid,
-  lights: readonly SpaceLight[],
   position: Vector3,
   radius: number,
+  most: number,
 ): number[] => {
   const cells: Cell[] = []
   grid.collect(grid.root, Math.trunc(position.x), Math.trunc(position.z), Math.trunc(radius), cells)
@@ -378,14 +378,25 @@ const nearbyLights = (
 
   const kept: number[] = []
   for (const { light, x, z, range } of sorted) {
-    if (kept.length >= MOST_LIGHTS) break
+    if (kept.length >= most) break
     const dx = position.x - x
     const dz = position.z - z
     const reach = range + radius
     if (reach * reach > dz * dz + dx * dx) kept.push(light)
   }
-  return kept.filter((index) => reaches(lights[index]!, position, radius))
+  return kept
 }
+
+/** What `StarSysApplyObjectLighting` keeps of `CollectNearbyLights`: those that reach the object. */
+const nearbyLights = (
+  grid: LightGrid,
+  lights: readonly SpaceLight[],
+  position: Vector3,
+  radius: number,
+): number[] =>
+  collectLights(grid, position, radius, MOST_LIGHTS).filter((index) =>
+    reaches(lights[index]!, position, radius),
+  )
 
 // `-Orient`'s third column, from an identity: a light with no `direction` shines down -Z.
 const FORWARD: Vector3 = { x: 0, y: 0, z: -1 }
@@ -399,6 +410,55 @@ const unit = ({ x, y, z }: Vector3): Vector3 => {
 }
 
 const scale = ({ x, y, z }: Vector3, by: number): Vector3 => ({ x: x * by, y: y * by, z: z * by })
+
+/** `EngineLightGetEffectiveColor` (`0x410850`): its bytes, tinted by `color_curve`, then `atten_curve`. */
+const effectiveColor = (light: SpaceLight, distance: number, time: number): Vector3 => {
+  let color = {
+    x: quantize(light.color.x),
+    y: quantize(light.color.y),
+    z: quantize(light.color.z),
+  }
+  if (light.colorCurve) {
+    const { graph, period } = light.colorCurve
+    const tint = evaluateColorGraph(graph, Math.fround(time), period)
+    color = {
+      x: (tint.x / 255) * color.x,
+      y: (tint.y / 255) * color.y,
+      z: (tint.z / 255) * color.z,
+    }
+  }
+  if (light.attenuationCurve && light.type !== 'ambient')
+    color = scale(color, evaluateGraph(light.attenuationCurve, distance, light.range))
+  return color
+}
+
+/**
+ * The directional lights `BandBakeLighting` (`0x54cfb0`) takes at a band's zone: of the first 16
+ * `CollectNearbyLights` gives within 100, the first four directional ones, each the way it travels
+ * (`EngineLightSample`). There's no reach test, and an ambient light adds nothing here.
+ */
+export const directionalLightsAt = (
+  { lights, grid }: LightSet,
+  position: Vector3,
+  time: number,
+): { found: number; lights: SceneLight[] } => {
+  const found = collectLights(grid, position, 100, 16)
+  const lit: SceneLight[] = []
+  for (const index of found) {
+    if (lit.length >= MOST_LIGHTS) break
+    const light = lights[index]!
+    if (light.type !== 'directional') continue
+    const dx = position.x - light.position.x
+    const dy = position.y - light.position.y
+    const dz = position.z - light.position.z
+    const distance = Math.fround(Math.hypot(dx, dy, dz))
+    const direction = turns(light)
+      ? unit({ x: dx, y: dy, z: dz })
+      : unit(light.direction ?? FORWARD)
+    lit.push({ color: effectiveColor(light, distance, time), direction })
+  }
+  return { found: found.length, lights: lit }
+}
 
 /** `[Ambient] color` as the device takes it: whole bytes, 0 to 1. */
 export const systemAmbient = ({ x, y, z }: Vector3): Vector3 => ({
@@ -457,22 +517,7 @@ export const lightObject = (
     const dy = position.y - light.position.y
     const dz = position.z - light.position.z
     const distance = Math.fround(Math.hypot(dx, dy, dz))
-    let color = {
-      x: quantize(light.color.x),
-      y: quantize(light.color.y),
-      z: quantize(light.color.z),
-    }
-    if (light.colorCurve) {
-      const { graph, period } = light.colorCurve
-      const tint = evaluateColorGraph(graph, Math.fround(time), period)
-      color = {
-        x: (tint.x / 255) * color.x,
-        y: (tint.y / 255) * color.y,
-        z: (tint.z / 255) * color.z,
-      }
-    }
-    if (light.attenuationCurve && light.type !== 'ambient')
-      color = scale(color, evaluateGraph(light.attenuationCurve, distance, light.range))
+    const color = effectiveColor(light, distance, time)
 
     if (light.type === 'ambient') {
       const curve = light.ambientCurve ?? light.attenuationCurve

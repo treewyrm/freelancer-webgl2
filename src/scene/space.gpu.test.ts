@@ -89,3 +89,10 @@ test("a ring's band draws in its colour, blended by its opacity, the detail doub
   assert.ok(Math.abs(r! - 127.5) <= 1 && g === 0 && b === 0, `${report.ring.plain}`)
   assert.deepEqual(report.ring.detailed, [255, 0, 0])
 })
+
+test("a field's band draws in its texture and vertex colour, and cull mode 2 hides its near face", () => {
+  // The near face, unbaked, is white on the red texture.
+  assert.deepEqual(report.band.drawn, RED)
+  // Then only the far side shows through, from behind: its unbaked back colour, 0.2.
+  assert.deepEqual(report.band.culled, [51, 0, 0])
+})

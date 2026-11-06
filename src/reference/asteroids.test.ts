@@ -1,6 +1,7 @@
 /**
- * `asteroid_inside` and `asteroid_nebula`: a field of cubes, an exclusion zone around a station, and a
- * nebula over part of the field with a hole in it, against retail.
+ * `asteroid_inside`, `asteroid_nebula` and `asteroid_outside`: a field of cubes and its band, an
+ * exclusion zone around a station, and a nebula over part of the field with a hole in it, against
+ * retail.
  */
 import assert from 'node:assert/strict'
 import { existsSync, readFileSync } from 'node:fs'
@@ -19,21 +20,32 @@ const data = process.env['FREELANCER_DATA'] ?? join(homedir(), 'Downloads/Freela
 const references = process.env['FREELANCER_REFERENCES'] ?? 'references'
 
 interface AsteroidRun {
-  name: 'asteroid_inside' | 'asteroid_nebula'
+  name: 'asteroid_inside' | 'asteroid_nebula' | 'asteroid_outside'
   /** Retail's draws before the depth clear, the engine's effects included. */
   scene: number
-  /** What isn't built: the field's band, and in a nebula its fog overlay. */
+  /** What isn't built: in a nebula, its fog overlay. */
   unbuilt: number[]
+  /** The band's pieces, on the main list after the sky. */
+  band: number[]
   /** Retail's first cube, and how many. */
   cubes: [number, number]
 }
 
 const RUNS_COMPARED: AsteroidRun[] = [
-  // In the field: the band, the station in its hole, the ship, then 37 cubes.
-  { name: 'asteroid_inside', scene: 128, unbuilt: [10, 11, 12], cubes: [87, 37] },
-  // In the field and the nebula: the band, the plant in the nebula's hole, the fog overlay, the
-  // ship, then 50 cubes, none in the hole.
-  { name: 'asteroid_nebula', scene: 109, unbuilt: [10, 30], cubes: [55, 50] },
+  // In the field: three pieces of the band, the station in its hole, the ship, then 37 cubes.
+  { name: 'asteroid_inside', scene: 128, unbuilt: [], band: [10, 11, 12], cubes: [87, 37] },
+  // In the field and the nebula: a piece of the band, the plant in the nebula's hole, the fog
+  // overlay, the ship, then 50 cubes, none in the hole.
+  { name: 'asteroid_nebula', scene: 109, unbuilt: [30], band: [10], cubes: [55, 50] },
+  // 13000 from the field's centre: all five pieces, far to near, faces turned both ways, and no cube.
+]
+
+// 13000 from the field's centre: all five pieces, far to near, faces turned both ways. The frame
+// around them isn't compared: retail draws its station at a coarser level than this picks, and
+// leaves out the plant, which `level.ts`'s far clamp keeps.
+const BAND_RUNS: Pick<AsteroidRun, 'name' | 'band'>[] = [
+  ...RUNS_COMPARED,
+  { name: 'asteroid_outside', band: [10, 11, 12, 13, 14] },
 ]
 
 const skipOf = (name: string) =>
@@ -71,7 +83,7 @@ for (const { name, scene, unbuilt, cubes } of RUNS_COMPARED) {
     captured.slice(0, scene - 4).filter((_, n) => !unbuilt.includes(n))
 
   test(
-    `${name} is retail draw for draw, but its band and overlay`,
+    `${name} is retail draw for draw, but a nebula's overlay`,
     { skip: skipOf(name) },
     async () => {
       const { frame, captured } = await load(name)
@@ -150,3 +162,64 @@ for (const { name, scene, unbuilt, cubes } of RUNS_COMPARED) {
     },
   )
 }
+
+for (const { name, band } of BAND_RUNS)
+  test(
+    `${name}: each band piece is retail's, in state, place, colour, fade and UVs`,
+    { skip: skipOf(name) },
+    async () => {
+      const { frame, captured } = await load(name)
+      const pieces = frame.draws.filter(({ materialName }) => materialName === 'band')
+      assert.equal(pieces.length, band.length)
+      for (const [k, n] of band.entries()) {
+        const what = `draw ${n}`
+        const ours = pieces[k]!
+        const { states, stages, world, vertexData } = captured[n]!
+        assert.equal(ours.materialName, 'band', what)
+        assert.deepEqual(
+          ['ZENABLE', 'ZWRITEENABLE', 'CULLMODE', 'LIGHTING', 'SRCBLEND', 'DESTBLEND'].map(
+            (key) => states[key],
+          ),
+          [0, 0, 1, 0, 5, 6],
+          what,
+        )
+        assert.deepEqual(
+          [states['ALPHATESTENABLE'], states['ALPHAFUNC'], states['ALPHAREF'], states['FOGENABLE']],
+          [1, 5, ours.alphaReference, 0],
+          what,
+        )
+        assert.deepEqual([ours.depthFunc, ours.depthWrite, ours.fog], ['always', false, undefined])
+        assert.deepEqual(
+          ['COLOROP', 'ALPHAOP', 'ADDRESSU', 'ADDRESSV', 'MAGFILTER', 'MIPFILTER'].map(
+            (key) => stages[0]!.states[key],
+          ),
+          [4, 4, 1, 1, 2, 1],
+          what,
+        )
+        assert.equal(stages[1]!.states['COLOROP'], 1, what)
+        // In world space on the far list's plane: the modelview is the view alone.
+        const theirs = modelViewOf(world!)
+        for (const axis of ['x', 'y', 'z', 'w'] as const)
+          for (const cell of ['x', 'y', 'z'] as const)
+            assert.ok(Math.abs(frame.view[axis][cell] - theirs[axis][cell]) < 1e-3, what)
+
+        const floats = new Float32Array(ours.mesh.vertices.buffer)
+        const bytes = ours.mesh.vertices
+        assert.equal(ours.count, vertexData!.length, what)
+        vertexData!.forEach(({ p, d, t0 }, at) => {
+          const where = `${what}, vertex ${at}`
+          p.forEach((c, axis) =>
+            assert.ok(Math.abs(c - floats[at * 6 + axis]!) <= Math.abs(c) * 2.4e-7 + 1e-4, where),
+          )
+          const [b, g, r, a] = bytes.slice(at * 24 + 12, at * 24 + 16)
+          const colour = ((a! << 24) | (r! << 16) | (g! << 8) | b!) >>> 0
+          assert.equal(colour.toString(16), Number(d).toString(16), where)
+          assert.deepEqual(
+            [...t0!].map(Math.fround),
+            [...floats.slice(at * 6 + 4, at * 6 + 6)],
+            where,
+          )
+        })
+      }
+    },
+  )

@@ -428,7 +428,29 @@ renderer. Random streams need not match retail; each appearance's sizes, colours
       but the band and the nebula's overlay. It found: a solar finds its nebula once, as its
       `[Object]` is read (`FUN_005485c0`), so one listed before a `[Nebula]` has none
       (`SpaceObject.nebula = null`); and a nebula's fog, linear on depth, matched on the ship.
-- [ ] An asteroid field's band (`asteroid_inside`'s draws 10 to 12, `asteroid_outside`'s five).
+- [x] An asteroid field's `[Band]`: `AsteroidBand`, from `BandBuildExclusionRings` (`FUN_0054c8b0`),
+      `BandUpdate`, `BandBakeLighting` and `BandDrawPiece` (`cli_asteroid.cpp`). A ring of points about
+      its zone, its girth over `texture_aspect` × 1.15 × `height` segments times `vert_increase`, in
+      from its size by `offset_dist` or scaled by `offset_percent`, cut into `render_parts`; each
+      point's normal out and level. Each frame, a point fades in and out by `fade`'s four heights and
+      edge-on below a cosine of 0.5, and keeps the side it was last seen from while faded past the far
+      end. Lit once, at its zone: the system's ambient raised by `ambient_increase` and tinted, and up to
+      four directional lights softened 0.75 round the back (`directionalLightsAt`). A piece draws its
+      quads turned away first, both sides, `cull_mode` hiding one, U stepping by `vert_increase`.
+      `SpaceObjDrawPass` lists it as the field's own node (`0x51ba40`): each piece the view keeps by
+      distance, nearest first inside a quarter of the range, or one piece by its zone's surface; on
+      either list with no depth and the 250000 plane, `ALPHAREF` 5. Pinned by reading and by pixels.
+      **Matched in `asteroid_inside`, `asteroid_nebula` and `asteroid_outside`**
+      (`src/reference/asteroids.test.ts`): order, state, and every vertex's place, colour, fade and UV
+      to the byte. It found the decomp's bake reading the normal a float late
+      ([ADAPTING.md](ADAPTING.md#bandbakelighting)), and an even piece's centre half a segment off, as
+      retail has it. A one-piece band and a tilted zone are uncaptured.
+- [ ] `[ExclusionBand]`: a band about an exclusion zone, its alpha `near_field_fraction` at 1000, its
+      pieces after the field's own. `AsteroidBand.update` and `pieceDraw` take the alpha already.
+- [ ] `asteroid_outside`'s frame around the band: retail draws `smallstation1_old_nodock` at 10500 at
+      a coarser level than `levelEnds` picks, and leaves out `space_solar_plant` at 12700, whose
+      `LODranges = 0, 3000, 8000` the far clamp (`ApplyArchLodRanges`) holds to 15001 at
+      `level_of_detail` 1. One reading of `ArchLod` is wrong; every run so far is at 1.
 - [ ] A nebula's fog overlay, which hides the sky and what's behind from inside (`asteroid_nebula`'s
       draw 30), its exclusion shells, and its exterior from outside.
 - [ ] An asteroid field's billboards and dynamic asteroids, which `rand()` drives.

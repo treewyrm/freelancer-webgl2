@@ -84,6 +84,15 @@ export const RUNS = {
     effectRate: 96,
     animationSeconds: 0,
   },
+  // Outside the field: no cube, so the band's first piece, drawn in world space, places the origin.
+  asteroid_outside: {
+    far: [0, 0, 0],
+    farDraw: 10,
+    hullDraw: 34,
+    effectSeconds: 20,
+    effectRate: 96,
+    animationSeconds: 0,
+  },
   ring_outside: {
     far: 'Lab_ringed_planet',
     farDraw: 32,

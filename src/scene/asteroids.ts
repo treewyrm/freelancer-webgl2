@@ -16,6 +16,7 @@ import {
   type VMeshRef,
 } from '@treewyrm/freelancer/vmesh'
 import { vertexLayout } from '#/mesh/plan.js'
+import type { AsteroidBand } from './band.js'
 import type { Camera } from './camera.js'
 import type { SceneModel } from './frame.js'
 import { immersion, type Zone } from './nebula.js'
@@ -446,4 +447,6 @@ export interface SpaceAsteroidField extends CubeField {
   ambientIncrease?: Vector3
   /** `contains_fog_zone`: lit and fogged by the nebula the camera is in. */
   containsFogZone?: boolean
+  /** Its `[Band]`, built from its zone and colours. */
+  band?: AsteroidBand
 }

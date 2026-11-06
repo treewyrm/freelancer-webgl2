@@ -36,6 +36,7 @@ export {
   type SpaceScene,
 } from '#/scene/space.js'
 export {
+  directionalLightsAt,
   effectLight,
   equipmentLight,
   evaluateColorGraph,
@@ -123,6 +124,13 @@ export {
   type CubeRotations,
   type SpaceAsteroidField,
 } from '#/scene/asteroids.js'
+export {
+  AsteroidBand,
+  type BandField,
+  type BandLighting,
+  type BandPiece,
+  type BandSettings,
+} from '#/scene/band.js'
 export {
   Clouds,
   NEBULA_CLOUD_VISIBILITY,

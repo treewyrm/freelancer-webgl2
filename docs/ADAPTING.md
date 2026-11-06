@@ -113,6 +113,16 @@ needs its own frame's `dt` to compare against.
 Places where the decomp disagrees with the retail binary. Keep these, and report them upstream if you
 want them fixed there.
 
+### `BandBakeLighting`
+
+`src/freelancer/Client/cli_asteroid.cpp`, retail `0x54cfb0`. Found 2026-11-06.
+
+The decomp lights each point of an asteroid band by `Particles + P * 15 + 5`, the floats at `+0x14` to
+`+0x1c`: the normal's last two and the front colour's red. Retail sets `ebx` to `+0x14` at `0x54d169`
+and reads `[ebx - 4]`, `[ebx]` and `[ebx + 4]`, the normal at `+0x10`, where `BandUpdateSpokeFade` reads
+it too. Baked from the real normal, every band vertex of `asteroid_inside`, `asteroid_nebula` and
+`asteroid_outside` matches retail to the byte.
+
 ### `Win3DSetTextureFilterLinear` and `Win3DSetTextureFilterPoint`
 
 `src/freelancer/Client/win3d_immediate.cpp`, retail `0x4223d0` and `0x422410`. Found 2026-11-06.

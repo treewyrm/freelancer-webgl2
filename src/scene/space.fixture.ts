@@ -10,6 +10,7 @@ import {
 import { EffectInstance } from '#/alchemy/effect.js'
 import { basic, eased, emitter, flat, sceneOf, tint } from '#/alchemy/fixtures.js'
 import type { Fixture } from '#/harness.js'
+import { AsteroidBand } from './band.js'
 import { equipmentLight } from './light.js'
 import { zoneOf } from './nebula.js'
 import { buildRing, textureShape, type RingExterior } from './ring.js'
@@ -32,6 +33,8 @@ export interface SpaceReport {
   coplanar: { space: number[]; less: number[] }
   /** A red ring's band across the middle: without a detail shape, then with a light grey one. */
   ring: { plain: number[]; detailed: number[] }
+  /** A field's band across the middle, its face toward the camera: drawn, then culled by mode 2. */
+  band: { drawn: number[]; culled: number[] }
 }
 
 // A square of half-size 1 facing +Z: FVF 0x112.
@@ -312,8 +315,64 @@ export default (async (gl) => {
     }),
   }
 
+  // A field 3000 ahead, its band's nearest point 2000 off and facing the camera. Unbaked with no
+  // lights, its front is white, so it draws in its texture.
+  const bandShot = (cullMode: number) => {
+    const position = { x: 0, y: 0, z: -3000 }
+    const band = new AsteroidBand(
+      {
+        shape: textureShape(solid('red', [255, 0, 0]), {}),
+        vertIncrease: 4,
+        fade: [0.5, 1, 100, 110],
+        cullMode,
+      },
+      {
+        position,
+        orientation: Quat.identity,
+        size: { x: 1000, y: 0, z: 0 },
+        diffuse: { x: 1, y: 1, z: 1 },
+        ambient: { x: 1, y: 1, z: 1 },
+      },
+    )
+    renderer.render(
+      collectSpaceFrame({
+        camera: {
+          position: { x: 0, y: 0, z: 0 },
+          orientation: Matrix3.identity,
+          fovh: 45,
+          near: 1,
+          far: 1,
+        },
+        aspect: width / height,
+        ambient: { x: 0, y: 0, z: 0 },
+        lights: [],
+        objects: [],
+        // No cube reaches the camera: only the band draws.
+        asteroids: [
+          {
+            zone: zoneOf({ type: 'sphere', center: position, radius: 1000 }),
+            cubeSize: 1,
+            fillDistance: 0,
+            cube: {
+              mesh,
+              reference,
+              material: () => undefined,
+              texture: () => undefined,
+            },
+            diffuse: { x: 1, y: 1, z: 1 },
+            ambient: { x: 1, y: 1, z: 1 },
+            band,
+          },
+        ],
+      }),
+    )
+    return read(width >> 1, height >> 1)
+  }
+  const band = { drawn: bandShot(0), culled: bandShot(2) }
+
   renderer.dispose()
   return {
+    band,
     ring,
     coplanar,
     error: gl.getError(),
