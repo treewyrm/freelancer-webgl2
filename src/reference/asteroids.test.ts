@@ -20,7 +20,12 @@ const data = process.env['FREELANCER_DATA'] ?? join(homedir(), 'Downloads/Freela
 const references = process.env['FREELANCER_REFERENCES'] ?? 'references'
 
 interface AsteroidRun {
-  name: 'asteroid_inside' | 'asteroid_nebula' | 'asteroid_outside'
+  name:
+    | 'asteroid_inside'
+    | 'asteroid_nebula'
+    | 'asteroid_outside'
+    | 'asteroid_exband'
+    | 'asteroid_exband_edge'
   /** Retail's draws before the depth clear, the engine's effects included. */
   scene: number
   /** What isn't built: in a nebula, its fog overlay. */
@@ -37,7 +42,23 @@ const RUNS_COMPARED: AsteroidRun[] = [
   // In the field and the nebula: a piece of the band, the plant in the nebula's hole, the fog
   // overlay, the ship, then 50 cubes, none in the hole.
   { name: 'asteroid_nebula', scene: 109, unbuilt: [30], band: [10], cubes: [55, 50] },
-  // 13000 from the field's centre: all five pieces, far to near, faces turned both ways, and no cube.
+  // In the field, 1500 from the station: the field's band and the one about the station, sorted
+  // together, all at full alpha, as the camera is within the field.
+  {
+    name: 'asteroid_exband',
+    scene: 132,
+    unbuilt: [],
+    band: [10, 11, 12, 13, 14, 15, 16],
+    cubes: [91, 37],
+  },
+  // 500 past the field's surface: the station's band at half, after the plant, among the objects.
+  {
+    name: 'asteroid_exband_edge',
+    scene: 107,
+    unbuilt: [],
+    band: [10, 11, 12, 17, 18, 19, 20, 21, 22],
+    cubes: [93, 10],
+  },
 ]
 
 // 13000 from the field's centre: all five pieces, far to near, faces turned both ways. The frame

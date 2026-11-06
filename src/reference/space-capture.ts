@@ -93,6 +93,23 @@ export const RUNS = {
     effectRate: 96,
     animationSeconds: 0,
   },
+  // An exclusion band about the station: the field's own band leads, drawn in world space.
+  asteroid_exband: {
+    far: [0, 0, 0],
+    farDraw: 10,
+    hullDraw: 69,
+    effectSeconds: 20,
+    effectRate: 96,
+    animationSeconds: 0,
+  },
+  asteroid_exband_edge: {
+    far: [0, 0, 0],
+    farDraw: 10,
+    hullDraw: 71,
+    effectSeconds: 20,
+    effectRate: 96,
+    animationSeconds: 0,
+  },
   ring_outside: {
     far: 'Lab_ringed_planet',
     farDraw: 32,

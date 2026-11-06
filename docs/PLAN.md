@@ -452,8 +452,10 @@ renderer. Random streams need not match retail; each appearance's sizes, colours
       `FUN_00522850`), so a field of one piece in all takes the one-piece node. Retail uses it in
       `li01_pittsburgh_debris_field_001`, `bw02_minefield` (with no `[Band]`) and
       `bw04_von_rohe_lava_asteroids`. One whose zone isn't found counts pieces it never built, and is
-      left out. Pinned by reading. **Uncaptured.**
-- [ ] **You:** `asteroid_exband` and `asteroid_exband_edge` (`src/reference/systems.ts`): the lab field
+      left out. Pinned by reading. **Matched in `asteroid_exband` and `asteroid_exband_edge`**
+      (`src/reference/asteroids.test.ts`): both frames draw for draw, and every band vertex to the
+      byte, the station's band sorted among the field's and the objects, and at half from 500 out.
+- [x] **You:** `asteroid_exband` and `asteroid_exband_edge` (`src/reference/systems.ts`): the lab field
       with an exclusion band about the station, from in the field and from 500 past its surface,
       where it shows at half.
 - [ ] `asteroid_outside`'s frame around the band: retail draws `smallstation1_old_nodock` at 10500 at
