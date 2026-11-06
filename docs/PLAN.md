@@ -334,8 +334,11 @@ renderer. Random streams need not match retail; each appearance's sizes, colours
       D3D8's spot factor in the shader. Retail makes one only for the player's ship, which the host decides.
       Pinned by reading and by pixels. **Uncaptured.** Its bulb and flare are drawing of their own, with
       projectiles.
-- [ ] Lights effects carry: a `[VisEffect]`'s `lgt_*` is a point light of `lgt_radius`, run by its named
-      light animation (`CreateEffectStart`, `0x544299`, `GameLightAttachAnim`).
+- [x] Lights effects carry: `effectLight`. An `[Effect]`'s `lgt_radius` and `lgt_color` make a point light
+      at the effect (`CreateEffectStart`, `0x544299`), run by the `[LightAnim]` its `lgt_effect` names, its
+      keys scaled by `lgt_time_scale` and `lgt_range_scale` (`GameLightBindAnimKeys`, `GameLightTickAnim`),
+      and out once the last key passes. Pinned by reading. **Uncaptured.** The host reads `[LightAnim]` into
+      `LightAnimation`, and adds the light to the scene's in the order its effects started.
 - [ ] Compute `lodRange` from an archetype's lists (`ComputeLodPickThis`, `ApplyArchLodRanges`), far clamp included.
 - [ ] What `SpaceEffectsDrawFrame` does around effects: `ZFUNC` 4 where the program has `LESS`, the view test
       and `EXIST_OFFSCREEN` (`EffectTypeBucketWalk`), and the screen quads it flushes last (`ScreenQuadFlush`).

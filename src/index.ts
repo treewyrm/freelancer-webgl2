@@ -31,13 +31,16 @@ export {
   type SpaceScene,
 } from '#/scene/space.js'
 export {
+  effectLight,
   equipmentLight,
   evaluateColorGraph,
   evaluateGraph,
   lightObject,
   lightSet,
   systemAmbient,
+  type EffectLight,
   type EquipmentLight,
+  type LightAnimation,
   type Graph,
   type LightSet,
   type NebulaAmbient,

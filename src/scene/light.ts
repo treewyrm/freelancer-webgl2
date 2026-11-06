@@ -74,6 +74,95 @@ export const equipmentLight = ({
   return light
 }
 
+/** A `[LightAnim]`: its `frame = time, r, g, b, intensity` keys, as written, in file order. */
+export interface LightAnimation {
+  frames: readonly { time: number; color: Vector3; intensity: number }[]
+}
+
+/** An `[Effect]`'s light keys, and the running effect's place and age. */
+export interface EffectLight {
+  /** Where the effect is: it has no direction. */
+  position: Vector3
+  /** `lgt_radius`: its range. No light at all at 0 or less. */
+  radius: number
+  /** `lgt_color`, as written, 0 to 255. */
+  color: Vector3
+  /** The `[LightAnim]` its `lgt_effect` names. */
+  animation?: LightAnimation
+  /** `lgt_range_scale`, which scales each key's intensity. 1 when absent. */
+  rangeScale?: number
+  /** `lgt_time_scale`, which scales each key's time. 1 when absent. */
+  timeScale?: number
+  /** Seconds since it started. Retail adds each frame's step to a float. */
+  elapsed: number
+}
+
+// `LightAnimationLoad` (`0x538bf5` on): whole bytes, and a key's intensity kept above 0.
+const keyOf = (
+  { time, color, intensity }: LightAnimation['frames'][number],
+  timeScale: number,
+  intensityScale: number,
+) => {
+  const byte = (value: number) => Math.trunc(value) & 0xff
+  return {
+    time: Math.fround(Math.fround(time) * timeScale),
+    color: { x: byte(color.x), y: byte(color.y), z: byte(color.z) },
+    intensity: Math.fround(
+      (intensity <= 0 ? Math.fround(0.01) : Math.fround(intensity)) * intensityScale,
+    ),
+  }
+}
+
+/** `EngineLightSetRadius` (`0x411300`): a point light of that range, falling off by 16 / range². */
+const pointOfRadius = (position: Vector3, color: Vector3, radius: number): SpaceLight => {
+  const range = Math.fround(radius)
+  return {
+    type: 'point',
+    position,
+    color,
+    range,
+    attenuation: { x: 1, y: 0, z: Math.fround(16 / (range * range)) },
+  }
+}
+
+/**
+ * The light an effect carries (`CreateEffectStart`, `0x544299`), run by its animation
+ * (`GameLightTickAnim`, `0x5386d0`): gone once the animation's last key has passed.
+ */
+export const effectLight = ({
+  position,
+  radius,
+  color,
+  animation,
+  rangeScale = 1,
+  timeScale = 1,
+  elapsed,
+}: EffectLight): SpaceLight | undefined => {
+  if (!(radius > 0)) return undefined
+  const frames = animation?.frames ?? []
+  // Before its first step, and with no animation, as the `[Effect]` says.
+  if (!frames.length || !(elapsed > 0)) return pointOfRadius(position, color, radius)
+  const keys = frames.map((frame) => keyOf(frame, Math.fround(timeScale), Math.fround(rangeScale)))
+  // Its last key ends it, as `LightAnimationLoad` marks every animation's last.
+  if (elapsed >= keys[keys.length - 1]!.time) return undefined
+  // The last key before now, but from the first: before it, the first two extrapolate.
+  let at = 0
+  for (let index = 0; index < keys.length; index++) if (elapsed > keys[index]!.time) at = index
+  const from = keys[at]!
+  // One key alone has no next: retail reads past it. Held here.
+  const to = keys[at + 1] ?? from
+  const span = to.time - from.time
+  const blend = span ? Math.fround((elapsed - from.time) / span) : 0
+  const channel = (a: number, b: number) => Math.trunc((b - a) * blend + a) & 0xff
+  const lit = {
+    x: channel(from.color.x, to.color.x),
+    y: channel(from.color.y, to.color.y),
+    z: channel(from.color.z, to.color.z),
+  }
+  const intensity = (to.intensity - from.intensity) * blend + from.intensity
+  return pointOfRadius(position, lit, Math.fround(intensity * Math.fround(radius)))
+}
+
 /** What one object is lit by: at most four lights, and the ambient, 0 to 1. */
 export interface ObjectLighting {
   lights: SceneLight[]

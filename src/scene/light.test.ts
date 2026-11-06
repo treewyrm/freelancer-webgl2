@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { Matrix4, Quat, type Vector3 } from '@treewyrm/freelancer/math'
 import {
+  effectLight,
   equipmentLight,
   evaluateColorGraph,
   evaluateGraph,
@@ -205,4 +206,61 @@ test("an equipment light shines down its hardpoint's -Z, a spot below 180°, its
   const [lit] = lightObject(lightSet([spot]), { x: -10, y: 2, z: 3 }, 1, BLACK, 0).lights
   assert.deepEqual(lit!.spot, spot.spot)
   assert.deepEqual(lit!.direction, spot.direction)
+})
+
+test("an effect's light runs its animation's keys, scaled, and goes out after the last", () => {
+  const animation = {
+    frames: [
+      { time: 0, color: { x: 0, y: 100, z: 255 }, intensity: 1 },
+      { time: 1, color: { x: 200, y: 100.9, z: 55 }, intensity: 3 },
+      { time: 2, color: { x: 10, y: 10, z: 10 }, intensity: 0 },
+    ],
+  }
+  const at = (elapsed: number, fields: Partial<Parameters<typeof effectLight>[0]> = {}) =>
+    effectLight({
+      position: ORIGIN,
+      radius: 10,
+      color: WHITE,
+      animation,
+      timeScale: 2,
+      rangeScale: 0.5,
+      elapsed,
+      ...fields,
+    })
+  // Before its first step, the `[Effect]`'s own colour and radius.
+  assert.deepEqual(at(0), {
+    type: 'point',
+    position: ORIGIN,
+    color: WHITE,
+    range: 10,
+    attenuation: { x: 1, y: 0, z: Math.fround(16 / 100) },
+  })
+  // A quarter of the way to the second key, its time doubled: intensity 0.5 to 1.5, by the radius.
+  const quarter = at(0.5)!
+  assert.deepEqual(quarter.color, { x: 50, y: 100, z: 205 })
+  assert.equal(quarter.range, 7.5)
+  // A key's intensity at or below 0 is 0.01, by the scale.
+  const late = at(3.9)!
+  assert.ok(Math.abs(late.range - 10 * (1.5 + (0.005 - 1.5) * 0.95)) < 1e-4, `${late.range}`)
+  // The last key's time ends it.
+  assert.equal(at(4), undefined)
+  // No animation keeps it as it is; no radius is no light.
+  assert.equal(at(100, { animation: undefined })!.range, 10)
+  assert.equal(at(0.5, { radius: 0 }), undefined)
+})
+
+test('before its first key an animation extrapolates from its first two', () => {
+  const frames = [
+    { time: 1, color: { x: 100, y: 0, z: 0 }, intensity: 1 },
+    { time: 2, color: { x: 200, y: 0, z: 0 }, intensity: 2 },
+  ]
+  const light = effectLight({
+    position: ORIGIN,
+    radius: 10,
+    color: WHITE,
+    animation: { frames },
+    elapsed: 0.5,
+  })!
+  assert.equal(light.color.x, 50)
+  assert.equal(light.range, 5)
 })
