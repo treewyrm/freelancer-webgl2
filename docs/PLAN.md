@@ -454,6 +454,18 @@ renderer. Random streams need not match retail; each appearance's sizes, colours
 - [ ] A nebula's fog overlay, which hides the sky and what's behind from inside (`asteroid_nebula`'s
       draw 30), its exclusion shells, and its exterior from outside.
 - [ ] An asteroid field's billboards and dynamic asteroids, which `rand()` drives.
+- [ ] Suns: a solar's `star` from `solar\StarArch.ini`, drawn by `FStarSphere` (`star_sphere.cpp`;
+      the name is the decomp's, not a sky). Its `star_center` and `star_glow` fans turned to the camera
+      (`FUN_0050cd50`), sized by `radius`. Drawn outside `SpaceObjDrawPass`, around the cockpit pass
+      (`SpaceEnvFxBeginCockpitPass`, `0x51c970`; fully inside a field it only sets its occlusion), so
+      read first where it falls among the lists and the depth clear. A sun's sphere for the frame's
+      lists is `StarSphereMaxGlowScale` (`0x512620`).
+- [ ] A sun's `lens_glow` corona (`FUN_0050da20`, `FUN_0050e6f0`): its alpha by rays from the camera
+      that objects big enough on screen (`FUN_0050c750`) or a nebula (`FUN_00511b90`) block, eased
+      each frame (`FUN_00512460`). Then its `lens_flare` beads and `spines` (`FUN_0050f850`,
+      `FUN_00510160`), drawn at the cockpit pass's end (`SpaceEnvFxEndCockpitPass`, `0x51c9e0`).
+- [ ] **You:** `sun_ahead`, `sun_occluded` and `sun_nebula`: a sun in view, behind a station's edge,
+      and seen from a nebula, with screenshots and captures.
 - [ ] Space dust.
 - [ ] Gate tunnels.
 - [ ] Projectiles and beams; the cockpit pass with its depth clear.
