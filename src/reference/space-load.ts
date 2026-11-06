@@ -6,7 +6,7 @@ import { getMaterial, readMaterialLibrary } from '@treewyrm/freelancer/material'
 import { Document, type Section } from '@treewyrm/freelancer/ini'
 import { Matrix4, type Vector3 } from '@treewyrm/freelancer/math'
 import { readRigidModel, type RigidModel } from '@treewyrm/freelancer/rigid'
-import { readTextureLibrary } from '@treewyrm/freelancer/texture'
+import { readTextureLibrary, type Texture } from '@treewyrm/freelancer/texture'
 import { readSurfaceLibrary } from '@treewyrm/freelancer/surface'
 import { Directory } from '@treewyrm/freelancer/utf'
 import { BufferView } from '@treewyrm/freelancer/utility'
@@ -22,6 +22,7 @@ import type { RigidPart } from '@treewyrm/freelancer/rigid'
 import type { Camera } from '#/scene/camera.js'
 import { placeParts, type PlaceOptions, type SceneModel } from '#/scene/frame.js'
 import { attachJoint, partTransforms } from '#/scene/hierarchy.js'
+import { LightBlink, RETAIL_FLARE_LIGHT, type FlareLight, type SpaceFlare } from '#/scene/flare.js'
 import { lodRange, type LodList } from '#/scene/level.js'
 import type { Graph, SpaceLight } from '#/scene/light.js'
 import { placeSphere } from '#/scene/sphere.js'
@@ -267,6 +268,28 @@ const effectViewOf = async (
   }
 }
 
+/** MSVC's `rand()` from its default seed of 1, so a run is the same each time. */
+const msvcRand = (): (() => number) => {
+  let state = 1
+  return () => {
+    state = (Math.imul(state, 214013) + 2531011) >>> 0
+    return (state >>> 16) & 0x7fff
+  }
+}
+
+/** A `tex_shape` of `FX/effect_shapes.ini`, from the `[Texture]` file that names it. */
+const shapeOf = async (read: ReadAsset, name: string): Promise<Texture> => {
+  for (const section of Document.read(await read('FX/effect_shapes.ini'))) {
+    if (!strings(section, 'tex_shape').some((shape) => shape.toLowerCase() === name)) continue
+    const library = readTextureLibrary(
+      Directory.read(await read(pathOf(strings(section, 'file')[0]!))),
+    )
+    const found = [...library].find((entry) => entry.name.toLowerCase() === name)
+    if (found?.type === 'image') return found
+  }
+  throw new Error(`no texture shape ${name}`)
+}
+
 // Where the `[VisEffect]`s of what reference systems carry are: `freelancer.ini` lists them all.
 const ALE_TABLES = ['FX/ENGINES/engines_ale.ini', 'FX/MISC/misc_ale.ini']
 const EQUIPMENT = [
@@ -274,6 +297,7 @@ const EQUIPMENT = [
   'EQUIPMENT/misc_equip.ini',
   'EQUIPMENT/engine_equip.ini',
   'EQUIPMENT/weapon_equip.ini',
+  'EQUIPMENT/light_equip.ini',
 ]
 
 interface Placed {
@@ -352,6 +376,7 @@ export const loadSystem = async (
   const archetype = (nickname: string) =>
     loadArchetype(archetypes.get(nickname.toLowerCase())!, read, camera, detail)
 
+  const rand = msvcRand()
   const equipment = await sectionsOf(read, EQUIPMENT)
   const equipmentLods = await lodBlocksOf(read, EQUIPMENT)
   const loadouts = await sectionsOf(read, ['SOLAR/loadouts.ini'])
@@ -392,6 +417,78 @@ export const loadSystem = async (
   }
 
   /**
+   * A `[Light]`'s keys as `FCliEQLight` reads them (`0x40ab30`): `inherit` copies its donor whole,
+   * and a `color` line seeds `glow_color` while that is still black.
+   */
+  const flareLightOf = (section: Section): FlareLight => {
+    let light: FlareLight = { ...RETAIL_FLARE_LIGHT }
+    const triple = (values: readonly { value: unknown }[]) => {
+      const [x, y, z] = values.map(({ value }) => Math.fround(Math.fround(Number(value)) / 255))
+      return { x: x!, y: y!, z: z! }
+    }
+    for (const { name, values } of section.properties) {
+      const value = Number(values[0]?.value)
+      switch (name.toLowerCase()) {
+        case 'inherit':
+          light = { ...flareLightOf(equipment.get(String(values[0]!.value).toLowerCase())!) }
+          break
+        case 'color': {
+          const color = triple(values)
+          const { glowColor: g } = light
+          light = { ...light, color, ...(!g.x && !g.y && !g.z ? { glowColor: color } : {}) }
+          break
+        }
+        case 'glow_color':
+          light = { ...light, glowColor: triple(values) }
+          break
+        case 'min_color':
+          light = { ...light, minColor: triple(values) }
+          break
+        case 'bulb_size':
+          light = { ...light, bulbSize: value }
+          break
+        case 'glow_size':
+          light = { ...light, glowSize: value }
+          break
+        case 'avg_delay':
+          light = { ...light, avgDelay: value }
+          break
+        case 'blink_duration':
+          light = { ...light, blinkDuration: value }
+          break
+        case 'flare_cone':
+          light = { ...light, flareCone: [value, Number(values[1]!.value)] }
+          break
+      }
+    }
+    return light
+  }
+
+  /** Its loadout's `[Light]`s, each on its hardpoint and blinking from `random`. */
+  const flaresOf = (
+    model: RigidModel,
+    section: Section,
+    world: Matrix4,
+    jointState: PlaceOptions['jointState'],
+  ): SpaceFlare[] =>
+    loadoutOf(section).flatMap(({ item, point }) => {
+      if (item?.name.toLowerCase() !== 'light' || !point) return []
+      const light = flareLightOf(item)
+      const { point: hardpoint, part } = findHardpoint(model, point, jointState)!
+      const frame = Matrix4.fromRotationTranslation(
+        hardpoint.orientation,
+        hardpoint.position ?? { x: 0, y: 0, z: 0 },
+      )
+      return [
+        {
+          light,
+          world: Matrix4.multiply(world, Matrix4.multiply(part, frame)),
+          blink: new LightBlink(light, rand),
+        },
+      ]
+    })
+
+  /**
    * Its `[InternalFX]`s' `use_animation` scripts, each looping from when the solar was made
    * (`CEInternalFX`, `EvalPlayback` with flags 2), as the joint states they give its parts.
    */
@@ -429,9 +526,11 @@ export const loadSystem = async (
     const range = lodRange(sources(model), lists, { detail })
     const jointState = await animate(section)
     const attached = await attach(model, section, Matrix4.translation(at), jointState)
+    const flares = flaresOf(model, section, Matrix4.translation(at), jointState)
     objects.push({
       model: place(Matrix4.translation(at), jointState),
       ...(attached.length ? { attached } : {}),
+      ...(flares.length ? { flares } : {}),
       position: at,
       sphere,
       solar: { large: radius > 200, planet },
@@ -529,5 +628,7 @@ export const loadSystem = async (
     // Newest first within a type, as the game keeps them.
     effects: placed.map(({ effect }) => effect).reverse(),
     effectView: await effectViewOf(read, effectDetail),
+    viewport: { width: 1024, height: 768 },
+    shine: { texture: await shapeOf(read, 'shine') },
   }
 }

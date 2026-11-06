@@ -6,6 +6,7 @@ import { join } from 'node:path'
 import { test } from 'node:test'
 import { Matrix4 } from '@treewyrm/freelancer/math'
 import { indexTextures, namesOf } from '#/capture/texture-names.js'
+import { flareQuads } from '#/scene/flare.js'
 import { collectSpaceFrame } from '#/scene/space.js'
 import { assertFrameMatches } from './compare.js'
 import { readSpaceRun, RUNS } from './space-capture.js'
@@ -32,9 +33,10 @@ const TURRET = 98
 // `mplatform_animate1`, in the same loadout, turns this part.
 const ANIMATED = 97
 // The engine's flame at each nozzle, then the platform's smoke: effects, after every object. Then
-// screen quads, the platform's running lights, which aren't built.
+// the screen quads, the platform's six running lights.
 const FIRST_EFFECT = 123
 const EFFECT_DRAWS = 7
+const SCREEN_QUADS = 130
 
 /** A captured row-vector modelview, with its Z flip, as a column-major GL one. */
 const modelViewOf = (world: readonly number[]): Matrix4 => {
@@ -207,5 +209,68 @@ test(
             `ring ${n}: ${axis}.${cell} ${ours[axis][cell]} against ${theirs[axis][cell]}`,
           )
     }
+  },
+)
+
+test(
+  "its running lights flare as retail's screen quads did: placed, sized and ordered",
+  { skip },
+  async () => {
+    const { scene, frame, captured, camera } = await load()
+    const theirs = captured[SCREEN_QUADS]!
+    assert.equal(theirs.states['SRCBLEND'], 2)
+    assert.equal(theirs.states['DESTBLEND'], 2)
+    assert.equal(theirs.states['ZFUNC'], 4)
+    assert.equal(theirs.states['ZWRITEENABLE'], 0)
+    assert.equal(theirs.states['CULLMODE'], 1)
+    assert.equal(theirs.stages[0]!.states['COLOROP'], 4)
+    assert.equal(theirs.stages[0]!.states['ADDRESSU'], 3)
+
+    const [batch, ...rest] = frame.screenQuads ?? []
+    assert.equal(rest.length, 0)
+    assert.equal(batch!.texture.name, 'shine')
+    const vertices = theirs.vertexData!
+    assert.equal(batch!.quads.length * 4, vertices.length)
+    // Each light's bulb, at 0.2, is under a pixel: only its glow draws. The bucket's newest first,
+    // so the loadout's last light leads.
+    const flares = [...scene.objects.flatMap(({ flares = [] }) => flares)].reverse()
+    batch!.quads.forEach((ours, n) => {
+      const corners = vertices.slice(n * 4, n * 4 + 4)
+      const [x0, y0, z, rhw] = corners[0]!.p
+      const [x1, y1] = corners[2]!.p
+      const what = `quad ${n}`
+      for (const [a, b] of [
+        [ours.x0, x0],
+        [ours.y0, y0],
+        [ours.x1, x1],
+        [ours.y1, y1],
+      ] as const)
+        assert.ok(Math.abs(a - b!) < 1e-3, `${what}: ${a} against ${b}`)
+      assert.ok(Math.abs(ours.z - z!) < 1e-8, `${what} z: ${ours.z} against ${z}`)
+      assert.ok(Math.abs(ours.rhw / rhw! - 1) < 2e-6, `${what} rhw: ${ours.rhw} against ${rhw}`)
+      assert.deepEqual(
+        corners.map(({ t0 }) => t0),
+        [
+          [0, 0],
+          [0, 1],
+          [1, 1],
+          [1, 0],
+        ],
+      )
+      // Their blink's phase is the game's `rand()`, and the log has no clock: what it can say is that
+      // each is grey, and no brighter than its fade allows at the top of a blink.
+      const colour = Number(corners[0]!.d)
+      const [r, g, b] = [16, 8, 0].map((shift) => (colour >>> shift) & 0xff)
+      assert.ok(r === g && g === b, what)
+      const { light, world } = flares[n]!
+      const [brightest] = flareQuads(light, world, 1, {
+        camera,
+        view: frame.view,
+        aspect: 1024 / 768,
+        width: 1024,
+        height: 768,
+      }).slice(-1)
+      assert.ok(r! <= (brightest!.color & 0xff), `${what}: ${r} past ${brightest!.color & 0xff}`)
+    })
   },
 )

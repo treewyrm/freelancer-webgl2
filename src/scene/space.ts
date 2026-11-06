@@ -4,6 +4,7 @@
  * drains far to near, and the batcher flushes after every object.
  */
 import { Matrix4, type Vector3 } from '@treewyrm/freelancer/math'
+import type { Texture } from '@treewyrm/freelancer/texture'
 import { collectEffect, type EffectDraw } from '#/alchemy/draw.js'
 import {
   viewEffect,
@@ -11,6 +12,7 @@ import {
   type EffectViewOptions,
   type PlacedEffect,
 } from './effect-view.js'
+import { flareQuads, type FrameRect, type ScreenQuad, type SpaceFlare } from './flare.js'
 import { lightObject, lightSet, systemAmbient, type SpaceLight } from './light.js'
 import {
   findNebula,
@@ -67,6 +69,11 @@ export interface SpaceObject {
    * still waits for its flush, but an unbatched draw on a part with later siblings goes after them.
    */
   attached?: readonly SceneModel[]
+  /**
+   * Its lights' flares, in the order its effect list holds them. They join the frame only when it
+   * draws at the first tier (`GameobjSweepEffectList`), and only then do they blink.
+   */
+  flares?: readonly SpaceFlare[]
   /** The archetype's `nomad`: goes three lists up, after everything of its kind (`0x51f5b7`). */
   nomad?: boolean
   /** The archetype's `distance_render`. Past it, it stops reflecting, and `lodRange` may apply. */
@@ -122,8 +129,15 @@ export interface SpaceScene {
   time?: number
   /** The options and data the effects' view test reads. */
   effectView?: EffectViewOptions
-  /** Seconds since the last frame, which each nebula's lightning advances by. 0 when absent. */
+  /**
+   * Seconds since the last frame, which each nebula's lightning advances by, and each drawn light's
+   * blink, held to 0.1. 0 when absent.
+   */
   step?: number
+  /** The viewport in pixels, which flares are sized and clipped in. No flares when absent. */
+  viewport?: { width: number; height: number }
+  /** `fx/efx.txm`'s `shine`, from `[Texture]` in `effect_shapes.ini`, and its frame. */
+  shine?: { texture: Texture; frame?: FrameRect }
 }
 
 /** A `[Background]` key: `basic_stars`, `complex_stars` or `nebulae`. */
@@ -276,6 +290,8 @@ export const collectSpaceFrame = ({
   time = 0,
   step = 0,
   effectView,
+  viewport,
+  shine,
 }: SpaceScene): SpaceFrame => {
   const resolved = { ...RETAIL_SPACE_LIMITS, ...limits }
   const {
@@ -365,6 +381,7 @@ export const collectSpaceFrame = ({
       flushQueued(queued, draws)
     }
 
+  const linked: SpaceFlare[] = []
   const farProjection = projectionMatrix(farCamera, aspect)
   const lighting = lightSet(flashes.length ? [...lights, ...flashes] : lights)
   for (const at of !field || field.enclosure === 0 ? OUTSIDE_ORDER : INSIDE_ORDER) {
@@ -385,6 +402,8 @@ export const collectSpaceFrame = ({
           unregistered,
           resolved,
         )
+      // `GameobjSweepEffectList` links its lights at the first tier, each to the bucket's front.
+      if (picked.tier === 0 && object.flares) linked.unshift(...[...object.flares].reverse())
       // `GameobjSubmitDrawRetail`: only the first tier arms the reflection. What's attached is drawn
       // in the same `RenderInstance`, under the same flags and the object's reflection.
       for (const model of [object.model, ...(object.attached ?? []).map(underOwn(object.model))])
@@ -444,6 +463,26 @@ export const collectSpaceFrame = ({
     }
   }
 
+  // Bucket `0x2e`'s walk, after the other effects: each light blinks, then queues its flare, and the
+  // batch draws once they're all queued (`SpaceEffectsDrawFrame`, `ScreenQuadFlush`).
+  const quads: ScreenQuad[] = []
+  if (linked.length && viewport && !shine) unsupported.add('texture shine')
+  const blinkStep = Math.min(Math.fround(step), Math.fround(0.1))
+  for (const { light, world, blink } of linked) {
+    blink?.tick(blinkStep)
+    const brightness = blink?.brightness ?? 1
+    if (brightness < 0 || !viewport || !shine) continue
+    quads.push(
+      ...flareQuads(light, world, brightness, {
+        camera,
+        view,
+        aspect,
+        ...viewport,
+        ...(shine.frame ? { frame: shine.frame } : {}),
+      }),
+    )
+  }
+
   const effectDraws: EffectDraw[] = []
   // A placed effect is drawn only if seen. What it is otherwise the host learns from `effectViews`.
   const views = effects.map((effect): EffectView | undefined => {
@@ -484,6 +523,7 @@ export const collectSpaceFrame = ({
     // `SpaceEffectsDrawFrame` (`0x4f7480`) sets `ZFUNC` 4 around every effect.
     effectDepthFunc: 'lequal',
     effectViews: views,
+    ...(quads.length && shine && { screenQuads: [{ texture: shine.texture, quads }] }),
     unsupported: [...unsupported],
     unregistered: [...unregistered],
   }

@@ -32,6 +32,7 @@ import { projectionMatrix, sphereInFrustum, viewMatrix, type Camera } from './ca
 import { partTransforms } from './hierarchy.js'
 import { sampleUvAnimation, type UvTransform } from './uv-animation.js'
 import { largestAxis, levelAt, levelEnds, levelMetric, type LodList } from './level.js'
+import type { ScreenQuad } from './flare.js'
 import type { Fog } from './nebula.js'
 
 export interface SceneLight {
@@ -257,6 +258,11 @@ export interface FrameHook {
   before: number
 }
 
+export interface ScreenQuadBatch {
+  texture: Texture
+  quads: ScreenQuad[]
+}
+
 export interface Frame {
   background: Vector3
   hooks: FrameHook[]
@@ -271,6 +277,12 @@ export interface Frame {
   effectFog?: Fog
   /** `less` when absent, as the menu's effects capture it; space's are `lequal`. */
   effectDepthFunc?: 'less' | 'lequal'
+  /**
+   * Screen quads, after the effects, in D3D's pixels: added, the texture times each quad's colour,
+   * `lequal` without writing depth (`ScreenQuadFlush` in `SpaceEffectsDrawFrame`). Each batch is one
+   * texture's.
+   */
+  screenQuads?: ScreenQuadBatch[]
   /** What didn't draw as authored: materials M3 is to cover, and any mesh or texture not found. */
   unsupported: string[]
   /** Materials of a type no DLL registers. They draw nothing in retail either. */

@@ -358,9 +358,19 @@ renderer. Random streams need not match retail; each appearance's sizes, colours
       The retail `[EffectType]` table is `RETAIL_EFFECT_TYPES`. Pinned by reading. Retail keeps last frame's
       answer where it doesn't test, but clears it once an effect draws, so that is taken as unseen; a cruise
       effect's fade (`FParticleEffectCruise`) isn't built. Retail steps effects by at most 0.1 s. **Uncaptured.**
-- [ ] The screen quads `SpaceEffectsDrawFrame` flushes after every effect, `LEQUAL` with no depth writes
-      (`ScreenQuadFlush`): equipment flares, with projectiles. `space_order`'s draw 130 is six quads,
-      likely `mplatform`'s six `SlowLargeWhite` running lights.
+- [x] The screen quads `SpaceEffectsDrawFrame` flushes once its effects are walked, `LEQUAL` with no
+      depth writes (`ScreenQuadFlush`): `Frame.screenQuads`, D3D's pre-transformed vertices, added,
+      texture times colour. Equipment flares fill them (`flareQuads`, from `CliEquipLightDrawFlare` and
+      `ScreenQuadEnqueueFlare`): a bulb and a glow sized by depth, each dropped under a pixel, clipped
+      with its UVs, the glow fading by `flare_cone`. `SpaceObject.flares` link only when their object
+      draws at the first tier, newest first (`GameobjSweepEffectList`, push-front), and `LightBlink`
+      ticks only then, held to 0.1. The host reads `[Light]`, `inherit` included, into `FlareLight`,
+      and gives `viewport` and `shine`. **Matched in `space_order`**: draw 130 is `mplatform`'s six
+      `SlowLargeWhite` glows, every bulb under a pixel, in state, order, place to 0.0003 pixels and
+      depth to 5e-10. The camera's rectangle ends on its last pixel, 1023 by 767, which the
+      half-pixel offset showed. Each colour is no more than its fade allows, but a blink's phase is
+      the game's `rand()` and the log has no clock, so brightness is uncaptured; so are flares in a
+      nebula, whose fog isn't read here. Projectiles' quads come with projectiles.
 - [x] `level_of_detail` on a space solar's sphere: `solarSphereLevels`, from `SolarSpheresApplyDetail`
       (`0x5488a0`), a maximum of 7 to 10 and a bias of 3 to 1. Retail applies it only as the option changes,
       to the solars then loaded (`SetPerfOptionValue`): none exist at startup, so in play a planet keeps

@@ -15,6 +15,7 @@ import {
   setLights,
   type DcDtProgram,
 } from '#/material/dcdt.js'
+import { createScreenQuadRenderer, type ScreenQuadRenderer } from '#/material/screen.js'
 import { createReferenceArray, createVertexBuffer, type ReferenceArray } from '#/mesh/mesh.js'
 import { ATTRIBUTE_LOCATIONS, drawMode, planReference } from '#/mesh/plan.js'
 import {
@@ -64,6 +65,7 @@ interface MeshResources {
 export const createRenderer = (gl: WebGL2RenderingContext): Renderer => {
   let program: DcDtProgram | undefined
   let effects: EffectRenderer | undefined
+  let quads: ScreenQuadRenderer | undefined
   let meshes = new Map<VMeshData, MeshResources>()
   let textures = new Map<Texture | CubeTexture, WebGLTexture>()
   let samplers = new Map<string, WebGLSampler>()
@@ -72,6 +74,7 @@ export const createRenderer = (gl: WebGL2RenderingContext): Renderer => {
   const forget = () => {
     program = undefined
     effects = undefined
+    quads = undefined
     meshes = new Map()
     textures = new Map()
     samplers = new Map()
@@ -300,6 +303,16 @@ export const createRenderer = (gl: WebGL2RenderingContext): Renderer => {
       })
       applyState()
     }
+    if (frame.screenQuads?.length) {
+      quads ??= createScreenQuadRenderer(gl)
+      quads.draw(frame.screenQuads, { width, height }, ({ texture }) => {
+        gl.activeTexture(gl.TEXTURE0 + DIFFUSE_UNIT)
+        gl.bindTexture(gl.TEXTURE_2D, textureOf(texture))
+        // `ScreenQuadFlush` clamps stage 0 (`space_order`'s draw 130, `ADDRESSU` 3).
+        gl.bindSampler(DIFFUSE_UNIT, samplerOf(EFFECT_SAMPLER))
+      })
+      applyState()
+    }
     runHooks(frame.draws.length, (name) => name === 'end')
     release()
     return true
@@ -327,6 +340,7 @@ export const createRenderer = (gl: WebGL2RenderingContext): Renderer => {
       for (const texture of textures.values()) gl.deleteTexture(texture)
       for (const sampler of samplers.values()) gl.deleteSampler(sampler)
       effects?.dispose()
+      quads?.dispose()
       if (program) {
         gl.deleteProgram(program.handle)
         gl.deleteBuffer(program.boneBuffer)

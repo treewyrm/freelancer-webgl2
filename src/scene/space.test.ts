@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import type { Material } from '@treewyrm/freelancer/material'
 import { Matrix3, Matrix4, type Vector3 } from '@treewyrm/freelancer/math'
-import type { TextureEntry } from '@treewyrm/freelancer/texture'
+import type { Texture, TextureEntry } from '@treewyrm/freelancer/texture'
 import {
   Primitive,
   type VertexFormat,
@@ -14,6 +14,7 @@ import { emitter, sceneOf as fixtureScene } from '#/alchemy/fixtures.js'
 import { projectionMatrix } from './camera.js'
 import { type Frame, type SceneModel } from './frame.js'
 import type { SpaceLight } from './light.js'
+import { LightBlink, RETAIL_FLARE_LIGHT, type SpaceFlare } from './flare.js'
 import { NebulaLightning } from './lightning.js'
 import { zoneOf, type SpaceNebula } from './nebula.js'
 import {
@@ -250,6 +251,65 @@ test('what is attached draws after its object, under its lights, flags and refle
     parts: [{ reference, world: Matrix4.translation({ x: 0, y: 0, z: 100 }) }],
   }
   assert.deepEqual(collected([objectOf('ship', 100, { attached: [behind] })]), ['ship', 'turret'])
+})
+
+test('lights flare after the effects, newest-linked first, only from what drew at the first tier', () => {
+  const light = {
+    ...RETAIL_FLARE_LIGHT,
+    color: { x: 1, y: 1, z: 1 },
+    glowColor: { x: 1, y: 1, z: 1 },
+    // No bulb, so each light is one quad.
+    bulbSize: 0,
+    glowSize: 1,
+  }
+  // Each light tells itself apart by how far right it stands.
+  const flareAt = (distance: number, x: number): SpaceFlare => ({
+    light,
+    world: Matrix4.translation({ x, y: 0, z: -distance }),
+  })
+  const shine = { texture: {} as Texture }
+  const viewport = { width: 1000, height: 1000 }
+  const xs = (objects: SpaceObject[], fields: Partial<SpaceScene> = {}) =>
+    collectSpaceFrame(sceneOf(objects, { shine, viewport, ...fields })).screenQuads?.[0]?.quads.map(
+      ({ x0, x1 }) => Math.round((x0 + x1) / 2),
+    )
+  const far = objectOf('far', 100, { flares: [flareAt(100, 0), flareAt(100, 5)] })
+  const near = objectOf('near', 50, { flares: [flareAt(50, -5)] })
+  // `far` drains first and links its two, each to the front, then `near` links its one in front.
+  // 866 pixels a unit at unit depth, from a half fov of 30 on a 1000-pixel viewport.
+  const scale = 500 / Math.tan(Math.PI / 6)
+  const at = (x: number, distance: number) => Math.round(499.5 + (x * scale) / (distance * 0.999))
+  assert.deepEqual(xs([near, far]), [at(-5, 50), at(5, 100), at(0, 100)])
+  // Past `distance_render`, the second tier: its lights aren't linked.
+  const tiered = { ...far, distanceRender: 50 }
+  assert.equal(xs([tiered])?.length, undefined)
+  // No viewport, no flares; no texture, reported.
+  assert.equal(collectSpaceFrame(sceneOf([far], { shine })).screenQuads, undefined)
+  assert.deepEqual(collectSpaceFrame(sceneOf([far], { viewport })).unsupported, ['texture shine'])
+})
+
+test("a light blinks by the frame's step, held to 0.1, and only while its object draws", () => {
+  const light = { ...RETAIL_FLARE_LIGHT, avgDelay: 2, blinkDuration: 1 }
+  const blink = () =>
+    new LightBlink(
+      light,
+      (() => {
+        const values = [16384, 0]
+        return () => values.shift() ?? 0
+      })(),
+    )
+  const drawn = blink()
+  const hidden = blink()
+  const flare = (b: LightBlink): SpaceFlare => ({ light, world: Matrix4.identity, blink: b })
+  const seen = objectOf('seen', 100, { flares: [flare(drawn)] })
+  const behind = {
+    ...objectOf('behind', 100, { flares: [flare(hidden)] }),
+    sphere: { center: { x: 0, y: 0, z: 100 }, radius: 1 },
+  }
+  collectSpaceFrame(sceneOf([seen, behind], { step: 0.5 }))
+  // A rate of 0.5 a second, for 0.1 of a second.
+  assert.ok(Math.abs(drawn.phase - 0.05) < 1e-6, `${drawn.phase}`)
+  assert.equal(hidden.phase, 0)
 })
 
 test('what the object sphere misses draws nothing, wholly inside skips each part test', () => {

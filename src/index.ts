@@ -17,6 +17,7 @@ export {
   type PlacedPart,
   type PlaceOptions,
   type Scene,
+  type ScreenQuadBatch,
   type SceneEffect,
   type SceneLight,
   type SceneModel,
@@ -94,7 +95,17 @@ export {
   type PlacedEffect,
 } from '#/scene/effect-view.js'
 export { projectionMatrix, viewMatrix, type Camera } from '#/scene/camera.js'
-export { partTransforms } from '#/scene/hierarchy.js'
+export { attachJoint, partTransforms } from '#/scene/hierarchy.js'
+export {
+  flareQuads,
+  LightBlink,
+  RETAIL_FLARE_LIGHT,
+  type FlareLight,
+  type FlareView,
+  type FrameRect,
+  type ScreenQuad,
+  type SpaceFlare,
+} from '#/scene/flare.js'
 export {
   adjustedDistance,
   costumeLevel,
