@@ -120,6 +120,9 @@ test('a point is in the first nebula that holds it', () => {
   assert.equal(findNebula(states, { x: 0, y: 0, z: 50 })?.state, states[0])
   assert.equal(findNebula(states, { x: 0, y: 0, z: 150 })?.state, states[1])
   assert.equal(findNebula(states, { x: 0, y: 0, z: 250 }), undefined)
+  // A hint that still holds it wins, and one that doesn't is passed over.
+  assert.equal(findNebula(states, { x: 0, y: 0, z: 50 }, states[1]!.nebula)?.state, states[1])
+  assert.equal(findNebula(states, { x: 0, y: 0, z: 150 }, states[0]!.nebula)?.state, states[1])
 })
 
 test('the camera answers to the first nebula it is in, or the nearest within range', () => {

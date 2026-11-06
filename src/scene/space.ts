@@ -53,6 +53,11 @@ export interface SpaceObject {
   distanceRender?: number
   /** The archetype's `LodPick`, the largest of its `LODranges`. Past it, it draws nothing. */
   lodRange?: number
+  /**
+   * The nebula it was last in, which retail keeps and tries first. It matters only where nebulae
+   * overlap, and none do in retail. The first that holds it when absent.
+   */
+  nebula?: SpaceNebula
 }
 
 /** `EffectTypeInfoByIndex`, from `[EffectType]`: the game's walk is by type. */
@@ -239,8 +244,7 @@ export const collectSpaceFrame = ({
       if (squared >= reach * reach) continue
     }
 
-    // Retail keeps this from when the object last moved, and tries that nebula first.
-    const within = findNebula(states, object.position)
+    const within = findNebula(states, object.position, object.nebula)
     if (squared >= range * range) {
       // A far object in any nebula, or seen from a core, isn't drawn.
       if (!object.solar || inCore || within) continue

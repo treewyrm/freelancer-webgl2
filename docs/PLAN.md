@@ -319,8 +319,10 @@ renderer. Random streams need not match retail; each appearance's sizes, colours
       nebula, on the scene's `step` and the host's random source. Every nebula has one by default, checked
       in `Freelancer-original.exe` (`0x504b06`). Pinned by reading. Retail's `rand()` is the game's own, so
       only the kind of flash can match. **Uncaptured.**
-- [ ] An object's nebula is found each frame here, while retail keeps it from when the object moved and tries
-      that one first (`StarSysFindNebula`'s hint). Overlapping nebulae are the only difference; check one exists.
+- [x] An object's nebula: retail keeps it from when the object moved and tries that one first
+      (`StarSysFindNebula`'s hint), which `SpaceObject.nebula` gives. It matters only where nebulae overlap,
+      and no two retail ones do: every pair whose spheres meet is a pair of ellipsoids, and sampled through
+      `EulerMatrix`'s Rz·Ry·Rx they share no point. A mod's can.
 - [ ] Lights beyond a system file's: a nebula's own `[LightSource]`s, and the ones equipment carries.
 - [ ] Compute `lodRange` from an archetype's lists (`ComputeLodPickThis`, `ApplyArchLodRanges`), far clamp included.
 - [ ] What `SpaceEffectsDrawFrame` does around effects: `ZFUNC` 4 where the program has `LESS`, the view test

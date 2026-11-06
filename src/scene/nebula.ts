@@ -296,9 +296,14 @@ export interface Within {
   factor: number
 }
 
-/** `StarSysFindNebula` (`0x5553b0`), without a hint: the first nebula that holds `point`. */
-export const findNebula = (nebulae: readonly NebulaState[], point: Vector3): Within | undefined => {
-  for (const state of nebulae) {
+/** `StarSysFindNebula` (`0x5553b0`): the `hint` if it holds `point`, or the first that does. */
+export const findNebula = (
+  nebulae: readonly NebulaState[],
+  point: Vector3,
+  hint?: SpaceNebula,
+): Within | undefined => {
+  const hinted = hint && nebulae.find((state) => state.nebula === hint)
+  for (const state of hinted ? [hinted, ...nebulae] : nebulae) {
     const factor = exteriorFactor(state.nebula.zone, state.fogDistance, point)
     if (factor > 0) return { state, factor }
   }
