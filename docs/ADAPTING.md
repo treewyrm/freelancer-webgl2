@@ -113,6 +113,16 @@ needs its own frame's `dt` to compare against.
 Places where the decomp disagrees with the retail binary. Keep these, and report them upstream if you
 want them fixed there.
 
+### `Win3DSetTextureFilterLinear` and `Win3DSetTextureFilterPoint`
+
+`src/freelancer/Client/win3d_immediate.cpp`, retail `0x4223d0` and `0x422410`. Found 2026-11-06.
+
+The decomp reads both as stage 0's `MAGFILTER` and `MINFILTER`, to 3 and to 1. They write texture
+stage states 13 and 14, which in D3D8 are `D3DTSS_ADDRESSU` and `ADDRESSV`: the first clamps (3), the
+second wraps (1). The filter states are 16 to 18, and `D3DTEXF_LINEAR` is 2, not 3. `ScreenQuadFlush`
+writes the same two states as 3, and `space_order`'s draw 130 captures `ADDRESSU` 3. A planet ring's
+`DrawPiece` calls both, so its shape wraps.
+
 ### `FEyeMaterial::Bind`
 
 `src/Deformable2/EyeMaterial.cpp`, retail `0x65fff20`. Found 2026-11-05.

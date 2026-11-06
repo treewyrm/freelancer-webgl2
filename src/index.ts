@@ -107,6 +107,16 @@ export {
   type SpaceFlare,
 } from '#/scene/flare.js'
 export {
+  buildRing,
+  ringPieceDraw,
+  textureShape,
+  type PlanetRing,
+  type RingExterior,
+  type RingOptions,
+  type RingPiece,
+  type TextureShape,
+} from '#/scene/ring.js'
+export {
   adjustedDistance,
   costumeLevel,
   RETAIL_SWITCH_FOVX,

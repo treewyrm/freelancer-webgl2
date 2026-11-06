@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import type { Material } from '@treewyrm/freelancer/material'
-import { Matrix3, Matrix4, type Vector3 } from '@treewyrm/freelancer/math'
+import { Matrix3, Matrix4, Quat, type Vector3 } from '@treewyrm/freelancer/math'
 import type { Texture, TextureEntry } from '@treewyrm/freelancer/texture'
 import {
   Primitive,
@@ -14,6 +14,7 @@ import { emitter, sceneOf as fixtureScene } from '#/alchemy/fixtures.js'
 import { projectionMatrix } from './camera.js'
 import { type Frame, type SceneModel } from './frame.js'
 import type { SpaceLight } from './light.js'
+import { buildRing, textureShape, type PlanetRing } from './ring.js'
 import { LightBlink, RETAIL_FLARE_LIGHT, type SpaceFlare } from './flare.js'
 import { NebulaLightning } from './lightning.js'
 import { zoneOf, type SpaceNebula } from './nebula.js'
@@ -310,6 +311,41 @@ test("a light blinks by the frame's step, held to 0.1, and only while its object
   // A rate of 0.5 a second, for 0.1 of a second.
   assert.ok(Math.abs(drawn.phase - 0.05) < 1e-6, `${drawn.phase}`)
   assert.equal(hidden.phase, 0)
+})
+
+test("a ring's pieces join the lists: near ones keyed past their radius, far ones on the far plane", () => {
+  const shape = textureShape({ name: 'rings', width: 64, height: 64 } as Texture, {})
+  // A ring about the camera's line of sight, flat across it, far ahead.
+  const ringAt = (distance: number, radius: number, x = 0) =>
+    buildRing(
+      { shape, segments: 8 },
+      {
+        type: 'ring',
+        center: { x, y: 0, z: -distance },
+        orientation: Quat.axisAngle({ axis: { x: 1, y: 0, z: 0 }, angle: Math.PI / 2 }),
+        radius,
+        innerRadius: radius / 2,
+        height: 10,
+      },
+    )
+  const frame = (ring: PlanetRing, objects: SpaceObject[] = []) =>
+    collectSpaceFrame(sceneOf(objects, { rings: [ring] }))
+  // The draw range, 20000, less 5000: past 15000 a piece goes to the far list, with no depth.
+  const far = frame(ringAt(18000, 200))
+  assert.equal(far.draws.length, 8)
+  assert.ok(far.draws.every((draw) => draw.depthFunc === 'always' && draw.projection))
+  const near = frame(ringAt(1000, 200))
+  assert.ok(near.draws.every((draw) => draw.depthFunc === 'lequal' && !draw.projection))
+  // Sorted far to near with objects: one at 900 draws after every piece, one at 1100 before.
+  assert.deepEqual(
+    names(frame(ringAt(1000, 200), [objectOf('nearer', 900), objectOf('farther', 1100)])),
+    ['farther', ...Array(8).fill('ring'), 'nearer'],
+  )
+  // Off to one side, half in view: the pieces past the frustum's edge are left out.
+  const aside = frame(ringAt(3000, 2000, 2500))
+  assert.ok(aside.draws.length > 0 && aside.draws.length < 8, `${aside.draws.length}`)
+  // Behind the camera, none.
+  assert.equal(frame(ringAt(-3000, 2000)).draws.length, 0)
 })
 
 test('what the object sphere misses draws nothing, wholly inside skips each part test', () => {

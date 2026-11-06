@@ -376,7 +376,25 @@ renderer. Random streams need not match retail; each appearance's sizes, colours
       to the solars then loaded (`SetPerfOptionValue`): none exist at startup, so in play a planet keeps
       `RETAIL_SPHERE_LEVELS` unless the slider moves in its system. The host decides; `placeSphere` takes
       either as `levels`. Pinned by reading.
-- [ ] Planet rings, asteroid field exteriors and billboards, space dust, gate tunnels.
+- [x] A planet ring from outside: `buildRing` and `ringPieceDraw`, from `PlanetRing::Load` and
+      `DrawPiece` (`texture_panels.cpp`). A flat band between its `RING` zone's radii, `num_segments`
+      of them in eight pieces, each strip in world space: the shape's left edge on even segments and
+      its right on odd, `detail_tile` on the second UV set, the colour and opacity in the vertex,
+      the opacity halved without a detail shape. Unlit, blended, both sides, `LEQUAL` without depth
+      writes, the detail ×2. `SpaceScene.rings`: each piece the view's sphere test keeps joins the
+      main list keyed past its radius, or past the draw range less 5000 the far list
+      (`EnqueueTexturePanelPieces`, `ringFarMargin`). `textureShape` turns a `[Shape]`'s pixels into
+      UVs. `thickness_edge`, `inner_edge` and `outer_edge` are read and never used. Stage 0 wraps,
+      read in `Freelancer-original.exe` where the decomp has filters
+      ([ADAPTING.md](ADAPTING.md#win3dsettexturefilterlinear-and-win3dsettexturefilterpoint)).
+      Pinned by reading and by pixels. **Uncaptured**: stage 1's addressing, both filters, the alpha
+      test and the fog are whatever the frame left, taken as off and the default sampler.
+- [ ] **You:** a reference system with a ringed planet, from outside and from within its band.
+- [ ] A ring's `[Clouds]` from inside, by its immersion (`GetImmersion`, `DrawPanels`): the puffs
+      `FNebulaClouds` shares with nebulae.
+- [ ] Asteroid field exteriors and billboards.
+- [ ] Space dust.
+- [ ] Gate tunnels.
 - [ ] Projectiles and beams; the cockpit pass with its depth clear.
 - [ ] Measure effects' CPU cost in a whole system. A pushed lane steps on the CPU, by choice: bring back
       transform feedback only if this shows the need. The picture doesn't depend on it ([ADAPTING.md](ADAPTING.md#alchemy-m6)).

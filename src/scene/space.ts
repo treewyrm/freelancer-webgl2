@@ -12,6 +12,7 @@ import {
   type EffectViewOptions,
   type PlacedEffect,
 } from './effect-view.js'
+import { ringPieceDraw, type PlanetRing, type RingPiece } from './ring.js'
 import { flareQuads, type FrameRect, type ScreenQuad, type SpaceFlare } from './flare.js'
 import { lightObject, lightSet, systemAmbient, type SpaceLight } from './light.js'
 import {
@@ -134,6 +135,8 @@ export interface SpaceScene {
    * blink, held to 0.1. 0 when absent.
    */
   step?: number
+  /** Its planets' rings, which the effects option shows (`0x25`). */
+  rings?: readonly PlanetRing[]
   /** The viewport in pixels, which flares are sized and clipped in. No flares when absent. */
   viewport?: { width: number; height: number }
   /** `fx/efx.txm`'s `shine`, from `[Texture]` in `effect_shapes.ini`, and its frame. */
@@ -172,6 +175,8 @@ export interface SpaceLimits extends FrameLimits, NebulaLimits {
   nearDistance: number
   /** How deep in another nebula an object can be and still draw (`0x5cbf58`). */
   otherFieldDepth: number
+  /** How far short of the draw range a ring piece goes to the far list (`0x5d3d24`). */
+  ringFarMargin: number
 }
 
 export const RETAIL_SPACE_LIMITS: Readonly<SpaceLimits> = {
@@ -184,6 +189,7 @@ export const RETAIL_SPACE_LIMITS: Readonly<SpaceLimits> = {
   solarQueryRange: 10000,
   nearDistance: 200,
   otherFieldDepth: 0.25,
+  ringFarMargin: 5000,
 }
 
 const MAIN = 0
@@ -253,6 +259,13 @@ interface Listed {
   within?: Within
 }
 
+/** A ring's piece, a draw node of its own kind (`PTR_LAB_005dc06c`). */
+interface ListedPiece {
+  ring: PlanetRing
+  piece: RingPiece
+  key: number
+}
+
 const BLACK: Vector3 = { x: 0, y: 0, z: 0 }
 
 const withoutEnvironment = ({ environment: _, ...model }: SceneModel): SceneModel => model
@@ -292,6 +305,7 @@ export const collectSpaceFrame = ({
   effectView,
   viewport,
   shine,
+  rings = [],
 }: SpaceScene): SpaceFrame => {
   const resolved = { ...RETAIL_SPACE_LIMITS, ...limits }
   const {
@@ -301,6 +315,7 @@ export const collectSpaceFrame = ({
     solarQueryRange,
     nearDistance,
     otherFieldDepth,
+    ringFarMargin,
   } = resolved
   const systemFar =
     farClip === undefined
@@ -323,7 +338,7 @@ export const collectSpaceFrame = ({
   const farCamera: Camera = { ...given, far: farListPlane }
   const view = viewMatrix(camera)
 
-  const lists: Listed[][] = Array.from({ length: LIST_COUNT }, () => [])
+  const lists: (Listed | ListedPiece)[][] = Array.from({ length: LIST_COUNT }, () => [])
   for (const object of objects) {
     const dx = object.position.x - eye.x
     const dy = object.position.y - eye.y
@@ -355,6 +370,25 @@ export const collectSpaceFrame = ({
     if (key < nearDistance * nearDistance) list = field && field.enclosure !== 0 ? FIELD : MAIN
     lists[object.nomad ? list + NOMAD_OFFSET : list]!.push({ object, key, picked, within })
   }
+  // `EnqueueTexturePanelPieces` (`0x51be10`): each piece the view's sphere test keeps, near ones by
+  // how far past their radius, far ones by distance. Retail makes eight pieces of every ring, so its
+  // one-piece branch, keyed by the zone's surface, is never reached and isn't built.
+  const ringReach = Math.fround((range - ringFarMargin) * (range - ringFarMargin))
+  for (const ring of rings)
+    for (const piece of ring.pieces) {
+      const center = Matrix4.transformPoint(piece.center, view)
+      if (classifySphere(center, piece.radius, camera, aspect) < 3) continue
+      const dx = piece.center.x - eye.x
+      const dy = piece.center.y - eye.y
+      const dz = piece.center.z - eye.z
+      const squared = dx * dx + dz * dz + dy * dy
+      if (squared > ringReach) {
+        lists[FAR]!.push({ ring, piece, key: Math.fround(squared) })
+        continue
+      }
+      const radius = piece.radius * piece.radius
+      lists[MAIN]!.push({ ring, piece, key: Math.fround(squared < radius ? 0 : squared - radius) })
+    }
   // Retail's sort isn't stable, but equal keys are left in an order the object database decides.
   for (const list of lists) list.sort((a, b) => b.key - a.key)
 
@@ -387,8 +421,19 @@ export const collectSpaceFrame = ({
   for (const at of !field || field.enclosure === 0 ? OUTSIDE_ORDER : INSIDE_ORDER) {
     const onFarList = at === FAR
     const passCamera = onFarList ? farCamera : camera
-    for (const { object, picked, within } of lists[at]!) {
+    for (const listed of lists[at]!) {
       const first = draws.length
+      if ('ring' in listed) {
+        const draw = ringPieceDraw(listed.ring, listed.piece)
+        if (!draw) continue
+        draws.push(
+          onFarList
+            ? { ...draw, depthFunc: 'always', depthWrite: false, projection: farProjection }
+            : draw,
+        )
+        continue
+      }
+      const { object, picked, within } = listed
       if (object.pilot && picked.tier === 0)
         collectModel(
           object.pilot,

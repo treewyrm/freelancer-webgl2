@@ -82,3 +82,10 @@ test('a point light attenuates by distance and stops at its range, per vertex', 
   // Its range reaches the middle, but no corner, and D3D8 lights the corners.
   assert.equal(none, 0)
 })
+
+test("a ring's band draws in its colour, blended by its opacity, the detail doubling it", () => {
+  const [r, g, b] = report.ring.plain
+  // Half of 255, the opacity halved without a detail shape.
+  assert.ok(Math.abs(r! - 127.5) <= 1 && g === 0 && b === 0, `${report.ring.plain}`)
+  assert.deepEqual(report.ring.detailed, [255, 0, 0])
+})

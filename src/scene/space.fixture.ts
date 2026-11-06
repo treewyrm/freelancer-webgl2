@@ -1,5 +1,6 @@
 import type { Material } from '@treewyrm/freelancer/material'
-import { Matrix3, Matrix4 } from '@treewyrm/freelancer/math'
+import { Matrix3, Matrix4, Quat } from '@treewyrm/freelancer/math'
+import type { Texture } from '@treewyrm/freelancer/texture'
 import {
   Primitive,
   type VertexFormat,
@@ -11,6 +12,7 @@ import { basic, eased, emitter, flat, sceneOf, tint } from '#/alchemy/fixtures.j
 import type { Fixture } from '#/harness.js'
 import { equipmentLight } from './light.js'
 import { zoneOf } from './nebula.js'
+import { buildRing, textureShape, type RingExterior } from './ring.js'
 import { createRenderer } from './render.js'
 import { collectSpaceFrame, type SpaceObject, type SpaceScene } from './space.js'
 
@@ -28,6 +30,8 @@ export interface SpaceReport {
   fogged: { square: number[]; effect: number[]; unfoggedEffect: number[] }
   /** An effect in the plane of a black square: drawn over it in space, and not where `LESS` holds. */
   coplanar: { space: number[]; less: number[] }
+  /** A red ring's band across the middle: without a detail shape, then with a light grey one. */
+  ring: { plain: number[]; detailed: number[] }
 }
 
 // A square of half-size 1 facing +Z: FVF 0x112.
@@ -253,8 +257,64 @@ export default (async (gl) => {
   }
   const coplanar = { space: coplanarAt(), less: coplanarAt('less') }
 
+  // A 1×1 texture of one colour.
+  const solid = (name: string, [r, g, b]: [number, number, number]): Texture =>
+    ({
+      name,
+      type: 'image',
+      storage: 'targa',
+      format: 'rgba32_8888',
+      width: 1,
+      height: 1,
+      flip: false,
+      levels: [new Uint8Array([r, g, b, 255])],
+    }) as Texture
+  const white = textureShape(solid('white', [255, 255, 255]), {})
+  // Its band, 50 to 150 from its centre, passes through the middle of the view.
+  const ringShot = (exterior: RingExterior) => {
+    const ring = buildRing(exterior, {
+      type: 'ring',
+      center: { x: -100, y: 0, z: -300 },
+      orientation: Quat.axisAngle({ axis: { x: 1, y: 0, z: 0 }, angle: Math.PI / 2 }),
+      radius: 150,
+      innerRadius: 50,
+      height: 10,
+    })
+    renderer.render(
+      collectSpaceFrame({
+        camera: {
+          position: { x: 0, y: 0, z: 0 },
+          orientation: Matrix3.identity,
+          fovh: 45,
+          near: 1,
+          far: 1,
+        },
+        aspect: width / height,
+        ambient: { x: 0, y: 0, z: 0 },
+        lights: [],
+        objects: [],
+        rings: [ring],
+      }),
+    )
+    return read(width >> 1, height >> 1)
+  }
+  const red = { x: 1, y: 0, z: 0 }
+  const ring = {
+    // No detail: the opacity halves, so half red over black.
+    plain: ringShot({ shape: white, color: red, opacity: 1, segments: 16 }),
+    // A detail of 191 doubles to past 1, which saturates: all red, at full opacity.
+    detailed: ringShot({
+      shape: white,
+      detail: textureShape(solid('grey', [191, 191, 191]), {}),
+      color: red,
+      opacity: 1,
+      segments: 16,
+    }),
+  }
+
   renderer.dispose()
   return {
+    ring,
     coplanar,
     error: gl.getError(),
     beyondFar,
