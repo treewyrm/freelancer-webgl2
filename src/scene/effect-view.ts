@@ -42,6 +42,86 @@ const ROWS: readonly (readonly [number, number, number, number, 0 | 1, number, n
   [1, 1, 0, -1, 1, 100, 500], [1, 1, 0, -1, 1, 100, 500],
 ]
 
+/** Each row's nickname, which an `[Effect]`'s `effect_type` and an `[EffectType]` name. */
+export const EFFECT_TYPE_NAMES: readonly string[] = [
+  'EFT_NONE',
+  'EFT_EXPLOSION_SMALL',
+  'EFT_EXPLOSION_MEDIUM',
+  'EFT_EXPLOSION_LARGE',
+  'EFT_EXPLOSION_DEBRIS',
+  'EFT_EXPLOSION_SHIP',
+  'EFT_EXPLOSION_MISSILE',
+  'EFT_EXPLOSION_MINE',
+  'EFT_MUZZLE_FLASH',
+  'EFT_MUZZLE_LARGE_FLASH',
+  'EFT_MISSILE_DRIVE',
+  'EFT_WEAPON_PROJ',
+  'EFT_WEAPON_LARGE_PROJ',
+  'EFT_WEAPON_IMPACT',
+  'EFT_WEAPON_LARGE_IMPACT',
+  'EFT_WEAPON_COUNTER_MEASURE',
+  'EFT_WEAPON_MINE',
+  'EFT_DAMAGE_HULL',
+  'EFT_DAMAGE_LARGE_SHIELD',
+  'EFT_DAMAGE_SHIELD',
+  'EFT_DAMAGE_CRUISE',
+  'EFT_DAMAGE_SMOKE',
+  'EFT_DAMAGE_LARGE_SMOKE',
+  'EFT_DEBRIS_TRAIL',
+  'EFT_ENGINE_CONTRAIL',
+  'EFT_ENGINE_TRAIL',
+  'EFT_ENGINE_LARGE_TRAIL',
+  'EFT_ENGINE_FIRE',
+  'EFT_ENGINE_LARGE_FIRE',
+  'EFT_ENGINE_THRUSTER',
+  'EFT_EQUIP_CLOAK',
+  'EFT_EQUIP_LARGE_CLOAK',
+  'EFT_EQUIP_ATTACHED',
+  'EFT_EQUIP_ATTACHED_LARGE',
+  'EFT_EQUIP_ATTACHED_INSANELY_LARGE',
+  'EFT_MISC_DUST',
+  'EFT_MOTION_DUST',
+  'EFT_JUMP_EFFECTS',
+  'EFT_JUMP_GATE_EFFECTS',
+  'EFT_LANE_ACTIVE',
+  'EFT_LANE_TUBE',
+  'EFT_LANE_SHIP',
+  'EFT_LANE_SHIP_TRAVEL',
+  'EFT_CUSTOM_EFFECTS',
+  'EFT_CODE_PROJ_EFFECT',
+  'EFT_TRACTORBEAM',
+  'EFT_FLASHLIGHT',
+]
+
+/**
+ * An `effect_type` or `[EffectType]` nickname as `SpaceEffect.type` takes it: case and all, as
+ * `EffectTypeIndexFromName` (`0x4fd500`) compares. `undefined` for a name not in the table.
+ */
+export const effectTypeIndex = (name: string): number | undefined => {
+  const at = EFFECT_TYPE_NAMES.indexOf(name)
+  return at < 0 ? undefined : at
+}
+
+const LOD_TYPE_NAMES = ['trail', 'weapon', 'small', 'medium', 'large', 'small_distant']
+
+/**
+ * An `[EffectType]`'s `lod_type`, `EFT_LOD_TRAIL` to `EFT_LOD_SMALL_DISTANT`, as 1 to 6: any case
+ * (`LoadEffectTypeSection`). `undefined` for any other, which leaves the row's as it was.
+ */
+export const effectLodType = (name: string): number | undefined => {
+  const at = LOD_TYPE_NAMES.findIndex((lod) => `eft_lod_${lod}` === name.toLowerCase())
+  return at < 0 ? undefined : at + 1
+}
+
+/**
+ * An `[EffectLOD]`'s `type`, `lod_type_trail` to `lod_type_small_distant`, as the row of
+ * `effectLods` it fills, 1 to 6: any case (`LoadEffectLodSection`, `0x42dae0`).
+ */
+export const effectLodRow = (name: string): number | undefined => {
+  const at = LOD_TYPE_NAMES.findIndex((lod) => `lod_type_${lod}` === name.toLowerCase())
+  return at < 0 ? undefined : at + 1
+}
+
 /** `EFT_NONE` to `EFT_FLASHLIGHT`, the table `[EffectType]` overlays (`.data` `0x612a68`). */
 export const RETAIL_EFFECT_TYPES: readonly Readonly<EffectType>[] = ROWS.map(
   ([priority, genericPriority, lodType, radius, existOffscreen, near, far]) => ({

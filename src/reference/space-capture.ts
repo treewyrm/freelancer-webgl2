@@ -40,9 +40,20 @@ const cameraOf = (draws: readonly CaptureDraw[], far: readonly number[], at: num
   }
 }
 
-/** Each run's far solar and draws: `space_order`'s first far face, and its hull after the pilot. */
+/**
+ * Each run's far solar and draws: `space_order`'s first far face, and its hull after the pilot. And
+ * how its effects ran: an emitter releases `floor(dt × frequency)` a step, so a flame's count is the
+ * frame rate's. Retail's three frames hold 18, 20 and 22 of a 110 Hz flame living 0.2294 s, which is
+ * 78 to 96 a second; at 96 its picture is nearest. The log has no frame times to say.
+ */
 export const RUNS = {
-  space_order: { far: 'Lab_far_planet', farDraw: 10, hullDraw: 101 },
+  space_order: {
+    far: 'Lab_far_planet',
+    farDraw: 10,
+    hullDraw: 101,
+    effectSeconds: 20,
+    effectRate: 96,
+  },
 } as const
 
 /**
@@ -52,7 +63,13 @@ export const RUNS = {
 export const readSpaceRun = (
   folder: string,
   system: ReferenceSystem,
-  { far, farDraw, hullDraw }: { far: string; farDraw: number; hullDraw: number },
+  {
+    far,
+    farDraw,
+    hullDraw,
+    effectSeconds,
+    effectRate,
+  }: { far: string; farDraw: number; hullDraw: number; effectSeconds: number; effectRate: number },
 ): SpaceRun => {
   const draws = readCapture(readFileSync(join(folder, 'd3d8log.jsonl'), 'utf8')).frames.at(
     -1,
@@ -77,6 +94,9 @@ export const readSpaceRun = (
       ship,
       detail: option('level_of_detail'),
       starSphere: option('star_sphere'),
+      effectDetail: option('generic_effect_perf'),
+      effectSeconds,
+      effectRate,
     },
   }
 }

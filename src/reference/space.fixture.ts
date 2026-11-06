@@ -14,6 +14,7 @@ export interface SpaceReport {
   pixels: string
   unsupported: string[]
   draws: number
+  effects: number
   error: number
 }
 
@@ -39,6 +40,7 @@ export default (async (gl, { args, read }) => {
     pixels: btoa(text),
     unsupported: frame.unsupported,
     draws: frame.draws.length,
+    effects: frame.effects.length,
     error: gl.getError(),
   }
 }) satisfies Fixture<SpaceReport>

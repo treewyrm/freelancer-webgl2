@@ -30,8 +30,9 @@ const HUD: Box[] = [
 ]
 
 /**
- * What `space_order` draws and this frame leaves out: the engine's flame and the platform's smoke,
- * which are effects, and the turret and turned part `mplatform`'s loadout adds.
+ * The engine's flame and the platform's smoke, whose particles are random: drawn, and nearest at 96
+ * steps a second (the flame's mean 7.9 and the smoke's 6.3 here), but not to be held pixel for pixel.
+ * Then what isn't built: the turret and turned part `mplatform`'s loadout adds.
  */
 const UNBUILT: Box[] = [
   [470, 615, 560, 768],
@@ -91,6 +92,7 @@ test(
     assert.equal(value.error, 0)
     assert.deepEqual(value.unsupported, ['texture envmapglass'])
     assert.equal(value.draws, 122)
+    assert.equal(value.effects, 7)
 
     const shot = screenshot()!
     const stride = (WIDTH * 3 + 3) & ~3

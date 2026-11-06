@@ -359,7 +359,8 @@ renderer. Random streams need not match retail; each appearance's sizes, colours
       answer where it doesn't test, but clears it once an effect draws, so that is taken as unseen; a cruise
       effect's fade (`FParticleEffectCruise`) isn't built. Retail steps effects by at most 0.1 s. **Uncaptured.**
 - [ ] The screen quads `SpaceEffectsDrawFrame` flushes after every effect, `LEQUAL` with no depth writes
-      (`ScreenQuadFlush`): equipment flares, with projectiles.
+      (`ScreenQuadFlush`): equipment flares, with projectiles. `space_order`'s draw 130 is six quads,
+      likely `mplatform`'s six `SlowLargeWhite` running lights.
 - [x] `level_of_detail` on a space solar's sphere: `solarSphereLevels`, from `SolarSpheresApplyDetail`
       (`0x5488a0`), a maximum of 7 to 10 and a bias of 3 to 1. Retail applies it only as the option changes,
       to the solars then loaded (`SetPerfOptionValue`): none exist at startup, so in play a planet keeps
@@ -389,8 +390,15 @@ renderer. Random streams need not match retail; each appearance's sizes, colours
       effects after the objects. The shot has the chat log's icon in it, from F9; the key is F11 since.
 - [ ] Equipment on a solar or ship from its `loadout`: attached models drawn with their object, and
       animations (`mplatform_animate1`). `space_order` has one turret and one turned part to check against.
-- [ ] Effects in `space_order`: the engine flame, `mplatform`'s running lights and smoke, against draws
-      123 to 130.
+- [x] Effects in `space_order`: each nozzle's `flame_effect` and `trail_effect_player`
+      (`CliEngineAttachExhaustEffects`), and `mplatform`'s `[AttachedFX]` smoke, at `sparam` 0 as an
+      engine at rest gives it. Draws 123 to 129 match by order, texture, blend and depth, the rings in
+      their nozzles' frames, under `FX/effect_types.ini` and `[EffectLOD]` (`effectTypeIndex`,
+      `effectLodType`, `effectLodRow`: the host's names, `effect_type` case-sensitive as `strcmp`).
+      Counts follow the frame rate, an emitter releasing `floor(dt × frequency)` a step: retail's
+      three frames hold 18, 20 and 22 flame particles, and 96 steps a second draws nearest.
+- [ ] d3d8log: a time per frame, so a capture says its own frame rate and an effect's count can be
+      pinned.
 - [ ] Dust against retail, here: a THN host can't show it (see M8), so `FLDustAppearance`'s kite and fade wait
       for a flying camera.
 

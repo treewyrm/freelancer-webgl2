@@ -3,6 +3,10 @@ import { test } from 'node:test'
 import { Matrix3, type Vector3 } from '@treewyrm/freelancer/math'
 import { viewMatrix, type Camera } from './camera.js'
 import {
+  EFFECT_TYPE_NAMES,
+  effectLodRow,
+  effectLodType,
+  effectTypeIndex,
   RETAIL_EFFECT_TYPES,
   viewEffect,
   type EffectViewOptions,
@@ -114,4 +118,24 @@ test('an [EffectLOD] row fades it in by its size on screen, and hides it under t
     },
   )
   assert.deepEqual(hidden, { fate: 'die', lod: 0 })
+})
+
+test("an effect_type names its row, in the order of the game's table", () => {
+  assert.equal(EFFECT_TYPE_NAMES.length, RETAIL_EFFECT_TYPES.length)
+  assert.equal(effectTypeIndex('EFT_NONE'), 0)
+  assert.equal(effectTypeIndex('EFT_ENGINE_FIRE'), 27)
+  // `strcmp`, so case counts.
+  assert.equal(effectTypeIndex('eft_engine_fire'), undefined)
+  assert.equal(effectTypeIndex('EFT_EQUIP_ATTACHED'), 32)
+  assert.equal(effectTypeIndex('EFT_FLASHLIGHT'), 46)
+  assert.equal(effectTypeIndex('EFT_NOTHING'), undefined)
+})
+
+test('a lod_type and an [EffectLOD] type name rows 1 to 6, in any case', () => {
+  assert.equal(effectLodType('EFT_LOD_TRAIL'), 1)
+  assert.equal(effectLodType('eft_lod_small_distant'), 6)
+  assert.equal(effectLodType('EFT_LOD_NONE'), undefined)
+  assert.equal(effectLodRow('lod_type_large'), 5)
+  assert.equal(effectLodRow('LOD_TYPE_WEAPON'), 2)
+  assert.equal(effectLodRow('none'), undefined)
 })

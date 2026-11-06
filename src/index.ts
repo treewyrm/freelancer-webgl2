@@ -80,6 +80,10 @@ export {
   type Random,
 } from '#/scene/lightning.js'
 export {
+  EFFECT_TYPE_NAMES,
+  effectLodRow,
+  effectLodType,
+  effectTypeIndex,
   RETAIL_EFFECT_TYPES,
   viewEffect,
   type EffectLodSizes,

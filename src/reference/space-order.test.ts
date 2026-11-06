@@ -5,7 +5,7 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import { Matrix4 } from '@treewyrm/freelancer/math'
-import { indexTextures } from '#/capture/texture-names.js'
+import { indexTextures, namesOf } from '#/capture/texture-names.js'
 import { collectSpaceFrame } from '#/scene/space.js'
 import { assertFrameMatches } from './compare.js'
 import { readSpaceRun, RUNS } from './space-capture.js'
@@ -31,8 +31,10 @@ const SCENE_DRAWS = 123
 const TURRET = 98
 // `mplatform_animate1`, in the same loadout, turns this part.
 const ANIMATED = 97
-// The engine's flame, and the platform's lights and smoke: effects, after every object.
+// The engine's flame at each nozzle, then the platform's smoke: effects, after every object. Then
+// screen quads, the platform's running lights, which aren't built.
 const FIRST_EFFECT = 123
+const EFFECT_DRAWS = 7
 
 /** A captured row-vector modelview, with its Z flip, as a column-major GL one. */
 const modelViewOf = (world: readonly number[]): Matrix4 => {
@@ -141,5 +143,48 @@ test(
         }
       })
     })
+  },
+)
+
+test(
+  'its effects draw as retail drew them: each nozzle newest first, then the smoke',
+  { skip },
+  async () => {
+    const { frame, captured } = await load()
+    const index = indexTextures(data)
+    const retail = captured.slice(FIRST_EFFECT, FIRST_EFFECT + EFFECT_DRAWS)
+    assert.equal(frame.effects.length, EFFECT_DRAWS)
+    assert.deepEqual(
+      frame.effectViews.map((view) => view?.fate),
+      Array(EFFECT_DRAWS).fill('draw'),
+    )
+    // `SpaceEffectsDrawFrame`'s `ZFUNC` 4, and no fog outside a nebula.
+    assert.equal(frame.effectDepthFunc, 'lequal')
+    assert.equal(frame.effectFog, undefined)
+    frame.effects.forEach((ours, n) => {
+      const theirs = retail[n]!
+      const what = `effect draw ${n}, ${ours.texture?.name}`
+      const names = namesOf(index, theirs.stages[0]!.texture!).map(({ name }) => name.toLowerCase())
+      assert.ok(names.includes(ours.texture!.name.toLowerCase()), what)
+      assert.deepEqual(
+        [ours.blend?.source, ours.blend?.target],
+        [theirs.states['SRCBLEND'], theirs.states['DESTBLEND']],
+        what,
+      )
+      assert.equal(theirs.states['ZFUNC'], 4, what)
+      assert.equal(theirs.states['ZWRITEENABLE'], 0, what)
+    })
+    // A perp ring is drawn in its nozzle's frame, which retail's world matrix carries; the sprites'
+    // vertices are in view space, under an identity.
+    for (const n of [1, 3]) {
+      const ours = Matrix4.multiply(frame.view, frame.effects[n]!.world)
+      const theirs = modelViewOf(retail[n]!.world!)
+      for (const axis of ['x', 'y', 'z', 'w'] as const)
+        for (const cell of ['x', 'y', 'z'] as const)
+          assert.ok(
+            Math.abs(ours[axis][cell] - theirs[axis][cell]) < 0.01,
+            `ring ${n}: ${axis}.${cell} ${ours[axis][cell]} against ${theirs[axis][cell]}`,
+          )
+    }
   },
 )
