@@ -15,6 +15,8 @@ import { projectionMatrix } from './camera.js'
 import { type Frame, type SceneModel } from './frame.js'
 import type { SpaceLight } from './light.js'
 import { Clouds, RING_CLOUD_VISIBILITY } from './clouds.js'
+import type { SpaceAsteroidField } from './asteroids.js'
+import { AsteroidBand } from './band.js'
 import { buildRing, textureShape, type PlanetRing } from './ring.js'
 import { LightBlink, RETAIL_FLARE_LIGHT, type SpaceFlare } from './flare.js'
 import { NebulaLightning } from './lightning.js'
@@ -730,4 +732,84 @@ test("a ring's clouds draw after the main list, only while the camera is in it, 
   // In a nebula's field, none.
   const field = nebulaAt(0, 5000, 100)
   assert.ok(!inBand(ringOf(), { ...moved(ringOf()), nebulae: [field] }).includes('clouds'))
+})
+
+/** A field 3000 ahead, of radius 1000, with no cube near: its band and an exclusion band inside. */
+const bandedField = (own: boolean, renderParts = 1): SpaceAsteroidField => {
+  const position = { x: 0, y: 0, z: -3000 }
+  const texture = { name: 'belt', width: 1, height: 1 } as Texture
+  const band = (radius: number, offset: number) =>
+    new AsteroidBand(
+      {
+        shape: textureShape(texture, {}),
+        vertIncrease: 4,
+        renderParts,
+        offset: { distance: offset },
+        fade: [0.1, 0.2, 100, 110],
+      },
+      {
+        position,
+        orientation: Quat.identity,
+        size: { x: radius, y: 0, z: 0 },
+        diffuse: { x: 1, y: 1, z: 1 },
+        ambient: { x: 1, y: 1, z: 1 },
+      },
+    )
+  return {
+    zone: zoneOf({ type: 'sphere', center: position, radius: 1000 }),
+    cubeSize: 1,
+    fillDistance: 0,
+    cube: { mesh, reference, material: () => undefined, texture: () => undefined },
+    diffuse: { x: 1, y: 1, z: 1 },
+    ambient: { x: 1, y: 1, z: 1 },
+    ...(own ? { band: band(1000, 0) } : {}),
+    // An exclusion zone of 300 about the same centre, its band 500 out from it.
+    exclusionBands: [band(300, -500)],
+  }
+}
+
+/** Each band draw's highest vertex alpha. */
+const bandAlphas = (frame: Frame) =>
+  frame.draws
+    .filter(({ materialName }) => materialName === 'band')
+    .map(({ mesh: { vertices } }) =>
+      Math.max(...Array.from({ length: vertices.length / 24 }, (_, at) => vertices[at * 24 + 15]!)),
+    )
+
+test("an exclusion band is held under how near the field the camera is; the field's own isn't", () => {
+  const at = (z: number) =>
+    bandAlphas(
+      collectSpaceFrame(
+        sceneOf([], {
+          camera: { ...sceneOf([]).camera, position: { x: 0, y: 0, z } },
+          asteroids: [bandedField(true)],
+        }),
+      ),
+    )
+  // 500 past the field's surface: half.
+  assert.deepEqual(at(-1500).sort(), [127, 255])
+  // 1000 past it and more: the exclusion band draws nothing.
+  assert.deepEqual(at(-900), [255])
+})
+
+test("a field's pieces are numbered through: its own band's, then each exclusion band's", () => {
+  // Two pieces, each listed by its own sphere: both draw.
+  const frame = collectSpaceFrame(
+    sceneOf([], {
+      camera: { ...sceneOf([]).camera, position: { x: 0, y: 0, z: -1500 } },
+      asteroids: [bandedField(true)],
+    }),
+  )
+  assert.equal(bandAlphas(frame).length, 2)
+  // An exclusion band alone, of one piece: the one-piece node, keyed by the field's surface.
+  const alone = collectSpaceFrame(
+    sceneOf([objectOf('beyond', 2500)], {
+      camera: { ...sceneOf([]).camera, position: { x: 0, y: 0, z: -1500 } },
+      asteroids: [bandedField(false)],
+    }),
+  )
+  assert.deepEqual(bandAlphas(alone), [127])
+  // Keyed 500 out from the zone's surface, squared, but no nearer than a quarter of the range: drawn
+  // before what's 1000 off.
+  assert.deepEqual(names(alone), ['band', 'beyond'])
 })

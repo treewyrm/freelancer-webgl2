@@ -13,7 +13,7 @@ import {
   type PlacedEffect,
 } from './effect-view.js'
 import { ringImmersion, ringPieceDraw, type PlanetRing, type RingPiece } from './ring.js'
-import { fieldCubes, type SpaceAsteroidField } from './asteroids.js'
+import { fieldCubes, nearFieldFraction, type SpaceAsteroidField } from './asteroids.js'
 import { flareQuads, type FrameRect, type ScreenQuad, type SpaceFlare } from './flare.js'
 import type { AsteroidBand } from './band.js'
 import {
@@ -445,36 +445,50 @@ export const collectSpaceFrame = ({
       const radius = piece.radius * piece.radius
       lists[MAIN]!.push({ ring, piece, key: Math.fround(squared < radius ? 0 : squared - radius) })
     }
-  // `CliAsteroidUpdate` moves each band's fade to the camera, and the first frame bakes its light.
+  // `CliAsteroidUpdate` moves each band's fade to the camera, and the first frame bakes its light at
+  // its own zone.
   // Then `SpaceObjDrawPass` (`0x51ba40`) lists its pieces: one keyed by the zone's surface, or each
   // the view keeps by distance, those within a quarter of the range nearest first.
   const lighting = lightSet(flashes.length ? [...lights, ...flashes] : lights)
   const rangeSquared = Math.fround(range * range)
   const quarter = range * 0.25
   const nearSquared = Math.fround(quarter * quarter)
-  for (const { band, zone } of asteroids) {
-    if (!band) continue
-    band.update(eye)
-    if (!band.isBaked) band.bake({ ambient, ...directionalLightsAt(lighting, zone.position, time) })
-    if (band.pieces.length === 1) {
+  for (const asteroid of asteroids) {
+    const { band, exclusionBands = [], zone } = asteroid
+    if (band) band.update(eye)
+    // `CliAsteroidUpdate`: every exclusion band is held under how near the field the camera is.
+    const fraction = exclusionBands.length ? nearFieldFraction(asteroid, eye, 1000) : 0
+    for (const exclusion of exclusionBands) exclusion.update(eye, fraction)
+    // Its pieces numbered through, its own band's first (`FUN_00524740`, `FUN_00522850`).
+    const numbered = [...(band ? [band] : []), ...exclusionBands].flatMap((owner) =>
+      owner.pieces.map((piece, at) => ({ owner, piece, at })),
+    )
+    for (const { owner } of numbered)
+      if (!owner.isBaked)
+        owner.bake({ ambient, ...directionalLightsAt(lighting, owner.position, time) })
+    if (numbered.length === 1) {
       const key = bandSurfaceKey(zone, eye, nearSquared)
-      lists[key < rangeSquared ? MAIN : FAR]!.push({ band, piece: 0, key })
+      lists[key < rangeSquared ? MAIN : FAR]!.push({ band: numbered[0]!.owner, piece: 0, key })
       continue
     }
-    band.pieces.forEach(({ center, radius }, piece) => {
-      if (classifySphere(Matrix4.transformPoint(center, view), radius, camera, aspect) < 3) return
+    for (const {
+      owner,
+      piece: { center, radius },
+      at,
+    } of numbered) {
+      if (classifySphere(Matrix4.transformPoint(center, view), radius, camera, aspect) < 3) continue
       const dx = center.x - eye.x
       const dy = center.y - eye.y
       const dz = center.z - eye.z
       let squared = dz * dz + dx * dx + dy * dy
       if (rangeSquared < squared) {
-        lists[FAR]!.push({ band, piece, key: Math.fround(squared) })
-        return
+        lists[FAR]!.push({ band: owner, piece: at, key: Math.fround(squared) })
+        continue
       }
       // `DAT_005dc028`: 0.05f widened to a double.
       if (nearSquared > squared) squared = (nearSquared - squared) * Math.fround(0.05) + nearSquared
-      lists[MAIN]!.push({ band, piece, key: Math.fround(squared) })
-    })
+      lists[MAIN]!.push({ band: owner, piece: at, key: Math.fround(squared) })
+    }
   }
   // Retail's sort isn't stable, but equal keys are left in an order the object database decides.
   for (const list of lists) list.sort((a, b) => b.key - a.key)

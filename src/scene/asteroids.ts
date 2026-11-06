@@ -279,6 +279,33 @@ export const nearField = (field: CubeField, eye: Vector3): boolean => {
   return excess <= margin
 }
 
+/**
+ * `CAsteroidField::near_field_fraction` (`0x62a54e0`): 1 at the zone's surface, falling to 0 `distance`
+ * past it, and unclamped within, so over 1. A distance of 0 or less is `(fill_dist + cube_size) · 1.2`; the client passes 1000.
+ */
+export const nearFieldFraction = (
+  field: Pick<CubeField, 'zone' | 'fillDistance' | 'cubeSize'>,
+  eye: Vector3,
+  distance: number,
+): number => {
+  const reachBy = distance > 0 ? distance : f((field.fillDistance + field.cubeSize) * f(1.2))
+  const { zone } = field
+  const d = {
+    x: f(eye.x - zone.position.x),
+    y: f(eye.y - zone.position.y),
+    z: f(eye.z - zone.position.z),
+  }
+  const reach = zone.radius + reachBy
+  const squared = d.x * d.x + d.z * d.z + d.y * d.y
+  if (squared > reach * reach) return 0
+  const root = Math.sqrt(f(squared))
+  const inverse = 1 / root
+  const excess =
+    f(root) - zone.radiusAlong({ x: f(d.x * inverse), y: f(d.y * inverse), z: f(d.z * inverse) })
+  if (!(excess <= reachBy)) return 0
+  return f(1 - excess / reachBy)
+}
+
 /** `AsteroidExclusionZone::update_dist`: how far outside a zone the camera is, squared. */
 const outsideSquared = ({ zone }: CubeExclusion, eye: Vector3): number => {
   const d = {
@@ -449,4 +476,6 @@ export interface SpaceAsteroidField extends CubeField {
   containsFogZone?: boolean
   /** Its `[Band]`, built from its zone and colours. */
   band?: AsteroidBand
+  /** Its `[ExclusionBand]`s, in file order, each about its own `zone`. */
+  exclusionBands?: readonly AsteroidBand[]
 }

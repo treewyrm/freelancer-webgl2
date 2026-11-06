@@ -242,6 +242,7 @@ const RING_PLAYER: Omit<ReferenceSystem['player'], 'position'> = {
 /** Files written for the asteroid lab, under `DATA`, as its system names them. */
 const ASTEROID_FIELD_FILE = 'solar\\asteroids\\lab\\lab_field.ini'
 const ASTEROID_NEBULA_FILE = 'solar\\nebula\\lab\\lab_nebula.ini'
+const ASTEROID_EXBAND_FILE = 'solar\\asteroids\\lab\\lab_field_exband.ini'
 
 /**
  * Br01's Cornwall field, with no `[DynamicAsteroids]` or `[AsteroidBillboards]`, whose `rand()`
@@ -279,6 +280,27 @@ const LAB_FIELD = [
   'texture_aspect = 1.0',
   'color_shift = 1.0, 1.0, 1.0',
   'ambient_intensity = 1.0',
+  'vert_increase = 2',
+].join('\r\n')
+
+/**
+ * The lab field with an `[ExclusionBand]` about the station's exclusion zone: 500 out from it, 1000
+ * high, so seen from the field its points fade in between 1000 and 1500. Its points are counted by
+ * the zone's girth, not the ring's: 10, so the 12 parts it asks for are held to 5. Its own file, so the field's earlier captures still stand.
+ */
+const LAB_FIELD_EXBAND = [
+  LAB_FIELD,
+  '[ExclusionBand]',
+  'zone = Lab_station_exclusion',
+  'render_parts = 12',
+  'shape = asteroid_belt_04',
+  'height = 1000',
+  'offset_dist = -500',
+  'fade = 1, 1.5, 15, 18',
+  'texture_aspect = 0.5',
+  'color_shift = 0.5, 0.5, 0.5',
+  'ambient_intensity = 1.5',
+  'cull_mode = 0',
   'vert_increase = 2',
 ].join('\r\n')
 
@@ -381,6 +403,15 @@ const ASTEROIDS: Omit<ReferenceSystem, 'name' | 'player'> = {
   ],
 }
 
+const ASTEROIDS_EXBAND: Omit<ReferenceSystem, 'name' | 'player'> = {
+  ...ASTEROIDS,
+  asteroids: [{ file: ASTEROID_EXBAND_FILE, zone: 'Lab_field' }],
+  files: [
+    { path: ASTEROID_EXBAND_FILE, text: LAB_FIELD_EXBAND },
+    { path: ASTEROID_NEBULA_FILE, text: LAB_NEBULA },
+  ],
+}
+
 export const systems: ReadonlyMap<string, ReferenceSystem> = new Map(
   [
     {
@@ -400,6 +431,18 @@ export const systems: ReadonlyMap<string, ReferenceSystem> = new Map(
       name: 'asteroid_outside',
       ...ASTEROIDS,
       player: { ...RING_PLAYER, position: [0, 0, 9000] },
+    } satisfies ReferenceSystem,
+    {
+      // In the field, 1500 from the station: the exclusion band about it, partly faded, at full.
+      name: 'asteroid_exband',
+      ...ASTEROIDS_EXBAND,
+      player: { ...RING_PLAYER, position: [0, 0, 0] },
+    } satisfies ReferenceSystem,
+    {
+      // 500 past the field's surface: the exclusion band at half its alpha, the field's own beside.
+      name: 'asteroid_exband_edge',
+      ...ASTEROIDS_EXBAND,
+      player: { ...RING_PLAYER, position: [0, 0, 1500] },
     } satisfies ReferenceSystem,
     {
       name: 'ring_outside',

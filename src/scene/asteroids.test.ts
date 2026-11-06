@@ -9,6 +9,7 @@ import {
   entryOrientation,
   fieldCubes,
   nearField,
+  nearFieldFraction,
   RETAIL_CUBE_ROTATIONS,
   type CubeField,
 } from './asteroids.js'
@@ -82,6 +83,21 @@ test('the walk is near the field or not at all', () => {
   // Past its surface by more than (cube + fill) · 1.74, nothing.
   assert.equal(nearField(field(), { x: 0, y: 0, z: 1000 + 3600 }), false)
   assert.deepEqual(fieldCubes(field(), { ...camera, position: { x: 0, y: 0, z: 9000 } }, 4 / 3), [])
+})
+
+test('near_field_fraction is 1 at the surface, 0 a distance past it, and over 1 within', () => {
+  // 1000 inside: unclamped, 2.
+  assert.equal(nearFieldFraction(field(), { x: 0, y: 0, z: 0 }, 1000), 2)
+  assert.equal(nearFieldFraction(field(), { x: 0, y: 0, z: 1000 }, 1000), 1)
+  // 250 and 750 past the surface at z 1000.
+  assert.equal(nearFieldFraction(field(), { x: 0, y: 0, z: 1250 }, 1000), 0.75)
+  assert.equal(nearFieldFraction(field(), { x: 0, y: 0, z: 1750 }, 1000), 0.25)
+  assert.equal(nearFieldFraction(field(), { x: 0, y: 0, z: 2001 }, 1000), 0)
+  // No distance: (fill + cube) · 1.2, 2460.
+  assert.equal(
+    nearFieldFraction(field(), { x: 0, y: 0, z: 1000 + 1230 }, 0),
+    Math.fround(1 - 1230 / Math.fround(2050 * Math.fround(1.2))),
+  )
 })
 
 test('cubes fill the view ahead, out to fill_dist, fading over the last half cube', () => {

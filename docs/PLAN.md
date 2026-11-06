@@ -445,8 +445,17 @@ renderer. Random streams need not match retail; each appearance's sizes, colours
       to the byte. It found the decomp's bake reading the normal a float late
       ([ADAPTING.md](ADAPTING.md#bandbakelighting)), and an even piece's centre half a segment off, as
       retail has it. A one-piece band and a tilted zone are uncaptured.
-- [ ] `[ExclusionBand]`: a band about an exclusion zone, its alpha `near_field_fraction` at 1000, its
-      pieces after the field's own. `AsteroidBand.update` and `pieceDraw` take the alpha already.
+- [x] `[ExclusionBand]`: `SpaceAsteroidField.exclusionBands`, each an `AsteroidBand` about its own
+      `zone`, lit there, its alpha held under `nearFieldFraction` at 1000
+      (`CAsteroidField::near_field_fraction`, `0x62a54e0`): 1 at the field's surface, 0 past 1000, and
+      unclamped within. A field's pieces are numbered through, its own band's first (`FUN_00524740`,
+      `FUN_00522850`), so a field of one piece in all takes the one-piece node. Retail uses it in
+      `li01_pittsburgh_debris_field_001`, `bw02_minefield` (with no `[Band]`) and
+      `bw04_von_rohe_lava_asteroids`. One whose zone isn't found counts pieces it never built, and is
+      left out. Pinned by reading. **Uncaptured.**
+- [ ] **You:** `asteroid_exband` and `asteroid_exband_edge` (`src/reference/systems.ts`): the lab field
+      with an exclusion band about the station, from in the field and from 500 past its surface,
+      where it shows at half.
 - [ ] `asteroid_outside`'s frame around the band: retail draws `smallstation1_old_nodock` at 10500 at
       a coarser level than `levelEnds` picks, and leaves out `space_solar_plant` at 12700, whose
       `LODranges = 0, 3000, 8000` the far clamp (`ApplyArchLodRanges`) holds to 15001 at

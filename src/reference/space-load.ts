@@ -622,21 +622,31 @@ const loadField = async (
   const lines: { name: string; numbers: number[] }[] = []
   const exclusions: CubeExclusion[] = []
   const shapes = new Map<string, TextureShape>()
-  let band:
-    | { numbers: Record<string, number[]>; shape?: string; offset?: BandSettings['offset'] }
-    | undefined
+  interface BandRecord {
+    numbers: Record<string, number[]>
+    shape?: string
+    offset?: BandSettings['offset']
+    /** An `[ExclusionBand]`'s `zone`, the last one named. */
+    zone?: string
+  }
+  let band: BandRecord | undefined
+  const exclusionBands: BandRecord[] = []
   for (const section of Document.read(await read(pathOf(file)))) {
     const kind = section.name.toLowerCase()
     if (kind === 'texturepanels')
       for (const [key, value] of await loadShapes(read, strings(section, 'file')))
         shapes.set(key, value)
-    if (kind === 'band') band = { numbers: {} }
+    const record: BandRecord | undefined =
+      kind === 'band' || kind === 'exclusionband' ? { numbers: {} } : undefined
+    if (kind === 'band') band = record
+    if (kind === 'exclusionband') exclusionBands.push(record!)
     for (const line of linesOf(section)) {
-      if (kind === 'band' && band) {
-        band.numbers[line.name] = line.numbers
-        if (line.name === 'shape') band.shape = line.strings[0]!
-        if (line.name === 'offset_dist') band.offset = { distance: line.numbers[0]! }
-        if (line.name === 'offset_percent') band.offset = { percent: line.numbers[0]! }
+      if (record) {
+        record.numbers[line.name] = line.numbers
+        if (line.name === 'shape') record.shape = line.strings[0]!
+        if (line.name === 'offset_dist') record.offset = { distance: line.numbers[0]! }
+        if (line.name === 'offset_percent') record.offset = { percent: line.numbers[0]! }
+        if (line.name === 'zone') record.zone = line.strings[0]!
       }
       if (kind === 'field') keys[line.name] = line.numbers
       if (kind === 'cube') {
@@ -703,10 +713,10 @@ const loadField = async (
   const diffuse = color('diffuse_color') ?? tint ?? { x: 0, y: 0, z: 0 }
   const ambient = color('ambient_color') ?? tint ?? { x: 0, y: 0, z: 0 }
   const ambientIncrease = increase && { x: increase[0]!, y: increase[1]!, z: increase[2]! }
-  const zoneEntry = system.zones!.find(
-    ({ nickname }) => nickname.toLowerCase() === zoneName.toLowerCase(),
-  )!
-  const bandOf = ({ numbers, shape, offset }: NonNullable<typeof band>) => {
+  const bandOf = ({ numbers, shape, offset, zone: own = zoneName }: BandRecord) => {
+    const zoneEntry = system.zones!.find(
+      ({ nickname }) => nickname.toLowerCase() === own.toLowerCase(),
+    )!
     const one = (key: string) => numbers[key]?.[0]
     const shift = numbers['color_shift']
     const fade = numbers['fade']
@@ -759,6 +769,17 @@ const loadField = async (
     ambient,
     ...(ambientIncrease ? { ambientIncrease } : {}),
     ...(band ? { band: bandOf(band) } : {}),
+    // With no zone found (`FDUMP` at `0x520f7a`) retail builds no ring and still counts its pieces,
+    // whose positions it then reads from a table it never made: left out here.
+    ...(exclusionBands.length
+      ? {
+          exclusionBands: exclusionBands
+            .filter(({ zone: named }) =>
+              system.zones!.some(({ nickname }) => nickname.toLowerCase() === named?.toLowerCase()),
+            )
+            .map(bandOf),
+        }
+      : {}),
   }
 }
 

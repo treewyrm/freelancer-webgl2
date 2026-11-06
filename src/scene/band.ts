@@ -102,6 +102,13 @@ const even = (n: number): boolean => (n & 1) === 0
 
 export class AsteroidBand {
   readonly settings: BandSettings
+  /** Its zone's centre, where it is lit. */
+  readonly position: Vector3
+  /**
+   * `+0x54`: what its alpha is held under. The field's own band keeps 1; an `[ExclusionBand]` takes
+   * `nearFieldFraction` each frame.
+   */
+  private maxAlpha = 1
   /** Each point of the ring, in world space, with its outward normal. */
   readonly points: readonly { position: Vector3; normal: Vector3 }[]
   readonly halfHeight: number
@@ -121,6 +128,7 @@ export class AsteroidBand {
 
   constructor(settings: BandSettings, field: BandField) {
     this.settings = settings
+    this.position = field.position
     const shift = settings.colorShift ?? WHITE
     // `BandApplyTints` and `BandSetAmbientIncrease`, as the field's `[Band]` is read.
     this.diffuse = {
@@ -225,9 +233,10 @@ export class AsteroidBand {
   /**
    * `BandUpdate`: each point's fade from the camera, in by `fade`'s first two distances and out by
    * its last two, and edge-on below a |cos| of 0.5. Where it's faded out past the far end, its
-   * facing is last frame's. `maxAlpha` is the field's own band's, 1; an `[ExclusionBand]`'s isn't.
+   * facing is last frame's. `maxAlpha` is kept for the draw; under 0.001 nothing else is updated.
    */
   update(eye: Vector3, maxAlpha = 1): void {
+    this.maxAlpha = maxAlpha
     if (maxAlpha < 0.001) return
     const [inner, near, far, outer] = this.fades
     this.points.forEach(({ position, normal }, at) => {
@@ -310,10 +319,11 @@ export class AsteroidBand {
   /**
    * `BandDrawPiece`: a quad between each two points of the piece, in two passes, those with either end
    * turned away and then those turned toward; each end in its side's colour and its fade, under
-   * `maxAlpha`, U stepping by `vert_increase`. A quad with both ends transparent is left out, and a
+   * the alpha `update` was given, U stepping by `vert_increase`. A quad with both ends transparent is left out, and a
    * piece with none draws nothing. Unlit, blended, both sides, with no depth test or writes.
    */
-  pieceDraw(index: number, maxAlpha = 1): Draw | undefined {
+  pieceDraw(index: number): Draw | undefined {
+    const { maxAlpha } = this
     const { shape } = this.settings
     if (!shape || maxAlpha < LEAST_ALPHA) return undefined
     const piece = this.pieces[index] ?? this.pieces[0]
