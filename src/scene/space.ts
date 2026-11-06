@@ -35,6 +35,7 @@ import {
   type NebulaLimits,
   type SpaceField,
   type SpaceNebula,
+  type NebulaState,
   type Within,
   type Zone,
 } from './nebula.js'
@@ -438,9 +439,10 @@ export const collectSpaceFrame = ({
   })
   // `EnqueueTexturePanelPieces` (`0x51be10`): each piece the view's sphere test keeps, near ones by
   // how far past their radius, far ones by distance. Retail makes eight pieces of every ring, so its
-  // one-piece branch, keyed by the zone's surface, is never reached and isn't built.
+  // one-piece branch, keyed by the zone's surface, is never reached and isn't built. In a core,
+  // neither rings nor bands are listed (`0x51c352`).
   const ringReach = Math.fround((range - ringFarMargin) * (range - ringFarMargin))
-  for (const ring of rings)
+  for (const ring of inCore ? [] : rings)
     for (const piece of ring.pieces) {
       const center = Matrix4.transformPoint(piece.center, view)
       if (classifySphere(center, piece.radius, camera, aspect) < 3) continue
@@ -476,6 +478,7 @@ export const collectSpaceFrame = ({
     for (const { owner } of numbered)
       if (!owner.isBaked)
         owner.bake({ ambient, ...directionalLightsAt(lighting, owner.position, time) })
+    if (inCore) continue
     if (numbered.length === 1) {
       const key = bandSurfaceKey(zone, eye, nearSquared)
       lists[key < rangeSquared ? MAIN : FAR]!.push({ band: numbered[0]!.owner, piece: 0, key })
@@ -600,6 +603,55 @@ export const collectSpaceFrame = ({
       }
     }
   }
+  /**
+   * `FNebulaEffect::DrawExclusionShell` (`0x508f20`): the shell of the exclusion zone the camera is
+   * in, scaled to its radius times `shell_scalar` over 1000. Lit with no lights by a white ambient,
+   * so its material's ambient, the tint, colours it, and its diffuse alpha is
+   * `(immersion - 0.2) · 1.25`, held to [0, 1], times `max_alpha`. No depth writes and no fog; the
+   * depth test and culling are the frame's, `LEQUAL` and back faces.
+   */
+  const drawShell = (state: NebulaState) => {
+    const inside = state.inExclusion
+    const shell = inside?.exclusion.shell
+    if (!inside || !shell) return
+    const fade = (inside.immersion - Math.fround(0.2)) * Math.fround(1.25)
+    const alpha = Math.fround((fade < 0 ? 0 : fade > 1 ? 1 : fade) * (shell.maxAlpha ?? 1))
+    const scale = Math.fround(
+      inside.exclusion.zone.radius * (shell.scalar ?? 1) * Math.fround(0.001),
+    )
+    const world = Matrix4.multiply(shell.transform, Matrix4.scaling(scale))
+    const first = draws.length
+    collectModel(
+      shell.place(world),
+      camera,
+      aspect,
+      view,
+      time,
+      draws,
+      queued,
+      unsupported,
+      unregistered,
+      resolved,
+    )
+    flushQueued(queued, draws)
+    for (let index = first; index < draws.length; index++) {
+      const draw = draws[index]!
+      draws[index] = {
+        ...draw,
+        diffuse: [draw.diffuse[0], draw.diffuse[1], draw.diffuse[2], alpha],
+        ambient: shell.tint,
+        lights: [],
+        sceneAmbient: { x: 1, y: 1, z: 1 },
+        blend: true,
+        blendMode: 'alpha',
+        depthWrite: false,
+        depthFunc: 'lequal',
+        cull: 'back',
+        alphaReference: 0,
+        alphaFunction: 'greater',
+      }
+    }
+  }
   for (const at of !field || field.enclosure === 0 ? OUTSIDE_ORDER : INSIDE_ORDER) {
     const onFarList = at === FAR
     const passCamera = onFarList ? farCamera : camera
@@ -699,7 +751,8 @@ export const collectSpaceFrame = ({
       if (overlay) draws.push(overlay)
     }
     // `CliAsteroidTickFields`: outside a field after the main list and the rings' clouds, inside one
-    // after its own list.
+    // after its own list, and its nebula's exclusion shell before them (`0x51fb7e`).
+    if (at === FIELD && field && field.enclosure !== 0) drawShell(field.state)
     if (
       (at === MAIN && (!field || field.enclosure === 0)) ||
       (at === FIELD && field && field.enclosure !== 0)

@@ -472,9 +472,22 @@ renderer. Random streams need not match retail; each appearance's sizes, colours
       and by pixels. **Matched in `asteroid_nebula`**: draw 30's place, four vertices, colour and
       alpha, and the frame draw for draw. `compare.ts` learnt that a disabled stage 0 ends the
       cascade, so stage 1's leftovers aren't read.
-- [ ] A nebula's exclusion shell (`DrawExclusionShell`, after the field's list) and its fill sheets in
-      the edge (`DrawFogShell`, `FUN_005074e0`, needing a `fill_shape`). The lab's hole has a
-      `zone_shell`, unseen from 1200 short of it: a capture from inside the hole and one at its edge.
+- [x] A nebula's exclusion shell: `ExclusionShell` on a `NebulaExclusion`, from
+      `FNebulaEffect::DrawExclusionShell` (`0x508f20`) and the `[Exclusion Zones]` keys
+      (`zone_shell`, `shell_scalar` raised to 1, `max_alpha` capped at 1, `exclusion_tint`; one shell
+      per name, shared). In a field, after its own list and before the asteroid fields: the shell of
+      the zone the camera is in, at its transform scaled by radius × `shell_scalar` / 1000, lit with
+      no lights by a white ambient so the tint is its material's ambient, its diffuse alpha
+      `(immersion − 0.2) · 1.25` held to [0, 1] times `max_alpha`, no depth writes or fog. In a core
+      neither rings nor bands are listed (`0x51c352`). Pinned by reading. **Matched in
+      `asteroid_hole` and `asteroid_hole_edge`** (`src/reference/asteroids.test.ts`): both frames
+      draw for draw, the shell's place, scale, tint and alpha (0.8, and 0.409 in the edge), and the
+      core's clear, with no sky, band, or plant. The comparison draws a frame before, as the game
+      had: in a core the overlay's latch is set by then. A missing `exclusion_tint` is uninitialised
+      in retail; the reference loader takes white.
+- [x] **You:** `asteroid_hole` and `asteroid_hole_edge` (`src/reference/systems.ts`): deep in the
+      nebula's hole, and in its edge.
+- [ ] A nebula's fill sheets in its edge (`DrawFogShell`, `FUN_005074e0`), which need a `fill_shape`.
 - [ ] A nebula's exterior from outside (`[Exterior]` puffs and slices), and its `[Clouds]` inside.
 - [ ] An asteroid field's billboards and dynamic asteroids, which `rand()` drives.
 - [ ] Suns: a solar's `star` from `solar\StarArch.ini`, drawn by `FStarSphere` (`star_sphere.cpp`;

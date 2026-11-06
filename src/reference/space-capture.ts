@@ -21,10 +21,10 @@ export interface SpaceRun {
  */
 const cameraOf = (draws: readonly CaptureDraw[], far: readonly number[], at: number): Camera => {
   const sky = draws[0]!.world!
-  assert.deepEqual(
-    [sky[0], sky[1], sky[2], sky[4], sky[5], sky[6], sky[8], sky[9], sky[10]],
-    [1, 0, 0, 0, 1, 0, 0, 0, -1],
-    'the camera looked straight down -Z',
+  // The sky's, or in a core, which has none, the first draw's: the pilot's, to rounding.
+  const turn = [sky[0], sky[1], sky[2], sky[4], sky[5], sky[6], sky[8], sky[9], sky[10]]
+  ;[1, 0, 0, 0, 1, 0, 0, 0, -1].forEach((cell, at) =>
+    assert.ok(Math.abs(turn[at]! - cell) < 1e-6, 'the camera looked straight down -Z'),
   )
   const [x, y, z] = draws[at]!.world!.slice(12, 15) as [number, number, number]
   // A near list's draw: D3D's `_11` is 1 / tan(half fov x), `_33` is far / (far - near), `_43` is
@@ -106,6 +106,23 @@ export const RUNS = {
     far: [0, 0, 0],
     farDraw: 10,
     hullDraw: 71,
+    effectSeconds: 20,
+    effectRate: 96,
+    animationSeconds: 0,
+  },
+  // In the nebula's core and its hole: no sky, so the camera is found from the first cube.
+  asteroid_hole: {
+    far: [-4600, -200, -4200],
+    farDraw: 27,
+    hullDraw: 2,
+    effectSeconds: 20,
+    effectRate: 96,
+    animationSeconds: 0,
+  },
+  asteroid_hole_edge: {
+    far: [-4600, -600, -3800],
+    farDraw: 27,
+    hullDraw: 2,
     effectSeconds: 20,
     effectRate: 96,
     animationSeconds: 0,

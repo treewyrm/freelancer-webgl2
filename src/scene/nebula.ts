@@ -3,7 +3,8 @@
  * each gives what it holds. `FNebulaEffect` in `src/freelancer/Client/cli_nebula.cpp`, `ZONE` in
  * `src/Common/common_zone.cpp`. Pure, no GL.
  */
-import { Quat, type Shape, type Vector3 } from '@treewyrm/freelancer/math'
+import { Quat, type Matrix4, type Shape, type Vector3 } from '@treewyrm/freelancer/math'
+import type { SceneModel } from './frame.js'
 import type { NebulaLightning } from './lightning.js'
 
 /** What a nebula asks of its zone: `IZone`'s position, `GetRadius` and `GetRadiusAlong`. */
@@ -41,6 +42,25 @@ export interface NebulaExclusion {
   edgeFraction?: number
   /** `fog_far`: where the fog ends deep in it. None when absent (`NebulaExclusionZone`'s -1). */
   fogFar?: number
+  /** Its `zone_shell`, drawn about it while the camera is in it. */
+  shell?: ExclusionShell
+}
+
+/** A `zone_shell` and the keys after it (`FNebulaZoneShell`), shared by every zone naming it. */
+export interface ExclusionShell {
+  /** The model placed under `world`, its levels picked as the game's camera picks them. */
+  place: (world: Matrix4) => SceneModel
+  /** The zone's transform, unscaled: `IZone::GetTransform`. */
+  transform: Matrix4
+  /** `shell_scalar`, at least 1. 1 when absent. */
+  scalar?: number
+  /** `max_alpha`, at most 1. 1 when absent. */
+  maxAlpha?: number
+  /**
+   * `exclusion_tint` over 255, each held to 1. Retail leaves it uninitialised when absent, so a shell
+   * without one draws in whatever the heap held: the host decides.
+   */
+  tint: Vector3
 }
 
 /** What retail hardcodes about nebulae, and a mod can patch. */

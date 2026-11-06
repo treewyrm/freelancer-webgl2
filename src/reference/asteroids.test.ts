@@ -26,6 +26,8 @@ interface AsteroidRun {
     | 'asteroid_outside'
     | 'asteroid_exband'
     | 'asteroid_exband_edge'
+    | 'asteroid_hole'
+    | 'asteroid_hole_edge'
   /** Retail's draws before the depth clear, the engine's effects included. */
   scene: number
   /** What isn't built: in a nebula, its fog overlay. */
@@ -68,6 +70,12 @@ const RUNS_COMPARED: AsteroidRun[] = [
     band: [10, 11, 12, 17, 18, 19, 20, 21, 22],
     cubes: [93, 10],
   },
+  // In the nebula's core and its hole: the clear is the fog's, no sky, no band, no overlay past the
+  // first frame, and the plant, which holds no nebula, left out. The ship, then the hole's shell at
+  // its full 0.8, then the cubes.
+  { name: 'asteroid_hole', scene: 64, unbuilt: [], band: [], cubes: [27, 33] },
+  // In the hole's edge: the shell at about half, and cubes fading at the walk's reach.
+  { name: 'asteroid_hole_edge', scene: 74, unbuilt: [], band: [], cubes: [27, 43] },
 ]
 
 const skipOf = (name: string) =>
@@ -96,7 +104,10 @@ const load = async (name: AsteroidRun['name']) => {
   const folder = join(references, name)
   const system = systems.get(name)!
   const { draws, options } = readSpaceRun(folder, system, RUNS[name])
-  return { frame: collectSpaceFrame(await loadSystem(system, read, options)), captured: draws }
+  const scene = await loadSystem(system, read, options)
+  // A frame before, as the game had drawn many: in a core, the overlay's latch is already set.
+  collectSpaceFrame(scene)
+  return { frame: collectSpaceFrame(scene), captured: draws }
 }
 
 for (const { name, scene, unbuilt, cubes } of RUNS_COMPARED) {
@@ -178,8 +189,14 @@ for (const { name, scene, unbuilt, cubes } of RUNS_COMPARED) {
         )
         assert.equal(theirs.states['FOGENABLE'], 0)
         assert.equal(ours.fog, undefined)
+        // Whole, a cube cuts at 127; fading at the walk's reach, it blends at 5, still writing depth:
+        // only a field's `max_alpha` under 1 stops that.
+        const fading = theirs.states['ALPHABLENDENABLE'] === 1
         assert.equal(theirs.states['ZWRITEENABLE'], 1)
-        assert.deepEqual([theirs.states['ALPHAREF'], ours.alphaReference], [127, 127])
+        assert.deepEqual(
+          [theirs.states['ALPHAREF'], ours.alphaReference],
+          fading ? [5, 5] : [127, 127],
+        )
       }
     },
   )
@@ -278,3 +295,31 @@ test(
         assert.ok(Math.abs(identity[axis][cell] - (axis[0] === cell[0] ? 1 : 0)) < 1e-6)
   },
 )
+
+for (const name of ['asteroid_hole', 'asteroid_hole_edge'] as const)
+  test(
+    `${name}: the hole's shell stands about it, scaled to its radius, as retail drew it`,
+    { skip: skipOf(name) },
+    async () => {
+      const { frame, captured } = await load(name)
+      for (const n of [24, 25, 26]) {
+        const ours = frame.draws[n]!
+        const theirs = captured[n]!
+        assert.deepEqual(
+          ['ZENABLE', 'ZWRITEENABLE', 'ZFUNC', 'CULLMODE', 'LIGHTING', 'FOGENABLE', 'AMBIENT'].map(
+            (key) => theirs.states[key],
+          ),
+          [1, 0, 4, 2, 1, 0, 0xffffffff],
+        )
+        assert.equal(theirs.lights.length, 0)
+        const ourView = Matrix4.multiply(frame.view, ours.world)
+        const theirView = modelViewOf(theirs.world!)
+        for (const axis of ['x', 'y', 'z', 'w'] as const)
+          for (const cell of ['x', 'y', 'z'] as const)
+            assert.ok(
+              Math.abs(ourView[axis][cell] - theirView[axis][cell]) < 1e-3,
+              `draw ${n} ${axis}.${cell}: ${ourView[axis][cell]} against ${theirView[axis][cell]}`,
+            )
+      }
+    },
+  )

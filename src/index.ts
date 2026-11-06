@@ -65,6 +65,7 @@ export {
   zoneOf,
   type Fog,
   type InExclusion,
+  type ExclusionShell,
   type NebulaExclusion,
   type NebulaLimits,
   type NebulaState,

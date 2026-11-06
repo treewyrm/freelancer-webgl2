@@ -4,7 +4,7 @@
  */
 import { getMaterial, readMaterialLibrary } from '@treewyrm/freelancer/material'
 import { Document, type Section } from '@treewyrm/freelancer/ini'
-import { Matrix4, Quat, type RingShape, type Vector3 } from '@treewyrm/freelancer/math'
+import { Matrix3, Matrix4, Quat, type RingShape, type Vector3 } from '@treewyrm/freelancer/math'
 import { readRigidModel, type RigidModel } from '@treewyrm/freelancer/rigid'
 import { readTextureLibrary, type Texture } from '@treewyrm/freelancer/texture'
 import { readSurfaceLibrary } from '@treewyrm/freelancer/surface'
@@ -560,13 +560,48 @@ const linesOf = (section: Section) =>
   }))
 
 /** A `[Nebula]` file: `[Fog]`, `[NebulaLight]`, `[Exclusion Zones]` and its lightning. */
+/** A bare model file, as `ClientMeshHolderLoad` takes one: its own materials and textures. */
+const loadModelFile = async (read: ReadAsset, path: string, camera: Camera) => {
+  const root = Directory.read(await read(pathOf(path)))
+  const meshes = readVMeshLibrary(root)
+  const materials = [...readMaterialLibrary(root)]
+  const textures = [...readTextureLibrary(root)]
+  const model = readRigidModel(root)
+  const material = (id: number) => getMaterial(materials, id)
+  return (world: Matrix4): SceneModel => ({
+    parts: placeParts(model, world, { camera }),
+    mesh: (id) => getMesh(meshes, id),
+    material,
+    texture: (name) => textures.find((entry) => entry.name.toLowerCase() === name.toLowerCase()),
+  })
+}
+
+/** A system zone's `IZone::GetTransform`: its position, and a pitch alone as `EulerMatrix` turns it. */
+const zoneTransform = (system: ReferenceSystem, nickname: string): Matrix4 => {
+  const found = system.zones!.find(
+    (entry) => entry.nickname.toLowerCase() === nickname.toLowerCase(),
+  )!
+  const [x, y, z] = found.position
+  const turn = Quat.axisAngle({ axis: { x: 1, y: 0, z: 0 }, angle: (found.pitch * Math.PI) / 180 })
+  return Matrix4.fromRotationTranslation(Matrix3.fromQuaternion(turn), { x, y, z })
+}
+
 const loadNebula = async (
   read: ReadAsset,
   system: ReferenceSystem,
   file: string,
   zoneName: string,
+  camera: Camera,
 ): Promise<SpaceNebula> => {
   const { zone } = zoneFor(system, zoneName)
+  // `zone_shell` and the keys after it, by name, shared by every zone naming it.
+  const shells = new Map<
+    string,
+    { path: string; scalar?: number; maxAlpha?: number; tint?: Vector3 }
+  >()
+  const shellNames: (string | undefined)[] = []
+  const zoneNames: string[] = []
+  let shell: { scalar?: number; maxAlpha?: number; tint?: Vector3 } | undefined
   let fog: SpaceNebula['fog'] = { color: { x: 0, y: 0, z: 0 } }
   let ambient: Vector3 | undefined
   const exclusions: NebulaExclusion[] = []
@@ -591,14 +626,49 @@ const loadNebula = async (
         if (name === 'exclusion') {
           const found = zoneFor(system, strings[0]!)
           exclusions.push({ zone: found.zone, edgeFraction: found.edgeFraction })
+          zoneNames.push(strings[0]!)
+          shellNames.push(undefined)
         }
         if (name === 'fog_far' && exclusions.length)
           exclusions[exclusions.length - 1] = { ...exclusions.at(-1)!, fogFar: numbers[0]! }
+        if (name === 'zone_shell') {
+          shell = undefined
+          if (!exclusions.length) continue
+          const key = strings[0]!.toLowerCase()
+          shellNames[shellNames.length - 1] = key
+          shell = shells.get(key) ?? { path: strings[0]! }
+          shells.set(key, shell as { path: string })
+        }
+        if (name === 'shell_scalar' && shell) shell.scalar = Math.max(numbers[0]!, 1)
+        if (name === 'max_alpha' && shell) shell.maxAlpha = Math.min(numbers[0]!, 1)
+        if (name === 'exclusion_tint' && shell) {
+          const [r, g, b] = numbers.map((c) => Math.min(Math.fround(c / 255), 1))
+          shell.tint = { x: r!, y: g!, z: b! }
+        }
       }
       if (kind === 'backgroundlightning' && name === 'duration') background.duration = numbers[0]!
       if (kind === 'dynamiclightning' && name === 'duration') dynamic.duration = numbers[0]!
     }
   }
+  const placed = new Map<string, (world: Matrix4) => SceneModel>()
+  for (const [key, { path }] of shells) placed.set(key, await loadModelFile(read, path, camera))
+  exclusions.forEach((exclusion, at) => {
+    const key = shellNames[at]
+    const found = key === undefined ? undefined : shells.get(key)
+    if (!found || key === undefined) return
+    const { scalar, maxAlpha, tint } = found
+    exclusions[at] = {
+      ...exclusion,
+      shell: {
+        place: placed.get(key)!,
+        transform: zoneTransform(system, zoneNames[at]!),
+        ...(scalar !== undefined ? { scalar } : {}),
+        ...(maxAlpha !== undefined ? { maxAlpha } : {}),
+        // Uninitialised in retail when absent: white here, the shell's user data's own start.
+        tint: tint ?? { x: 1, y: 1, z: 1 },
+      },
+    }
+  })
   return {
     zone,
     fog,
@@ -1122,7 +1192,7 @@ export const loadSystem = async (
       (system.asteroids ?? []).map(({ file, zone }) => loadField(read, system, file, zone)),
     ),
     nebulae: await Promise.all(
-      (system.nebulae ?? []).map(({ file, zone }) => loadNebula(read, system, file, zone)),
+      (system.nebulae ?? []).map(({ file, zone }) => loadNebula(read, system, file, zone, camera)),
     ),
   }
 }

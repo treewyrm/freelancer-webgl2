@@ -819,3 +819,49 @@ test("a field's pieces are numbered through: its own band's, then each exclusion
   // before what's 1000 off.
   assert.deepEqual(names(alone), ['band', 'beyond'])
 })
+
+test("in a nebula's exclusion zone its shell draws, tinted, as clear as the camera is near its edge", () => {
+  // A hole of 600 about the camera, its last fifth an edge; the shell's model is one part.
+  const hole = zoneOf({ type: 'sphere', center: { x: 0, y: 0, z: 0 }, radius: 600 })
+  const tint = { x: 0.25, y: 0.5, z: 1 }
+  const worlds: Matrix4[] = []
+  const shellAt = (z: number) => {
+    const nebulae = [
+      nebulaAt(0, 5000, 100, {
+        exclusions: [
+          {
+            zone: hole,
+            edgeFraction: 0.2,
+            shell: {
+              place: (world) => {
+                worlds.push(world)
+                return modelOf('shell', 0)
+              },
+              transform: Matrix4.identity,
+              maxAlpha: 0.8,
+              tint,
+            },
+          },
+        ],
+      }),
+    ]
+    const frame = collectSpaceFrame(
+      sceneOf([], { nebulae, camera: { ...sceneOf([]).camera, position: { x: 0, y: 0, z } } }),
+    )
+    return frame.draws.find(({ materialName }) => materialName === 'shell')
+  }
+  // Deep in: (1 - 0.2) · 1.25 is held to 1, times max_alpha.
+  const deep = shellAt(0)!
+  assert.equal(deep.diffuse[3], Math.fround(0.8))
+  assert.deepEqual(deep.ambient, tint)
+  assert.deepEqual([deep.lights, deep.sceneAmbient], [[], { x: 1, y: 1, z: 1 }])
+  assert.deepEqual([deep.depthWrite, deep.blend, deep.fog], [false, true, undefined])
+  // Scaled to the radius over 1000.
+  assert.equal(worlds.at(-1)!.x.x, Math.fround(600 * Math.fround(0.001)))
+  // 540 out: an immersion of 0.5, so (0.5 - 0.2) · 1.25 of 0.8.
+  const edge = shellAt(540)!
+  assert.ok(Math.abs(edge.diffuse[3] - 0.375 * 0.8) < 1e-6, `${edge.diffuse[3]}`)
+  // Under 0.2 of immersion, it's there but clear; outside the hole, none.
+  assert.equal(shellAt(590)!.diffuse[3], 0)
+  assert.equal(shellAt(700), undefined)
+})
