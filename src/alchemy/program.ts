@@ -3,6 +3,8 @@ import { BlendingMode, type Blending } from '@treewyrm/freelancer/alchemy'
 import { Matrix4, type Vector3 } from '@treewyrm/freelancer/math'
 import { createProgram, type Program } from '#/gl/program.js'
 import { DIFFUSE_UNIT } from '#/material/dcdt.js'
+import { FOG_GLSL, FOG_UNIFORMS, setFog } from '#/material/fog.js'
+import type { Fog } from '#/scene/nebula.js'
 import { CurveTable, curvesSource, TABLE_WIDTH } from './curves.js'
 import type { EffectDraw, SpriteDraw } from './draw.js'
 import {
@@ -47,6 +49,7 @@ const SPRITE_UNIFORMS = [
   'u_curves',
   'u_texture',
   'u_hasTexture',
+  ...FOG_UNIFORMS,
 ] as const
 
 const LOCATION = { corner: 0, position: 1, velocity: 2, time: 3, axis: 4 } as const
@@ -321,15 +324,25 @@ in vec4 v_color;
 
 uniform sampler2D u_texture;
 uniform bool u_hasTexture;
+${FOG_GLSL}
 
 out vec4 fragColor;
 
 void main() {
   fragColor = u_hasTexture ? v_color * texture(u_texture, v_uv) : v_color;
+  fragColor.rgb = fogged(fragColor.rgb);
   // D3DRS_ALPHAREF 0, GREATER (\`effect_sprites\`), compared at 8 bits.
   if (!(floor(fragColor.a * 255.0 + 0.5) > 0.0)) discard;
 }
 `
+
+const BEAM_UNIFORMS = [
+  'u_projection',
+  'u_modelView',
+  'u_texture',
+  'u_hasTexture',
+  ...FOG_UNIFORMS,
+] as const
 
 // A triangle to a line: no culling, so the winding means nothing.
 // prettier-ignore
@@ -401,6 +414,7 @@ export interface EffectContext {
   view: Matrix4
   projection: Matrix4
   bindTexture: (draw: EffectDraw) => boolean
+  fog?: Fog
 }
 
 export interface EffectRenderer {
@@ -410,7 +424,7 @@ export interface EffectRenderer {
 
 export const createEffectRenderer = (gl: WebGL2RenderingContext): EffectRenderer => {
   let sprite: Program<(typeof SPRITE_UNIFORMS)[number]> | undefined
-  let beam: Program<'u_projection' | 'u_modelView' | 'u_texture' | 'u_hasTexture'> | undefined
+  let beam: Program<(typeof BEAM_UNIFORMS)[number]> | undefined
   let template: WebGLBuffer | undefined
   let beamBuffer: WebGLBuffer | undefined
   let beamArray: WebGLVertexArrayObject | undefined
@@ -537,23 +551,22 @@ export const createEffectRenderer = (gl: WebGL2RenderingContext): EffectRenderer
 
   const draw = (
     draws: readonly EffectDraw[],
-    { view, projection, bindTexture }: EffectContext,
+    { view, projection, bindTexture, fog }: EffectContext,
   ): void => {
     if (!draws.length) return
     sprite ??= createProgram(gl, spriteVertex, fragment, SPRITE_UNIFORMS)
-    beam ??= createProgram(gl, beamVertex, fragment, [
-      'u_projection',
-      'u_modelView',
-      'u_texture',
-      'u_hasTexture',
-    ] as const)
+    beam ??= createProgram(gl, beamVertex, fragment, BEAM_UNIFORMS)
     if (!template) {
       template = gl.createBuffer()
       gl.bindBuffer(gl.ARRAY_BUFFER, template)
       gl.bufferData(gl.ARRAY_BUFFER, CORNERS, gl.STATIC_DRAW)
     }
 
-    // `0x62019e0`: lighting off, no Z writes, no culling, blending on. Fog is M7's.
+    // `0x62019e0`: lighting off, no Z writes, no culling, blending on. The fog is the frame's.
+    for (const program of [sprite, beam]) {
+      gl.useProgram(program.handle)
+      setFog(gl, program.uniforms, fog)
+    }
     gl.disable(gl.CULL_FACE)
     gl.enable(gl.BLEND)
     gl.depthMask(false)

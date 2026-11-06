@@ -6,6 +6,19 @@
 import { Matrix4, type Vector3 } from '@treewyrm/freelancer/math'
 import { collectEffect, type EffectDraw } from '#/alchemy/draw.js'
 import { lightObject, lightSet, systemAmbient, type SpaceLight } from './light.js'
+import {
+  findNebula,
+  fogEnd,
+  fogFar,
+  fogOf,
+  nebulaState,
+  pickField,
+  RETAIL_NEBULA_LIMITS,
+  type NebulaLimits,
+  type SpaceField,
+  type SpaceNebula,
+  type Within,
+} from './nebula.js'
 import { classifySphere, projectionMatrix, viewMatrix, type Camera } from './camera.js'
 import {
   BLACK_BACKGROUND,
@@ -20,18 +33,6 @@ import {
   type SceneEffect,
   type SceneModel,
 } from './frame.js'
-
-/** The nebula the camera is nearest or in, `DAT_00675244`: the host picks it, as `FUN_0051b730` does. */
-export interface SpaceField {
-  /** Compared by identity with `SpaceObject.field`. */
-  nebula: unknown
-  /** `DAT_0067524c`: 0 outside it, 1 in its edge, 2 in its core. */
-  enclosure: 0 | 1 | 2
-  /** How far an object it fully holds still shows, from its edge (`GetFloat2B0`). */
-  radius: number
-  /** Its `FogFarClamp`: the pass's far plane in its core, at most the system's. */
-  far: number
-}
 
 export interface SpaceObject {
   model: SceneModel
@@ -52,8 +53,6 @@ export interface SpaceObject {
   distanceRender?: number
   /** The archetype's `LodPick`, the largest of its `LODranges`. Past it, it draws nothing. */
   lodRange?: number
-  /** `Slot18c`: the nebula it's in, and how far, from 0 to 1. */
-  field?: { nebula: unknown; enclosure: number }
 }
 
 /** `EffectTypeInfoByIndex`, from `[EffectType]`: the game's walk is by type. */
@@ -76,16 +75,17 @@ export interface SpaceScene {
   farClip?: number
   /** Over `RETAIL_SPACE_LIMITS`, for a mod that patches them. */
   limits?: Partial<SpaceLimits>
-  field?: SpaceField
+  /** Its `[Nebula]`s, in file order: the first that holds a point is the one it's in. */
+  nebulae?: readonly SpaceNebula[]
   /** Within a type in the order given, which is newest first in the game (`FUN_004fc920`). */
   effects?: readonly SpaceEffect[]
-  /** `[System] space_color`, 0 to 1. */
+  /** `[System] space_color`, 0 to 1. Deep in a nebula, its fog's colour instead. */
   background?: Vector3
   time?: number
 }
 
 /** What retail hardcodes, and a mod can patch. Distances are in world units. */
-export interface SpaceLimits extends FrameLimits {
+export interface SpaceLimits extends FrameLimits, NebulaLimits {
   /** A system with no `space_farclip` (`FUN_00410130`). */
   farClip: number
   /** The least far plane a `space_farclip` can set (`FUN_00410150`). */
@@ -104,6 +104,7 @@ export interface SpaceLimits extends FrameLimits {
 
 export const RETAIL_SPACE_LIMITS: Readonly<SpaceLimits> = {
   ...RETAIL_FRAME_LIMITS,
+  ...RETAIL_NEBULA_LIMITS,
   farClip: 21000,
   leastFarClip: 1000,
   rangeMargin: 1000,
@@ -154,19 +155,21 @@ const pick = (
  * nearness can still change, or nothing if the field hides it.
  */
 const fieldList = (
-  object: SpaceObject,
+  within: Within | undefined,
   squared: number,
   field: SpaceField | undefined,
   otherFieldDepth: number,
 ): number | undefined => {
   if (!field) return MAIN
-  const own = object.field?.nebula === field.nebula
-  const value = object.field?.enclosure ?? 0
+  const own = within?.state === field.state
+  const value = within?.factor ?? 0
   if (!own && value > otherFieldDepth) return undefined
   const enclosure = own ? value : 0
   if (field.enclosure === 2 && enclosure <= 0) return undefined
   if (field.enclosure === 0 && enclosure >= 1) return undefined
-  if (field.enclosure === 1 && enclosure >= 1 && squared > field.radius * field.radius)
+  // `G_FieldRadiusSq`, from the fog's end.
+  const radius = field.state.end
+  if (field.enclosure === 1 && enclosure >= 1 && squared > Math.fround(radius * radius))
     return undefined
   return enclosure > 0 ? FIELD : MAIN
 }
@@ -175,7 +178,10 @@ interface Listed {
   object: SpaceObject
   key: number
   picked: Picked
+  within?: Within
 }
+
+const BLACK: Vector3 = { x: 0, y: 0, z: 0 }
 
 const withoutEnvironment = ({ environment: _, ...model }: SceneModel): SceneModel => model
 
@@ -188,7 +194,7 @@ export const collectSpaceFrame = ({
   sky = [],
   farClip,
   limits,
-  field,
+  nebulae = [],
   effects = [],
   background,
   time = 0,
@@ -207,14 +213,16 @@ export const collectSpaceFrame = ({
       ? (limits?.farClip ?? RETAIL_SPACE_LIMITS.farClip)
       : Math.max(farClip, leastFarClip)
   const range = systemFar - rangeMargin
+  const { position: eye } = given
+  const states = nebulae.map((nebula) => nebulaState(nebula, eye, resolved))
+  const field = pickField(states, eye, range)
   const inCore = field?.enclosure === 2
-  const far = inCore ? Math.min(field.far, systemFar) : systemFar
+  const far = inCore ? Math.min(fogFar(field.state, resolved), systemFar) : systemFar
   const camera: Camera = { ...given, far }
   const farCamera: Camera = { ...given, far: farListPlane }
   const view = viewMatrix(camera)
 
   const lists: Listed[][] = Array.from({ length: LIST_COUNT }, () => [])
-  const { position: eye } = given
   for (const object of objects) {
     const dx = object.position.x - eye.x
     const dy = object.position.y - eye.y
@@ -228,9 +236,11 @@ export const collectSpaceFrame = ({
       if (squared >= reach * reach) continue
     }
 
+    // Retail keeps this from when the object last moved, and tries that nebula first.
+    const within = findNebula(states, object.position)
     if (squared >= range * range) {
       // A far object in any nebula, or seen from a core, isn't drawn.
-      if (!object.solar || inCore || object.field) continue
+      if (!object.solar || inCore || within) continue
       const picked = pick(object, view, farCamera, aspect)
       if (picked) lists[FAR]!.push({ object, key: squared, picked })
       continue
@@ -238,12 +248,12 @@ export const collectSpaceFrame = ({
 
     const radius = object.solar?.planet ? object.sphere.radius : 0
     const key = squared - radius * radius
-    let list = fieldList(object, key, field, otherFieldDepth)
+    let list = fieldList(within, key, field, otherFieldDepth)
     if (list === undefined) continue
     const picked = pick(object, view, camera, aspect)
     if (!picked) continue
     if (key < nearDistance * nearDistance) list = field && field.enclosure !== 0 ? FIELD : MAIN
-    lists[object.nomad ? list + NOMAD_OFFSET : list]!.push({ object, key, picked })
+    lists[object.nomad ? list + NOMAD_OFFSET : list]!.push({ object, key, picked, within })
   }
   // Retail's sort isn't stable, but equal keys are left in an order the object database decides.
   for (const list of lists) list.sort((a, b) => b.key - a.key)
@@ -276,7 +286,7 @@ export const collectSpaceFrame = ({
   for (const at of !field || field.enclosure === 0 ? OUTSIDE_ORDER : INSIDE_ORDER) {
     const onFarList = at === FAR
     const passCamera = onFarList ? farCamera : camera
-    for (const { object, picked } of lists[at]!) {
+    for (const { object, picked, within } of lists[at]!) {
       const first = draws.length
       collectModel(
         // `GameobjSubmitDrawRetail`: only the first tier arms the reflection.
@@ -295,13 +305,26 @@ export const collectSpaceFrame = ({
       flushQueued(queued, draws)
       // `GameobjUpdateDrawLighting`, from where it stands and its sphere's radius. A draw with an
       // ambient of its own, an exclusion zone's, keeps it.
-      const lit = lightObject(lighting, object.position, object.sphere.radius, ambient, time)
+      const nebula = within?.state.nebula
+      const lit = lightObject(
+        lighting,
+        object.position,
+        object.sphere.radius,
+        ambient,
+        time,
+        nebula?.ambient && { ambient: nebula.ambient, factor: within!.factor },
+      )
+      // The same call fogs what a nebula holds, and turns fog off for anything else.
+      const fog =
+        within &&
+        fogOf(within.state.start, fogEnd(within.state, object.position), nebula!.fog.color)
       for (let index = first; index < draws.length; index++) {
         const draw = draws[index]!
         draws[index] = {
           ...draw,
           lights: lit.lights,
           sceneAmbient: draw.sceneAmbient ?? lit.ambient,
+          ...(fog && { fog }),
         }
       }
       // `ZENABLE 0` around each node (`DrainBucket`), so it neither reads depth nor leaves any.
@@ -324,8 +347,16 @@ export const collectSpaceFrame = ({
   for (const { effect } of walked)
     collectEffect(effect.instance, view, effect.texture, effectDraws, unsupported, effect.visible)
 
+  // `SpaceObjDrawPass` fogs effects to black, so what they add fades out.
+  const effectFog =
+    field && field.enclosure !== 0
+      ? fogOf(field.state.start, fogEnd(field.state, eye), BLACK)
+      : undefined
+  // Deep enough in, the clear is the fog's colour. Background lightning, which flashes it, is to come.
+  const fogged = field && field.state.depth >= 1 ? field.state.nebula.fog.color : undefined
+
   return {
-    background: background ?? BLACK_BACKGROUND,
+    background: fogged ? fogOf(0, 0, fogged).color : (background ?? BLACK_BACKGROUND),
     hooks: hooksOf(draws),
     view,
     projection: projectionMatrix(camera, aspect),
@@ -334,6 +365,7 @@ export const collectSpaceFrame = ({
     lights: [],
     draws,
     effects: effectDraws,
+    ...(effectFog && { effectFog }),
     unsupported: [...unsupported],
     unregistered: [...unregistered],
   }

@@ -13,7 +13,8 @@ import { EffectInstance } from '#/alchemy/effect.js'
 import { emitter, sceneOf as fixtureScene } from '#/alchemy/fixtures.js'
 import { projectionMatrix } from './camera.js'
 import { type Frame, type SceneModel } from './frame.js'
-import { collectSpaceFrame, type SpaceField, type SpaceObject, type SpaceScene } from './space.js'
+import { zoneOf, type SpaceNebula } from './nebula.js'
+import { collectSpaceFrame, type SpaceLimits, type SpaceObject, type SpaceScene } from './space.js'
 
 const reference: VMeshRef = {
   meshId: 1,
@@ -259,15 +260,41 @@ test('each object is lit by the lights that reach it, and the frame keeps the sy
   assert.deepEqual(frame.lights, [])
 })
 
-const NEBULA = {}
-const fieldOf = (enclosure: 0 | 1 | 2, fields: Partial<SpaceField> = {}): SpaceField => ({
-  nebula: NEBULA,
-  enclosure,
-  radius: 700,
-  far: 3000,
+// A sphere nebula on the camera's axis, `z` along it: what's in front is negative.
+const nebulaAt = (
+  z: number,
+  radius: number,
+  distance: number,
+  fields: Partial<SpaceNebula> = {},
+): SpaceNebula => ({
+  zone: zoneOf({ type: 'sphere', center: { x: 0, y: 0, z }, radius }),
+  fog: { distance, color: { x: 0.5, y: 0.25, z: 1 } },
   ...fields,
 })
-const inField = (enclosure: number) => ({ field: { nebula: NEBULA, enclosure } })
+
+// A box 20 wide around the axis, from `back` to `front`: what's 20 to the side is out of it.
+const slabOf = (back: number, front: number, distance: number): SpaceNebula => ({
+  zone: zoneOf({
+    type: 'box',
+    center: { x: 0, y: 0, z: (back + front) / 2 },
+    orientation: { x: 0, y: 0, z: 0, w: 1 },
+    size: { x: 20, y: 20, z: back - front },
+  }),
+  fog: { distance, color: { x: 0, y: 0, z: 0 } },
+})
+
+// 100 away, and beside the axis.
+const besideOf = (name: string, fields: Partial<SpaceObject> = {}): SpaceObject => {
+  const position: Vector3 = { x: 20, y: 0, z: -98 }
+  return { ...objectOf(name, 100), position, sphere: { center: position, radius: 1 }, ...fields }
+}
+
+// From outside: whatever is 200 to 400 in front is in it, a half at 100 and 300.
+const AHEAD = nebulaAt(-200, 150, 100)
+// From outside, nearer than `AHEAD`: the one the camera answers to when both are there.
+const BEHIND = nebulaAt(150, 20, 100)
+// Holds 300 to its middle (a half), and 310 a quarter.
+const AROUND_300 = nebulaAt(-260, 60, 40)
 
 test('a mod can change each limit, and what it leaves stays retail', () => {
   const solar = { solar: { large: true } }
@@ -290,54 +317,63 @@ test('a mod can change each limit, and what it leaves stays retail', () => {
   const small = objectOf('solar', 15000, { solar: {} })
   assert.deepEqual(collected([small], { limits: { solarQueryRange: 20000 } }), ['solar'])
   // How near leaves a field's list: at 300 it now joins the main list, behind the main object at 400.
-  const objects = [objectOf('main', 400), objectOf('in field', 300, inField(0.5))]
-  const field = fieldOf(0)
-  assert.deepEqual(collected(objects, { field }), ['in field', 'main'])
-  assert.deepEqual(collected(objects, { field, limits: { nearDistance: 350 } }), [
+  const objects = [objectOf('main', 400), objectOf('in field', 300)]
+  const nebulae = [AROUND_300]
+  assert.deepEqual(collected(objects, { nebulae }), ['in field', 'main'])
+  assert.deepEqual(collected(objects, { nebulae, limits: { nearDistance: 350 } }), [
     'main',
     'in field',
   ])
   // How deep in another nebula still draws.
-  const other = objectOf('deep', 300, { field: { nebula: {}, enclosure: 0.5 } })
-  assert.deepEqual(collected([other], { field }), [])
-  assert.deepEqual(collected([other], { field, limits: { otherFieldDepth: 0.75 } }), ['deep'])
+  const other = [objectOf('deep', 300)]
+  assert.deepEqual(collected(other, { nebulae: [AROUND_300, BEHIND] }), [])
+  const deeper = { nebulae: [AROUND_300, BEHIND], limits: { otherFieldDepth: 0.75 } }
+  assert.deepEqual(collected(other, deeper), ['deep'])
+  // Where its far plane is in a core.
+  const core = { nebulae: [nebulaAt(0, 1000, 100)] }
+  const clamped = (fields: Partial<SpaceLimits>) =>
+    collectSpaceFrame(sceneOf([], { ...core, limits: fields })).projection
+  assert.deepEqual(clamped({}), projectionMatrix({ ...camera, far: 5000 }, 1))
+  assert.deepEqual(clamped({ nebulaLeastFar: 300 }), projectionMatrix({ ...camera, far: 600 }, 1))
+  const margin = { nebulaLeastFar: 300, nebulaFarMargin: 900 }
+  assert.deepEqual(clamped(margin), projectionMatrix({ ...camera, far: 1000 }, 1))
+  // A fog with no distance of its own.
+  const unset = { zone: core.nebulae[0]!.zone, fog: { color: { x: 0, y: 0, z: 0 } } }
+  const fallback = { nebulae: [unset], limits: { nebulaLeastFar: 0, nebulaFogDistance: 800 } }
+  const fallbackFrame = collectSpaceFrame(sceneOf([], fallback))
+  assert.deepEqual(fallbackFrame.projection, projectionMatrix({ ...camera, far: 1300 }, 1))
 })
 
 test('outside a field, what is in it drains before the main list, unless near', () => {
-  const objects = [
-    objectOf('main', 900),
-    objectOf('in field', 300, inField(0.5)),
-    objectOf('near in field', 100, inField(0.5)),
-  ]
+  const objects = [objectOf('main', 900), objectOf('in field', 300), objectOf('near in field', 100)]
   // At 100 it left the field's list for the main one, where it's nearest of all.
-  assert.deepEqual(collected(objects, { field: fieldOf(0) }), ['in field', 'main', 'near in field'])
+  assert.deepEqual(collected(objects, { nebulae: [AHEAD] }), ['in field', 'main', 'near in field'])
 })
 
 test('outside a field, what is fully in it is hidden, and so is another nebula past a quarter', () => {
-  const field = fieldOf(0)
-  assert.deepEqual(collected([objectOf('core', 300, inField(1))], { field }), [])
-  const other = (enclosure: number) => ({ field: { nebula: {}, enclosure } })
-  assert.deepEqual(collected([objectOf('deep', 300, other(0.5))], { field }), [])
-  assert.deepEqual(collected([objectOf('shallow', 300, other(0.25))], { field }), ['shallow'])
+  const core = [nebulaAt(-300, 250, 100)]
+  assert.deepEqual(collected([objectOf('core', 300)], { nebulae: core }), [])
+  const nebulae = [AROUND_300, BEHIND]
+  assert.deepEqual(collected([objectOf('deep', 300)], { nebulae }), [])
+  assert.deepEqual(collected([objectOf('shallow', 310)], { nebulae }), ['shallow'])
 })
 
 test('outside a field a nomad object in it draws only near: list 4 is never walked', () => {
-  const nomad = { nomad: true, ...inField(0.5) }
-  const field = fieldOf(0)
-  assert.deepEqual(collected([objectOf('nomad', 300, nomad)], { field }), [])
-  assert.deepEqual(collected([objectOf('nomad', 100, nomad)], { field }), ['nomad'])
+  const nebulae = [AHEAD]
+  assert.deepEqual(collected([objectOf('nomad', 300, { nomad: true })], { nebulae }), [])
+  assert.deepEqual(collected([objectOf('nomad', 100, { nomad: true })], { nebulae }), ['nomad'])
 })
 
 test('in a field its edge drains main lists first, then its own and its nomads', () => {
   const objects = [
-    objectOf('in field', 300, inField(0.5)),
+    objectOf('in field', 300),
     objectOf('main', 900),
     objectOf('nomad', 400, { nomad: true }),
-    objectOf('nomad in field', 300, { nomad: true, ...inField(0.5) }),
-    objectOf('near', 100),
+    objectOf('nomad in field', 300, { nomad: true }),
+    besideOf('near'),
   ]
   // Near, in a field or not, joins the field's list once the camera is in one.
-  assert.deepEqual(collected(objects, { field: fieldOf(1) }), [
+  assert.deepEqual(collected(objects, { nebulae: [slabOf(50, -350, 100)] }), [
     'main',
     'nomad',
     'in field',
@@ -346,25 +382,59 @@ test('in a field its edge drains main lists first, then its own and its nomads',
   ])
 })
 
-test('at its edge, what it fully holds shows only within its radius', () => {
-  const field = fieldOf(1)
-  assert.deepEqual(collected([objectOf('held', 600, inField(1))], { field }), ['held'])
-  assert.deepEqual(collected([objectOf('held', 800, inField(1))], { field }), [])
+test('at its edge, what it fully holds shows only within the fog', () => {
+  // The camera is 600 in, short of the fog's 700, which ends 700 away.
+  const nebulae = [nebulaAt(-700, 1300, 700)]
+  assert.deepEqual(collected([objectOf('held', 600)], { nebulae }), ['held'])
+  assert.deepEqual(collected([objectOf('held', 800)], { nebulae }), [])
 })
 
 test('in its core: no sky, no far list, only what it holds, and its own far plane', () => {
   const sky = [{ ...modelOf('stars', 0), sky: 'starsphere' as const }]
   const objects = [
-    objectOf('held', 300, inField(0.5)),
-    objectOf('out', 300),
+    objectOf('held', 300),
+    besideOf('out'),
     objectOf('solar', 30000, { solar: { large: true } }),
   ]
-  const frame = collectSpaceFrame(sceneOf(objects, { sky, field: fieldOf(2) }))
+  const frame = collectSpaceFrame(sceneOf(objects, { sky, nebulae: [slabOf(350, -650, 100)] }))
   assert.deepEqual(names(frame), ['held'])
-  assert.deepEqual(frame.projection, projectionMatrix({ ...sceneOf([]).camera, far: 3000 }, 1))
+  // The fog ends 100 in, and the least far plane is 5000.
+  assert.deepEqual(frame.projection, projectionMatrix({ ...sceneOf([]).camera, far: 5000 }, 1))
   // A far beyond the system's is cut back.
-  const wide = collectSpaceFrame(sceneOf([], { field: fieldOf(2, { far: 90000 }) }))
+  const wide = collectSpaceFrame(sceneOf([], { nebulae: [nebulaAt(0, 100000, 30000)] }))
   assert.deepEqual(wide.projection, projectionMatrix({ ...sceneOf([]).camera, far: 21000 }, 1))
+})
+
+test('what a nebula holds is fogged in its colour, to its depth in it, and nothing else is', () => {
+  const frame = collectSpaceFrame(
+    sceneOf([objectOf('out', 900), objectOf('in', 300)], { nebulae: [AHEAD] }),
+  )
+  const named = (name: string) => frame.draws.find(({ materialName }) => materialName === name)
+  const [out, held] = [named('out'), named('in')]
+  assert.equal(out!.fog, undefined)
+  // From 50 out, the fog starts at its surface and is whole a fog distance on. Half in, four
+  // times as far.
+  assert.deepEqual(held!.fog, { color: { x: 127 / 255, y: 63 / 255, z: 1 }, start: 50, end: 600 })
+  assert.equal(frame.effectFog, undefined)
+  assert.deepEqual(frame.background, { x: 0, y: 0, z: 0 })
+})
+
+test('in a nebula effects are fogged to black, and deep in it the clear is its fog', () => {
+  // 600 in, of a fog 700 deep.
+  const edge = collectSpaceFrame(sceneOf([], { nebulae: [nebulaAt(-700, 1300, 700)] }))
+  const end = Math.fround(700 / Math.fround(600 / 700) ** 2)
+  assert.deepEqual(edge.effectFog, { color: { x: 0, y: 0, z: 0 }, start: 0, end })
+  assert.deepEqual(edge.background, { x: 0, y: 0, z: 0 })
+  const deep = collectSpaceFrame(sceneOf([], { nebulae: [nebulaAt(0, 1000, 100)] }))
+  assert.deepEqual(deep.effectFog, { color: { x: 0, y: 0, z: 0 }, start: 0, end: 100 })
+  assert.deepEqual(deep.background, { x: 127 / 255, y: 63 / 255, z: 1 })
+})
+
+test("a nebula's ambient pulls the system's towards it, as far as the object is in", () => {
+  const nebulae = [nebulaAt(-200, 150, 100, { ambient: { x: 255, y: 0, z: 0 } })]
+  const ambient = { x: 51, y: 102, z: 153 }
+  const frame = collectSpaceFrame(sceneOf([objectOf('in', 300)], { nebulae, ambient }))
+  assert.deepEqual(frame.draws[0]!.sceneAmbient, { x: 153 / 255, y: 51 / 255, z: 77 / 255 })
 })
 
 test('the sky draws before the far list', () => {
@@ -374,8 +444,8 @@ test('the sky draws before the far list', () => {
 })
 
 test('a far solar in any nebula is left out', () => {
-  const solar = objectOf('solar', 30000, { solar: { large: true }, ...inField(0.1) })
-  assert.deepEqual(collected([solar]), [])
+  const solar = objectOf('solar', 30000, { solar: { large: true } })
+  assert.deepEqual(collected([solar], { nebulae: [nebulaAt(-30000, 50, 100)] }), [])
 })
 
 test('effects walk by type, in the order given within one, and 0x2b never', () => {

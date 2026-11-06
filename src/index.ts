@@ -25,7 +25,6 @@ export {
   collectSpaceFrame,
   RETAIL_SPACE_LIMITS,
   type SpaceEffect,
-  type SpaceField,
   type SpaceLimits,
   type SpaceObject,
   type SpaceScene,
@@ -38,9 +37,27 @@ export {
   systemAmbient,
   type Graph,
   type LightSet,
+  type NebulaAmbient,
   type ObjectLighting,
   type SpaceLight,
 } from '#/scene/light.js'
+export {
+  exteriorFactor,
+  findNebula,
+  fogEnd,
+  fogFar,
+  nebulaState,
+  pickField,
+  RETAIL_NEBULA_LIMITS,
+  zoneOf,
+  type Fog,
+  type NebulaLimits,
+  type NebulaState,
+  type SpaceField,
+  type SpaceNebula,
+  type Within,
+  type Zone,
+} from '#/scene/nebula.js'
 export { projectionMatrix, viewMatrix, type Camera } from '#/scene/camera.js'
 export { partTransforms } from '#/scene/hierarchy.js'
 export {

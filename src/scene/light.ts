@@ -284,9 +284,19 @@ export const lightSet = (lights: readonly SpaceLight[]): LightSet => ({
   grid: new LightGrid(lights),
 })
 
+/** The `[NebulaLight] ambient` an object is in, as written, and how far in, from 0 to 1. */
+export interface NebulaAmbient {
+  ambient: Vector3
+  factor: number
+}
+
+// `0x555595`: towards the nebula's, rounded, and with no clamp, so only the low byte is kept.
+const towards = (from: number, to: number, by: number): number =>
+  (Math.trunc((to - from) * by + from + 0.5) & 0xff) / 255
+
 /**
  * `StarSysApplyObjectLighting` with every option on, from where the object stands and its sphere's
- * radius. `ambient` is the system's `[Ambient]`, as written. A nebula's ambient and fog are to come.
+ * radius. `ambient` is the system's `[Ambient]`, as written. Its fog is `collectSpaceFrame`'s.
  */
 export const lightObject = (
   { lights, grid }: LightSet,
@@ -294,9 +304,17 @@ export const lightObject = (
   radius: number,
   ambient: Vector3,
   time: number,
+  nebula?: NebulaAmbient,
 ): ObjectLighting => {
   // `EngineLightApplyList` reads the bytes it was given back as floats, and adds ambient lights to them.
   const sum = systemAmbient(ambient)
+  if (nebula) {
+    const { ambient: to, factor } = nebula
+    const byte = (value: number) => Math.trunc(value) & 0xff
+    sum.x = towards(Math.round(sum.x * 255), byte(to.x), factor)
+    sum.y = towards(Math.round(sum.y * 255), byte(to.y), factor)
+    sum.z = towards(Math.round(sum.z * 255), byte(to.z), factor)
+  }
   const lit: SceneLight[] = []
   for (const index of nearbyLights(grid, lights, position, radius)) {
     const light = lights[index]!

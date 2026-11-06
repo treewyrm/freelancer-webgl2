@@ -288,6 +288,7 @@ export const createRenderer = (gl: WebGL2RenderingContext): Renderer => {
         gl,
         view: frame.view,
         projection,
+        fog: frame.effectFog,
         bindTexture: ({ texture }) => {
           gl.activeTexture(gl.TEXTURE0 + DIFFUSE_UNIT)
           gl.bindTexture(gl.TEXTURE_2D, texture ? textureOf(texture.entry) : null)

@@ -6,7 +6,10 @@ import {
   type VMeshData,
   type VMeshRef,
 } from '@treewyrm/freelancer/vmesh'
+import { EffectInstance } from '#/alchemy/effect.js'
+import { basic, eased, emitter, flat, sceneOf, tint } from '#/alchemy/fixtures.js'
 import type { Fixture } from '#/harness.js'
+import { zoneOf } from './nebula.js'
 import { createRenderer } from './render.js'
 import { collectSpaceFrame, type SpaceObject, type SpaceScene } from './space.js'
 
@@ -18,6 +21,8 @@ export interface SpaceReport {
   withDepth: number[][]
   /** The middle, lit by a point light at full, half and no strength. */
   pointLit: number[]
+  /** The middle, from 100 into a nebula's edge: a white square in it, then a red effect. */
+  fogged: { square: number[]; effect: number[]; unfoggedEffect: number[] }
 }
 
 // A square of half-size 1 facing +Z: FVF 0x112.
@@ -150,6 +155,61 @@ export default (async (gl) => {
     lightAt({ x: 1, y: 0, z: 0 }, 6.5),
   ]
 
+  // From 300 out on +Z, 100 into a nebula of 400 whose fog is 200 deep.
+  const nebula = {
+    zone: zoneOf({ type: 'sphere', center: { x: 0, y: 0, z: 0 }, radius: 400 }),
+    fog: { distance: 200, color: { x: 0.5, y: 0.25, z: 1 } },
+  } as const
+  const fogShot = (objects: SpaceObject[], effects: SpaceScene['effects'], nebulae = [nebula]) => {
+    renderer.render(
+      collectSpaceFrame({
+        camera: {
+          position: { x: 0, y: 0, z: 300 },
+          orientation: Matrix3.identity,
+          fovh: 45,
+          near: 1,
+          far: 1,
+        },
+        aspect: width / height,
+        ambient: { x: 255, y: 255, z: 255 },
+        lights: [],
+        objects,
+        effects,
+        nebulae,
+      }),
+    )
+    return read(width >> 1, height >> 1)
+  }
+  // Red at half alpha, over black, at the nebula's centre.
+  const quad = sceneOf([
+    {
+      node: basic('a', {
+        BasicApp_Color: tint(1, 0, 0),
+        BasicApp_Alpha: eased(0.5),
+        BasicApp_Size: eased(100),
+      }),
+    },
+    {
+      node: emitter('e', {
+        Emitter_Frequency: flat(0),
+        Emitter_InitialParticles: 1,
+        Emitter_InitLifeSpan: flat(100),
+      }),
+      targets: ['a'],
+    },
+  ]).scene
+  const effect = () => {
+    const instance = new EffectInstance(quad)
+    instance.advance(1 / 60)
+    return [{ type: 0, instance, texture: () => undefined }]
+  }
+  const fogged = {
+    // 50 from the camera, 250 from the centre.
+    square: fogShot([square([1, 1, 1], -250, -250, 30)], []),
+    effect: fogShot([], effect()),
+    unfoggedEffect: fogShot([], effect(), []),
+  }
+
   renderer.dispose()
-  return { error: gl.getError(), beyondFar, noDepth, withDepth, pointLit }
+  return { error: gl.getError(), beyondFar, noDepth, withDepth, pointLit, fogged }
 }) satisfies Fixture<SpaceReport>

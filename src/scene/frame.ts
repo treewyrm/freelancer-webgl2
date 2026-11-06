@@ -32,6 +32,7 @@ import { projectionMatrix, sphereInFrustum, viewMatrix, type Camera } from './ca
 import { partTransforms } from './hierarchy.js'
 import { sampleUvAnimation, type UvTransform } from './uv-animation.js'
 import { largestAxis, levelAt, levelEnds, levelMetric, type LodList } from './level.js'
+import type { Fog } from './nebula.js'
 
 export interface SceneLight {
   color: Vector3
@@ -217,6 +218,8 @@ export interface Draw {
   lights?: SceneLight[]
   /** In place of the frame's, for this draw. */
   projection?: Matrix4
+  /** D3D's table fog, on depth: a nebula's, for what it holds (`StarSysApplyObjectLighting`). */
+  fog?: Fog
   negateNormals: boolean
   normalizeNormals: boolean
   blend: boolean
@@ -253,6 +256,8 @@ export interface Frame {
   draws: Draw[]
   /** Each appearance of each effect, after `draws`, in the game's tree order. */
   effects: EffectDraw[]
+  /** Over every effect, as `SpaceObjDrawPass` sets it in a nebula. */
+  effectFog?: Fog
   /** What didn't draw as authored: materials M3 is to cover, and any mesh or texture not found. */
   unsupported: string[]
   /** Materials of a type no DLL registers. They draw nothing in retail either. */

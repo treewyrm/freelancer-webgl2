@@ -102,7 +102,7 @@ needs its own frame's `dt` to compare against.
 - An animated texture's own playback, which picks the atlas when `UseCommonTexFrame` is off (`0x6244ef0`). M8's.
 - The beam's wireframe flag `0x1C65B7B9` isn't drawn. D3D's fill mode has no GL equivalent, but lines could do.
 - A present `BlendInfo` of `None` (22 retail nodes) is no D3D value, and draws as the default here.
-- Fog waits for M7. The alpha test `GREATER 0` is as captured in the menu, and the begin-draw as read doesn't
+- Fog is the frame's: black over every effect in a nebula's edge or core (`SpaceObjDrawPass`). The alpha test `GREATER 0` is as captured in the menu, and the begin-draw as read doesn't
   set it, so another frame may leave it otherwise. M7 and M8 should check. The clamp is its own to set.
 - A non-positive `Emitter_InitLifeSpan` births nothing here, by this library's rule, not read.
 - **`FxMeshAppearance` stays out**, and is reported. The game's factory fails on every one and the DLL calls

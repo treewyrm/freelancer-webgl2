@@ -296,15 +296,25 @@ renderer. Random streams need not match retail; each appearance's sizes, colours
 - [x] The game's frame order: `collectSpaceFrame`, from `SpaceObjDrawPass` (`0x51c200`). Five lists sorted far
       to near, the far list on a plane of 250000 with no depth, the batcher flushed per object, effects by
       type. Pinned by reading and by pixels (`src/scene/space.*`). The drain order and its three constants were
-      checked in `Freelancer-original.exe`. **Uncaptured.** The host supplies `lodRange`, each object's `field`
-      and the scene's `SpaceField`.
+      checked in `Freelancer-original.exe`. **Uncaptured.** The host supplies `lodRange`.
 - [x] Light selection and ambient, per object: `lightObject`, from `StarSysApplyObjectLighting` and
       `engine_light.cpp`. Retail's XZ grid, four lights at most, the widest first and the file breaking ties,
       `atten_curve` turning a sun at each object, `color_curve` on the host's clock, ambient lights, and D3D8
       point lights in the shader. Pinned by reading and by pixels. **Uncaptured.** The host reads `[IGraph]`
       and `[LightSource]` into `Graph` and `SpaceLight`.
-- [ ] Fog and nebula state: picking `SpaceField` (`FUN_0051b730`), a nebula's ambient over the system's,
-      the fog per object and over effects (`FogApplyColorAndRange`), and the clear colour in a nebula.
+- [x] Fog and nebula state: `collectSpaceFrame` takes the system's nebulae and picks the field as
+      `SelectFieldControllers` (`0x51b730`) does, finds each object's nebula (`StarSysFindNebula`), and from
+      `FNebulaEffect::Update`, `FogFactor` and `FogFarClamp` gives what a nebula holds its fog and its
+      `[NebulaLight]` ambient, effects a black fog, and the clear the fog's colour deep inside. W-fog in the
+      shaders, as retail picks it on a T&L device. `zoneOf` gives `ZONE`'s reach for each shape. Pinned by
+      reading and by pixels (`src/scene/nebula.*`, `space.*`). **Uncaptured**, so the hardware's fog-factor
+      precision is a guess. The host reads `[Fog]` and `[NebulaLight]` into `SpaceNebula`.
+- [ ] A nebula's exclusion zones: the camera's moves the fog's end toward its `fog_far` and widens
+      `FogFarClamp`, and `FogFactor` blends by its immersion (`FNebulaEffect::Update`, `0x507194` on).
+- [ ] `[BackgroundLightning]`: `FillFogRgb` flashes the clear colour on a timer and `rand()`, by default
+      too (a duration of 0.5 every 10 or so). Needs the frame's time step and a random source from the host.
+- [ ] An object's nebula is found each frame here, while retail keeps it from when the object moved and tries
+      that one first (`StarSysFindNebula`'s hint). Overlapping nebulae are the only difference; check one exists.
 - [ ] Lights beyond a system file's: a nebula's own `[LightSource]`s, and the ones equipment carries.
 - [ ] Compute `lodRange` from an archetype's lists (`ComputeLodPickThis`, `ApplyArchLodRanges`), far clamp included.
 - [ ] What `SpaceEffectsDrawFrame` does around effects: `ZFUNC` 4 where the program has `LESS`, the view test

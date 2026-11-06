@@ -7,6 +7,7 @@ import { createProgram, type Program } from '#/gl/program.js'
 import { ATTRIBUTE_LOCATIONS } from '#/mesh/plan.js'
 import { MAX_BONES } from '#/deformable/skin.js'
 import type { Draw, Frame, SceneLight } from '#/scene/frame.js'
+import { FOG_GLSL, FOG_UNIFORMS, setFog } from './fog.js'
 
 /** Retail lights a model with at most four (library `THORN.md`, `lt_grp`). */
 export const MAX_LIGHTS = 4
@@ -153,6 +154,7 @@ uniform int alphaFunction;
 uniform int secondStage;
 uniform bool secondTextured;
 uniform sampler2D secondMap;
+${FOG_GLSL}
 
 in vec4 lit;
 in vec2 uv;
@@ -175,6 +177,9 @@ void main() {
     vec4 cube = texture(environmentMap, reflection);
     color = vec4(clamp(2.0 * cube.rgb * color.rgb, 0.0, 1.0), clamp(cube.a * color.a, 0.0, 1.0));
   }
+
+  // After the stages, before blending, and never on alpha.
+  color.rgb = fogged(color.rgb);
 
   // On the 8-bit value.
   float alpha8 = floor(color.a * 255.0 + 0.5);
@@ -218,6 +223,7 @@ const UNIFORMS = [
   'diffuseMap',
   'environmentMap',
   'alphaReference',
+  ...FOG_UNIFORMS,
 ] as const
 
 export type DcDtProgram = Program<(typeof UNIFORMS)[number]> & { boneBuffer: WebGLBuffer }
@@ -318,9 +324,11 @@ export const setDrawUniforms = (
     | 'environment'
     | 'second'
     | 'uvTransform'
+    | 'fog'
   >,
 ): void => {
   gl.uniformMatrix4fv(uniforms.world, false, Matrix4.toArray(draw.world))
+  setFog(gl, uniforms, draw.fog)
   gl.uniform4fv(uniforms.materialDiffuse, draw.diffuse)
   gl.uniform3f(uniforms.materialAmbient, draw.ambient.x, draw.ambient.y, draw.ambient.z)
   gl.uniform3f(uniforms.materialEmissive, draw.emissive.x, draw.emissive.y, draw.emissive.z)
