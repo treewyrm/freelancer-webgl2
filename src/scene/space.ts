@@ -60,8 +60,16 @@ export interface SpaceObject {
   sphere: { center: Vector3; radius: number }
   /** Only a solar reaches the far list. Anything else stops at the system's draw range. */
   solar?: {
-    /** In `G_LargeSolars`, radius over 200 and type bit 7 clear: no `solarQueryRange` limit. */
+    /**
+     * In `G_LargeSolars` (`0x540d18`), `extent` over 200 and type bit 7 clear: no
+     * `solarQueryRange` limit.
+     */
     large?: boolean
+    /**
+     * `CObject::Radius`: the engine's extent of its instance, the root part's top level, not its
+     * `.sur`. `sphere`'s radius when absent.
+     */
+    extent?: number
     /** Planet or moon, `TypeBits & 7` with no star sphere: sorted by its surface, not its centre. */
     planet?: boolean
   }
@@ -396,7 +404,8 @@ export const collectSpaceFrame = ({
     // A small solar comes from a query about the camera (`BspPartition::QuerySphere`, its radius and
     // the range), and the rest from lists that have no such limit.
     if (object.solar && !object.solar.large) {
-      const reach = object.sphere.radius + solarQueryRange
+      // Which radius the object DB's bucket holds isn't read: taken as `extent`, as `large` is.
+      const reach = (object.solar.extent ?? object.sphere.radius) + solarQueryRange
       if (squared >= reach * reach) continue
     }
 

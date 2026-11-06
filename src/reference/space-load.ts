@@ -211,6 +211,13 @@ const SPHERE_TYPES = new Set(['PLANET', 'MOON'])
  * about its centre of mass (`PhySys::GetRadiusR`). Read as the `.sur` root part's radius and mass
  * centre, which is an inference: IVP's limit isn't traced to the file. Unturned, as every object here.
  */
+/** A rigid model's root part at its top level. */
+const rootLevel = (model: RigidModel) => {
+  const root = model.type === 'compound' ? model.part : model
+  const source = root.type === 'rigid' ? root.part : undefined
+  return source?.type === 'multilevel' ? source.levels[0] : source
+}
+
 const bodySphere = async (
   section: Section,
   at: Vector3,
@@ -964,6 +971,12 @@ export const loadSystem = async (
         ? { center: at, radius: model.radius }
         : await bodySphere(section, at, read)
     const { radius } = sphere
+    // `CObject::Radius`, which the engine sets from its instance's extent: the root part's top level
+    // (`space_solar_plant`'s 86.8, where its `.sur` is 264.6), or a planet's sphere.
+    const extent =
+      model.type === 'sphere'
+        ? model.radius
+        : (rootLevel(model)?.reference.boundingSphere.radius ?? radius)
     const range = lodRange(sources(model), lists, { detail })
     const jointState = await animate(section)
     const attached = await attach(model, section, Matrix4.translation(at), jointState)
@@ -974,7 +987,7 @@ export const loadSystem = async (
       ...(flares.length ? { flares } : {}),
       position: at,
       sphere,
-      solar: { large: radius > 200, planet },
+      solar: { large: extent > 200, extent, planet },
       // `systemIni` writes every `[Object]` before any `[Nebula]`: no solar finds one.
       ...(system.nebulae?.length ? { nebula: null } : {}),
       ...(range > 0 ? { lodRange: range } : {}),

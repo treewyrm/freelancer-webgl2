@@ -458,10 +458,12 @@ renderer. Random streams need not match retail; each appearance's sizes, colours
 - [x] **You:** `asteroid_exband` and `asteroid_exband_edge` (`src/reference/systems.ts`): the lab field
       with an exclusion band about the station, from in the field and from 500 past its surface,
       where it shows at half.
-- [ ] `asteroid_outside`'s frame around the band: retail draws `smallstation1_old_nodock` at 10500 at
-      a coarser level than `levelEnds` picks, and leaves out `space_solar_plant` at 12700, whose
-      `LODranges = 0, 3000, 8000` the far clamp (`ApplyArchLodRanges`) holds to 15001 at
-      `level_of_detail` 1. One reading of `ArchLod` is wrong; every run so far is at 1.
+- [x] `asteroid_outside`'s frame around the band. Not a level of detail: retail's station levels were
+      ours all along, and `space_solar_plant` is a small solar. `G_LargeSolars` (`0x540d18`) tests
+      `CObject::Radius`, which the engine sets from its instance's extent, the root part's top level:
+      the plant's 86.8, where its `.sur` is 264.6. So only the camera's query of 10000 finds it, and
+      at 12700 it doesn't. `SpaceObject.solar.extent`; the query's reach is taken from it too, unread.
+      **Matched in `asteroid_outside`** draw for draw.
 - [ ] A nebula's fog overlay, which hides the sky and what's behind from inside (`asteroid_nebula`'s
       draw 30), its exclusion shells, and its exterior from outside.
 - [ ] An asteroid field's billboards and dynamic asteroids, which `rand()` drives.

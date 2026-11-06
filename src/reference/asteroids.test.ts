@@ -42,6 +42,15 @@ const RUNS_COMPARED: AsteroidRun[] = [
   // In the field and the nebula: a piece of the band, the plant in the nebula's hole, the fog
   // overlay, the ship, then 50 cubes, none in the hole.
   { name: 'asteroid_nebula', scene: 109, unbuilt: [30], band: [10], cubes: [55, 50] },
+  // 13000 from the field's centre: all five pieces, far to near, faces turned both ways, and no cube.
+  // The plant, 12700 off, is a small solar the camera's query doesn't reach.
+  {
+    name: 'asteroid_outside',
+    scene: 60,
+    unbuilt: [],
+    band: [10, 11, 12, 13, 14],
+    cubes: [60, 0],
+  },
   // In the field, 1500 from the station: the field's band and the one about the station, sorted
   // together, all at full alpha, as the camera is within the field.
   {
@@ -61,13 +70,6 @@ const RUNS_COMPARED: AsteroidRun[] = [
   },
 ]
 
-// 13000 from the field's centre: all five pieces, far to near, faces turned both ways. The frame
-// around them isn't compared: retail draws its station at a coarser level than this picks, and
-// leaves out the plant, which `level.ts`'s far clamp keeps.
-const BAND_RUNS: Pick<AsteroidRun, 'name' | 'band'>[] = [
-  ...RUNS_COMPARED,
-  { name: 'asteroid_outside', band: [10, 11, 12, 13, 14] },
-]
 
 const skipOf = (name: string) =>
   !existsSync(data)
@@ -184,7 +186,7 @@ for (const { name, scene, unbuilt, cubes } of RUNS_COMPARED) {
   )
 }
 
-for (const { name, band } of BAND_RUNS)
+for (const { name, band } of RUNS_COMPARED)
   test(
     `${name}: each band piece is retail's, in state, place, colour, fade and UVs`,
     { skip: skipOf(name) },
