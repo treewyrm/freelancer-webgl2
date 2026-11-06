@@ -73,6 +73,7 @@ export {
   type Within,
   type Zone,
 } from '#/scene/nebula.js'
+export { fogOverlayDraw } from '#/scene/overlay.js'
 export {
   NebulaLightning,
   RETAIL_BACKGROUND_LIGHTNING,

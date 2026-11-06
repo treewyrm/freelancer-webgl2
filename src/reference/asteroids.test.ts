@@ -41,7 +41,7 @@ const RUNS_COMPARED: AsteroidRun[] = [
   { name: 'asteroid_inside', scene: 128, unbuilt: [], band: [10, 11, 12], cubes: [87, 37] },
   // In the field and the nebula: a piece of the band, the plant in the nebula's hole, the fog
   // overlay, the ship, then 50 cubes, none in the hole.
-  { name: 'asteroid_nebula', scene: 109, unbuilt: [30], band: [10], cubes: [55, 50] },
+  { name: 'asteroid_nebula', scene: 109, unbuilt: [], band: [10], cubes: [55, 50] },
   // 13000 from the field's centre: all five pieces, far to near, faces turned both ways, and no cube.
   // The plant, 12700 off, is a small solar the camera's query doesn't reach.
   {
@@ -69,7 +69,6 @@ const RUNS_COMPARED: AsteroidRun[] = [
     cubes: [93, 10],
   },
 ]
-
 
 const skipOf = (name: string) =>
   !existsSync(data)
@@ -246,3 +245,36 @@ for (const { name, band } of RUNS_COMPARED)
       }
     },
   )
+
+test(
+  "asteroid_nebula: the fog overlay is retail's quad, the fog's colour at the camera's depth",
+  { skip: skipOf('asteroid_nebula') },
+  async () => {
+    const { frame, captured } = await load('asteroid_nebula')
+    const ours = frame.draws[30]!
+    const theirs = captured[30]!
+    assert.equal(ours.materialName, 'fog overlay')
+    assert.equal(theirs.call, 'DrawIndexedPrimitiveUP')
+    // `Win3DSetOrtho2DForCamera`: pixels to clip space over 1024 by 768, Y down.
+    assert.deepEqual(
+      theirs.projection!.map((v) => Math.fround(v)),
+      [2 / 1024, 0, 0, 0, 0, -2 / 768, 0, 0, 0, 0, 1, 0, -1, 1, 0.5, 1].map(Math.fround),
+    )
+    const floats = new Float32Array(ours.mesh.vertices.buffer)
+    const bytes = ours.mesh.vertices
+    theirs.vertexData!.forEach(({ p, d }, at) => {
+      const [x, y] = [floats[at * 6]!, floats[at * 6 + 1]!]
+      // Back to pixels: the last column and row, 1023 and 767, are where it ends.
+      assert.ok(Math.abs(((x + 1) * 1024) / 2 - p[0]!) < 1e-3, `vertex ${at} x`)
+      assert.ok(Math.abs(((1 - y) * 768) / 2 - p[1]!) < 1e-3, `vertex ${at} y`)
+      const [b, g, r, a] = bytes.slice(at * 24 + 12, at * 24 + 16)
+      const colour = ((a! << 24) | (r! << 16) | (g! << 8) | b!) >>> 0
+      assert.equal(colour.toString(16), Number(d).toString(16), `vertex ${at}`)
+    })
+    // Under an identity view in retail; ours undoes the frame's view.
+    const identity = Matrix4.multiply(frame.view, ours.world)
+    for (const axis of ['x', 'y', 'z', 'w'] as const)
+      for (const cell of ['x', 'y', 'z', 'w'] as const)
+        assert.ok(Math.abs(identity[axis][cell] - (axis[0] === cell[0] ? 1 : 0)) < 1e-6)
+  },
+)

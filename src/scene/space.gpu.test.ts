@@ -36,7 +36,7 @@ test('on the main list the same square hides the ship', () => {
   assert.deepEqual(report.withDepth, [RED, RED])
 })
 
-test('in a nebula, what it holds fades to its fog by depth, and effects fade to black', () => {
+test('in a nebula, what it holds fades to its fog by depth, effects fade to black over its overlay', () => {
   const { square, effect, unfoggedEffect } = report.fogged
   // The camera is half through the fog: it ends 200 away, and 1 / 0.75² that for the square, which
   // is three quarters in. D3D's linear fog at W = 50, blending white into (127, 63, 255).
@@ -47,9 +47,12 @@ test('in a nebula, what it holds fades to its fog by depth, and effects fade to 
     assert.ok(Math.abs(value - expected[index]!) <= 1, `${square} against ${expected}`)
   // Effects use the camera's fog: it ends at 200 / 0.5², and the quad is 300 away.
   assert.deepEqual(unfoggedEffect, [127, 0, 0])
+  // Over the fog overlay, at half the camera's depth: the fog's colour at alpha 127 over black.
+  const overlay = [127, 63, 255].map((fog) => (fog * 127) / 255)
   const red = 255 * ((800 - 300) / 800) * 0.5
-  assert.ok(Math.abs(effect[0]! - red) <= 1, `${effect}`)
-  assert.deepEqual(effect.slice(1), [0, 0])
+  const added = [overlay[0]! + red, overlay[1]!, overlay[2]!]
+  for (const [index, value] of effect.entries())
+    assert.ok(Math.abs(value - added[index]!) <= 1, `${effect} against ${added}`)
 })
 
 test('an equipment spot lights within its outer cone, fading from its inner, per vertex', () => {

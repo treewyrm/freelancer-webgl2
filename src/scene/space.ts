@@ -16,6 +16,7 @@ import { ringImmersion, ringPieceDraw, type PlanetRing, type RingPiece } from '.
 import { fieldCubes, nearFieldFraction, type SpaceAsteroidField } from './asteroids.js'
 import { flareQuads, type FrameRect, type ScreenQuad, type SpaceFlare } from './flare.js'
 import type { AsteroidBand } from './band.js'
+import { fogOverlayDraw } from './overlay.js'
 import {
   directionalLightsAt,
   lightObject,
@@ -691,6 +692,11 @@ export const collectSpaceFrame = ({
             depthWrite: false,
             projection: farProjection,
           }
+    }
+    // `DrainMeshAndAsteroids` in a field: the main lists, then the fog overlay, then the field's own.
+    if (at === NOMAD_OFFSET + MAIN && field && field.enclosure !== 0) {
+      const overlay = fogOverlayDraw(field.state, view, viewport)
+      if (overlay) draws.push(overlay)
     }
     // `CliAsteroidTickFields`: outside a field after the main list and the rings' clouds, inside one
     // after its own list.

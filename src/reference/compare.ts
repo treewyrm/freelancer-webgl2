@@ -24,8 +24,10 @@ export const assertFrameMatches = (
     const what = `draw ${n}, ${ours.materialName}`
 
     // A ring piece is drawn from memory, `DrawPrimitiveUP`, with no indices and no buffer.
-    const immediate = retail.call === 'DrawPrimitiveUP'
-    assert.equal(ours.count, immediate ? retail.vertices : retail.indices, what)
+    // Win3D's immediate mode: lists unindexed, quads indexed from user memory.
+    const unindexed = retail.call === 'DrawPrimitiveUP'
+    const immediate = unindexed || retail.call === 'DrawIndexedPrimitiveUP'
+    assert.equal(ours.count, unindexed ? retail.vertices : retail.indices, what)
     // Retail's Two, nomad and atmosphere copy their vertices elsewhere, so only the others compare.
     // Retail holds a model's meshes in one index buffer, so each mesh has one constant offset.
     if (!ours.negateNormals && !ours.nomad && !ours.atmosphere && !streamed && !immediate) {
@@ -110,7 +112,9 @@ export const assertFrameMatches = (
         : ours.second || ours.nomad
           ? 7
           : 1
-    assert.equal(operation, stage, what)
+    // With stage 0 off the cascade ends there, and stage 1 is whatever was left: the fog overlay's.
+    if (retail.stages[0]!.states['COLOROP'] !== 1 || ours.texture)
+      assert.equal(operation, stage, what)
     if (ours.second?.texture) {
       assert.ok(stageNames(1).includes(ours.second.texture.name.toLowerCase()), what)
       assert.equal(retail.stages[1]!.states['TEXCOORDINDEX'], ours.second.texture.uvSet, what)

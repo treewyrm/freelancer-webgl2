@@ -521,10 +521,12 @@ test('in a field its edge drains main lists first, then its own and its nomads',
     objectOf('nomad in field', 300, { nomad: true }),
     besideOf('near'),
   ]
-  // Near, in a field or not, joins the field's list once the camera is in one.
+  // Near, in a field or not, joins the field's list once the camera is in one. The fog overlay
+  // falls between the main lists and the field's.
   assert.deepEqual(collected(objects, { nebulae: [slabOf(50, -350, 100)] }), [
     'main',
     'nomad',
+    'fog overlay',
     'in field',
     'near',
     'nomad in field',
@@ -534,8 +536,8 @@ test('in a field its edge drains main lists first, then its own and its nomads',
 test('at its edge, what it fully holds shows only within the fog', () => {
   // The camera is 600 in, short of the fog's 700, which ends 700 away.
   const nebulae = [nebulaAt(-700, 1300, 700)]
-  assert.deepEqual(collected([objectOf('held', 600)], { nebulae }), ['held'])
-  assert.deepEqual(collected([objectOf('held', 800)], { nebulae }), [])
+  assert.deepEqual(collected([objectOf('held', 600)], { nebulae }), ['fog overlay', 'held'])
+  assert.deepEqual(collected([objectOf('held', 800)], { nebulae }), ['fog overlay'])
 })
 
 test('in its core: no sky, no far list, only what it holds, and its own far plane', () => {
@@ -545,8 +547,11 @@ test('in its core: no sky, no far list, only what it holds, and its own far plan
     besideOf('out'),
     objectOf('solar', 30000, { solar: { large: true } }),
   ]
-  const frame = collectSpaceFrame(sceneOf(objects, { sky, nebulae: [slabOf(350, -650, 100)] }))
-  assert.deepEqual(names(frame), ['held'])
+  const nebulae = [slabOf(350, -650, 100)]
+  const frame = collectSpaceFrame(sceneOf(objects, { sky, nebulae }))
+  // The frame the camera reaches the core still draws the overlay, at full; the next doesn't.
+  assert.deepEqual(names(frame), ['fog overlay', 'held'])
+  assert.deepEqual(collected(objects, { sky, nebulae }), ['held'])
   // The fog ends 100 in, and the least far plane is 5000.
   assert.deepEqual(frame.projection, projectionMatrix({ ...sceneOf([]).camera, far: 5000 }, 1))
   // A far beyond the system's is cut back.
@@ -587,11 +592,12 @@ test("deep in a nebula its lightning flashes the clear and lights what's there",
   // With no step the wait never ends.
   const still = at()
   assert.deepEqual(still.background, { x: 127 / 255, y: 63 / 255, z: 1 })
-  assert.deepEqual(still.draws[0]!.lights, [])
+  const held = (frame: Frame) => frame.draws.find(({ materialName }) => materialName === 'held')!
+  assert.deepEqual(held(still).lights, [])
   const flashing = at(1.5)
   assert.deepEqual(flashing.background, { x: 143 / 255, y: 79 / 255, z: 1 })
   // A quarter's intensity, by half of a half, down -Z.
-  assert.deepEqual(flashing.draws[0]!.lights, [
+  assert.deepEqual(held(flashing).lights, [
     { color: { x: 15 / 255, y: 15 / 255, z: 15 / 255 }, direction: { x: 0, y: 0, z: -1 } },
   ])
 })

@@ -464,8 +464,18 @@ renderer. Random streams need not match retail; each appearance's sizes, colours
       the plant's 86.8, where its `.sur` is 264.6. So only the camera's query of 10000 finds it, and
       at 12700 it doesn't. `SpaceObject.solar.extent`; the query's reach is taken from it too, unread.
       **Matched in `asteroid_outside`** draw for draw.
-- [ ] A nebula's fog overlay, which hides the sky and what's behind from inside (`asteroid_nebula`'s
-      draw 30), its exclusion shells, and its exterior from outside.
+- [x] A nebula's fog overlay: `fogOverlayDraw`, from `FNebulaEffect::DrawFogOverlay` (`0x508b00`). In
+      a field, after the main lists and before its own (`DrainMeshAndAsteroids`, `0x51facc`), one
+      untextured quad over the viewport to its last pixel, under `Win3DSetOrtho2DForCamera`, in the
+      `[Fog]` colour as loaded, its alpha the camera's depth (`+0x294`). None at no depth; at full
+      depth only the frame it's reached (`+0x2b8`), so the core's clear takes over. Pinned by reading
+      and by pixels. **Matched in `asteroid_nebula`**: draw 30's place, four vertices, colour and
+      alpha, and the frame draw for draw. `compare.ts` learnt that a disabled stage 0 ends the
+      cascade, so stage 1's leftovers aren't read.
+- [ ] A nebula's exclusion shell (`DrawExclusionShell`, after the field's list) and its fill sheets in
+      the edge (`DrawFogShell`, `FUN_005074e0`, needing a `fill_shape`). The lab's hole has a
+      `zone_shell`, unseen from 1200 short of it: a capture from inside the hole and one at its edge.
+- [ ] A nebula's exterior from outside (`[Exterior]` puffs and slices), and its `[Clouds]` inside.
 - [ ] An asteroid field's billboards and dynamic asteroids, which `rand()` drives.
 - [ ] Suns: a solar's `star` from `solar\StarArch.ini`, drawn by `FStarSphere` (`star_sphere.cpp`;
       the name is the decomp's, not a sky). Its `star_center` and `star_glow` fans turned to the camera
