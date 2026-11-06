@@ -44,6 +44,8 @@ export interface ReferenceSystem {
     size: readonly number[]
     /** `property_flags`, as retail's field and nebula zones carry them. */
     propertyFlags?: number
+    /** `edge_fraction`: a nebula's exclusion zone without one logs an error (`0x62bc720`). */
+    edgeFraction?: number
   }[]
   /** `[Asteroids]`: a field file under `DATA`, and its zone. */
   asteroids?: { file: string; zone: string }[]
@@ -117,7 +119,7 @@ export const systemIni = ({
     ]),
     ...asteroids.flatMap(({ file, zone }) => ['[Asteroids]', `file = ${file}`, `zone = ${zone}`]),
     ...nebulae.flatMap(({ file, zone }) => ['[Nebula]', `file = ${file}`, `zone = ${zone}`]),
-    ...zones.flatMap(({ nickname, position, pitch, shape, size, propertyFlags }) => [
+    ...zones.flatMap(({ nickname, position, pitch, shape, size, propertyFlags, edgeFraction }) => [
       '[zone]',
       `nickname = ${nickname}`,
       `pos = ${list(position)}`,
@@ -125,6 +127,7 @@ export const systemIni = ({
       `shape = ${shape}`,
       `size = ${size.join(', ')}`,
       ...(propertyFlags === undefined ? [] : [`property_flags = ${propertyFlags}`]),
+      ...(edgeFraction === undefined ? [] : [`edge_fraction = ${edgeFraction}`]),
       'sort = 99.5',
     ]),
   ]
@@ -280,12 +283,16 @@ const LAB_FIELD = [
 ].join('\r\n')
 
 /**
- * The Badlands' fog and light, with no `[Exterior]` or `[Clouds]`, and both lightnings off: all
- * three are `rand()`'s. An exclusion zone opens a hole in it, with a shell.
+ * The Badlands' fog and light, with no `[Clouds]` and both lightnings off, all `rand()`'s. An
+ * `[Exterior]` it must have: with none, `plane_slices` stays 1 and its bits pick from no shapes, which
+ * crashes. No slices and no `fill_shape` builds nothing. An exclusion zone opens a hole, with a shell.
  */
 const LAB_NEBULA = [
   '[TexturePanels]',
   'file = solar\\nebula\\generic_shapes.ini',
+  '[Exterior]',
+  'plane_slices = 0',
+  'color = 15, 10, 40',
   '[NebulaLight]',
   'ambient = 20, 15, 60',
   '[Fog]',
@@ -362,6 +369,8 @@ const ASTEROIDS: Omit<ReferenceSystem, 'name' | 'player'> = {
       pitch: 0,
       shape: 'SPHERE',
       size: [600],
+      propertyFlags: 65536,
+      edgeFraction: 0.2,
     },
   ],
   asteroids: [{ file: ASTEROID_FIELD_FILE, zone: 'Lab_field' }],

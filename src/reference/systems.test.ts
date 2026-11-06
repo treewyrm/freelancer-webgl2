@@ -135,8 +135,10 @@ test('asteroids: the system names its field and nebula, and writes files the gam
     const read = sections(text)
     assert.ok(read.length > 3, path)
     // Nothing `rand()` drives.
-    for (const random of ['DynamicAsteroids', 'AsteroidBillboards', 'Exterior', 'Clouds'])
+    for (const random of ['DynamicAsteroids', 'AsteroidBillboards', 'Clouds'])
       assert.ok(!read.includes(random), `${path}: ${random}`)
+    // A nebula's exterior builds no bits without slices.
+    if (read.includes('Exterior')) assert.match(text, /^plane_slices = 0$/m, path)
   }
   // Every exclusion a file names is a zone of the system.
   for (const { text } of system.files!)
