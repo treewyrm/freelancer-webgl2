@@ -42,7 +42,7 @@ void init() {
     GetPrivateProfileStringA("log", "file", "d3d8log.jsonl", name, MAX_PATH, ini);
     resolve(settings.file, MAX_PATH, name);
 
-    settings.key = GetPrivateProfileIntA("log", "key", VK_F9, ini);
+    settings.key = GetPrivateProfileIntA("log", "key", VK_F11, ini);
     settings.frames = GetPrivateProfileIntA("log", "frames", 3, ini);
     settings.vertsMax = GetPrivateProfileIntA("log", "verts_max", 64, ini);
     settings.matrices = GetPrivateProfileIntA("log", "matrices", 1, ini) != 0;

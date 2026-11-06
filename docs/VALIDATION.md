@@ -25,7 +25,7 @@ A screenshot also carries that stack's filtering and rounding, and so needs a to
 1. Describe it in `src/reference/scenes.ts`: model, camera and lights.
 2. `npm run reference -- mount <name>` writes the `.thn` and points the three `Intro*` rooms at it, so
    the main menu becomes the scene. It runs on the lab install, never the corpus.
-3. Start the game and press F9, which also saves the screenshot.
+3. Start the game and press F11, the proxy's `key`, which also saves the screenshot.
 4. `npm run reference -- collect <name>`, then `restore` when finished.
 5. They land in `references/`, or `$FREELANCER_REFERENCES` if set. The directory is in `.gitignore`
    and outside `files` in `package.json`, because captures contain game assets. Suites **skip with a
@@ -33,6 +33,30 @@ A screenshot also carries that stack's filtering and rounding, and so needs a to
 
 **Use 4:3 and a fixed camera.** Retail only knows 4:3; Hor+ is a port feature of the decomp.
 For a system frame, use a custom system and a save that places the ship.
+
+### A reference system, for a space frame
+
+A system is described in `src/reference/systems.ts`, and `npm run reference -- mount <name>` leaves
+the menu alone and instead writes three things on the lab install:
+
+- `UNIVERSE/SYSTEMS/LAB/<name>.ini`, the system, listed in `universe.ini` as `Lab_<name>`;
+- `lab_<name>.fl` in `Accts/SinglePlayer`, a plain-text save with no `base`, so it loads in space, and
+  `Mission = No_Mission`, so no story runs, followed by `initialworld.ini` as `Restart.fl` has it.
+
+Start the game, **Load Game**, pick the save, wait for the chase camera to settle without touching
+the controls, then press F11. Not F9: in space that opens the chat log, whose icon lands in the
+frame. `collect` and `restore` work as for a scene, and `restore` removes the systems and their
+saves too. The scene's draws end at a depth clear, after which the HUD draws.
+
+The comparison reads the camera from the capture: a known solar's translation in the far list gives
+its position, the sky's rotation its orientation, and the projection its field of view and planes.
+The ship's position comes from its hull's first draw, since the game moves it a little as it loads.
+
+What a system leaves out, on purpose: anything dockable, since one with no `base` logs an error
+(`CSolar`) and the first load with three of them crashed; `[Dust]`, which follows the camera; a sun, whose glow isn't
+built; `rotate` and `spin`, so nothing moves; and the player's lights, guns and contrails, so the ship
+is the bare hull the menu captures already measured. The engine stays, and its flame is in the frame.
+The HUD and the chase camera are the game's, so the camera comes from the capture's matrices.
 
 **The menu as a scene gives an almost empty frame**: one camera and what you put in it, plus button
 quads that are filterable as `D3DFVF_XYZRHW`, and a software cursor to keep out of the way. See

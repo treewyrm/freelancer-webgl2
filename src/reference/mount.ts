@@ -3,10 +3,12 @@
  *
  *   npm run reference -- mount li_elite
  *   npm run reference -- collect li_elite
+ *   npm run reference -- mount space_order
  *   npm run reference -- restore
  *
  * The menu is three bases, each one room naming a `.thn`, and which one plays is not ours to choose,
- * so all three point at the scene. See `freelancer-vscode/docs/renderer/ALCHEMY-LAB.md`.
+ * so all three point at the scene. See `freelancer-vscode/docs/renderer/ALCHEMY-LAB.md`. A system
+ * leaves the menu alone, and adds itself to the universe with a save that places the ship in it.
  */
 import {
   copyFileSync,
@@ -31,13 +33,16 @@ import { writeAlchemy } from '@treewyrm/freelancer/alchemy'
 import { Document } from '@treewyrm/freelancer/ini'
 import { Directory } from '@treewyrm/freelancer/utf'
 import { scenes } from './scenes.js'
+import { saveFile, saveText, systemIni, systems, universeSection } from './systems.js'
 
 const GUEST = '/Volumes/[C] Windows 11'
 
 const game = process.env['FREELANCER_GAME'] ?? join(GUEST, 'Games/Freelancer/DATA')
 const corpus = process.env['FREELANCER_DATA'] ?? join(homedir(), 'Downloads/Freelancer/DATA')
 const references = process.env['FREELANCER_REFERENCES'] ?? 'references'
-const options = join(GUEST, 'Users/treewyrm/Documents/My Games/Freelancer/PerfOptions.ini')
+const profile = join(GUEST, 'Users/treewyrm/Documents/My Games/Freelancer')
+const options = join(profile, 'PerfOptions.ini')
+const SAVES = join(profile, 'Accts/SinglePlayer')
 
 const ROOMS = ['intro1_cityscape', 'intro2_volcano', 'intro3_planetchunks'].map((name) =>
   join(game, 'UNIVERSE/SYSTEMS/INTRO/BASES/ROOMS', `${name}.ini`),
@@ -47,6 +52,9 @@ const EFFECT_SHAPES = join(game, 'FX/effect_shapes.ini')
 const SOLAR_ARCH = join(game, 'SOLAR/solararch.ini')
 const MISC_ALE = join(game, 'FX/MISC/misc_ale.ini')
 const DACOM = join(dirname(game), 'EXE/dacom.ini')
+const UNIVERSE = join(game, 'UNIVERSE/universe.ini')
+const LAB_SYSTEMS = join(game, 'UNIVERSE/SYSTEMS/LAB')
+const INITIAL_WORLD = join(game, 'initialworld.ini')
 
 /** The corpus is measured by other suites. A stray file there reads as their readers drifting. */
 const assertNotCorpus = (): void => {
@@ -57,9 +65,39 @@ const assertNotCorpus = (): void => {
     throw new Error(`${game} is inside the corpus at ${corpus}`)
 }
 
+const asText = (file: string): string =>
+  Buffer.from(Document.read(readFileSync(file)).write('text')).toString('latin1')
+
+const mountSystem = (name: string): void => {
+  const system = systems.get(name)!
+  mkdirSync(LAB_SYSTEMS, { recursive: true })
+  writeFileSync(join(LAB_SYSTEMS, `${name}.ini`), systemIni(system))
+
+  // Every mounted system is listed, so that one save doesn't lose another's.
+  const universe = `${UNIVERSE}.retail`
+  if (!existsSync(universe)) copyFileSync(UNIVERSE, universe)
+  const mounted = readdirSync(LAB_SYSTEMS)
+    // The Mac leaves `._` files beside what it writes on the guest's volume.
+    .filter((file) => file.endsWith('.ini') && !file.startsWith('.'))
+    .map((file) => universeSection(file.slice(0, -'.ini'.length)))
+  writeFileSync(UNIVERSE, `${asText(universe)}\r\n${mounted.join('\r\n')}\r\n`, 'latin1')
+
+  writeFileSync(join(SAVES, saveFile(name)), saveText(system, asText(INITIAL_WORLD)), 'latin1')
+  // The game tries every `*.fl` as a save, the Mac's `._` copies included.
+  for (const directory of [SAVES, LAB_SYSTEMS])
+    for (const file of readdirSync(directory))
+      if (file.startsWith('._')) rmSync(join(directory, file))
+  console.log(`load ${saveFile(name)} to fly in ${name}; the menu is untouched`)
+}
+
 const mount = (name: string): void => {
+  if (systems.has(name)) {
+    assertNotCorpus()
+    return mountSystem(name)
+  }
   const scene = scenes.get(name)
-  if (!scene) throw new Error(`no scene named ${name}: ${[...scenes.keys()].join(', ')}`)
+  const names = [...scenes.keys(), ...systems.keys()]
+  if (!scene) throw new Error(`no scene named ${name}: ${names.join(', ')}`)
   assertNotCorpus()
 
   mkdirSync(SCRIPTS, { recursive: true })
@@ -168,11 +206,14 @@ const mount = (name: string): void => {
   console.log(`menu now plays ${name}${also ? `, with ${also}` : ''}`)
 }
 
+/** Restores everything a mount changed: menu, tables, lab systems and their saves. */
 const restore = (): void => {
   assertNotCorpus()
-  for (const file of [...ROOMS, EFFECT_SHAPES, SOLAR_ARCH, MISC_ALE, DACOM])
+  for (const file of [...ROOMS, EFFECT_SHAPES, SOLAR_ARCH, MISC_ALE, DACOM, UNIVERSE])
     if (existsSync(`${file}.retail`)) renameSync(`${file}.retail`, file)
   rmSync(SCRIPTS, { recursive: true, force: true })
+  rmSync(LAB_SYSTEMS, { recursive: true, force: true })
+  for (const name of systems.keys()) rmSync(join(SAVES, saveFile(name)), { force: true })
   console.log('menu restored')
 }
 

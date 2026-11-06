@@ -29,7 +29,7 @@ nothing else is touched.
 
 ## Capture
 
-Press **F9** in game. Three frames land in `d3d8log.jsonl` beside the executable, with the last one's
+Press **F11** in game (`key` in `d3d8log.ini`; F9 opens the game's chat log). Three frames land in `d3d8log.jsonl` beside the executable, with the last one's
 front buffer in `d3d8log.f<frame>.bmp`, then it goes quiet until the next press. Everything is configurable in `d3d8log.ini`, which is read once at startup.
 
 `all_draws = 1` logs every draw in the frame. The reader arrives in M0 of

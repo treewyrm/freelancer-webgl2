@@ -359,11 +359,11 @@ export const scenes: ReadonlyMap<string, ReferenceScene> = new Map(
       { archetype: 'reference_sky_ew06', category: 'Solar', file: 'starsphere_ew06.cmp' },
     ]),
     effect('effect_sprites', 'sprites', 1),
-    // Press F9 past five seconds, when the reading says the left one has gone.
+    // Press F11 past five seconds, when the reading says the left one has gone.
     effect('effect_folder', 'folder', 10),
     effect('effect_motion', 'motion', 2),
     effect('effect_beams', 'beams', 1),
-    // Press F9 past two seconds, when the third parent has died.
+    // Press F11 past two seconds, when the third parent has died.
     effect('effect_child', 'child', 5),
     // Retail's `poolSize` of 0 crashes the game, so this runs at 1000.
     effect('effect_oriented', 'oriented', 1, { pools: { FxOrientedAppearance: 1000 } }),

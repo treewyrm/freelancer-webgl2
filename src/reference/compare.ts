@@ -80,10 +80,18 @@ export const assertFrameMatches = (
       )
     }
 
-    // D3DCMP_LESS 2, LESSEQUAL 4, ALWAYS 8.
-    assert.equal(retail.states['ZFUNC'], { less: 2, lequal: 4, always: 8 }[ours.depthFunc], what)
+    // D3DCMP_LESS 2, LESSEQUAL 4. With `ZENABLE` 0 the device ignores `ZFUNC`: a sky sets 8, and
+    // the far list leaves whatever was there (`DrainBucket`).
     assert.equal(retail.states['ZENABLE'], ours.depthFunc === 'always' ? 0 : 1, what)
-    if (ours.sceneAmbient) assert.equal(retail.states['AMBIENT'], 0xffffffff, what)
+    if (ours.depthFunc !== 'always')
+      assert.equal(retail.states['ZFUNC'], { less: 2, lequal: 4 }[ours.depthFunc], what)
+    // The menu's is white. In space each object carries the system's, or its nebula's.
+    if (ours.sceneAmbient) {
+      const { x, y, z } = ours.sceneAmbient
+      const byte = (c: number) => Math.round(c * 255)
+      const packed = ((0xff << 24) | (byte(x) << 16) | (byte(y) << 8) | byte(z)) >>> 0
+      assert.equal(retail.states['AMBIENT'], packed, what)
+    }
 
     // Stage 0's transform is on when ours is.
     assert.equal(retail.stages[0]!.transform !== undefined, ours.uvTransform !== undefined, what)
