@@ -87,7 +87,7 @@ export interface SpaceScene {
   /** `[System] space_color`, 0 to 1. Deep in a nebula, its fog's colour instead. */
   background?: Vector3
   time?: number
-  /** Seconds since the last frame, which a nebula's lightning advances by. 0 when absent. */
+  /** Seconds since the last frame, which each nebula's lightning advances by. 0 when absent. */
   step?: number
 }
 
@@ -224,6 +224,13 @@ export const collectSpaceFrame = ({
   const { position: eye } = given
   const states = nebulae.map((nebula) => nebulaState(nebula, eye, resolved))
   const field = pickField(states, eye, range)
+  // `FNebulaEffect::Update`, every nebula's, before the frame. A flashing light joins the system's.
+  const flashes: SpaceLight[] = []
+  for (const { nebula, depth } of states) {
+    nebula.lightning?.update(step, depth, eye)
+    const light = nebula.lightning?.light
+    if (light) flashes.push(light)
+  }
   const inCore = field?.enclosure === 2
   const far = inCore ? Math.min(fogFar(field.state, resolved), systemFar) : systemFar
   const camera: Camera = { ...given, far }
@@ -289,7 +296,7 @@ export const collectSpaceFrame = ({
     }
 
   const farProjection = projectionMatrix(farCamera, aspect)
-  const lighting = lightSet(lights)
+  const lighting = lightSet(flashes.length ? [...lights, ...flashes] : lights)
   for (const at of !field || field.enclosure === 0 ? OUTSIDE_ORDER : INSIDE_ORDER) {
     const onFarList = at === FAR
     const passCamera = onFarList ? farCamera : camera
@@ -361,7 +368,7 @@ export const collectSpaceFrame = ({
       : undefined
   // Deep enough in, the clear is the fog's colour, which its lightning flashes.
   const deep = field && field.state.depth >= 1 ? field.state.nebula : undefined
-  const fogged = deep && (deep.lightning?.fogColor(deep.fog.color, step) ?? deep.fog.color)
+  const fogged = deep && (deep.lightning?.fogColor(deep.fog.color) ?? deep.fog.color)
 
   return {
     background: fogged ? fogOf(0, 0, fogged).color : (background ?? BLACK_BACKGROUND),

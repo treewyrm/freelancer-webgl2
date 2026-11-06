@@ -62,9 +62,11 @@ export {
   type Zone,
 } from '#/scene/nebula.js'
 export {
-  BackgroundLightning,
-  RETAIL_LIGHTNING,
-  type LightningSettings,
+  NebulaLightning,
+  RETAIL_BACKGROUND_LIGHTNING,
+  RETAIL_DYNAMIC_LIGHTNING,
+  type BackgroundLightningSettings,
+  type DynamicLightningSettings,
   type Random,
 } from '#/scene/lightning.js'
 export { projectionMatrix, viewMatrix, type Camera } from '#/scene/camera.js'

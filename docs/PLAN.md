@@ -315,7 +315,7 @@ renderer. Random streams need not match retail; each appearance's sizes, colours
       keeps the camera's zone between frames while its immersion stays at 1e-4, and finds one above 1e-5;
       this finds it afresh, so only that band and overlapping zones can differ. **Uncaptured.** The host
       reads `[Exclusion Zones]` into `NebulaExclusion`.
-- [x] `[BackgroundLightning]`: `BackgroundLightning`, from `FillFogRgb`, flashes the clear colour deep in a
+- [x] `[BackgroundLightning]`: `NebulaLightning`, from `FillFogRgb`, flashes the clear colour deep in a
       nebula, on the scene's `step` and the host's random source. Every nebula has one by default, checked
       in `Freelancer-original.exe` (`0x504b06`). Pinned by reading. Retail's `rand()` is the game's own, so
       only the kind of flash can match. **Uncaptured.**
@@ -323,7 +323,15 @@ renderer. Random streams need not match retail; each appearance's sizes, colours
       (`StarSysFindNebula`'s hint), which `SpaceObject.nebula` gives. It matters only where nebulae overlap,
       and no two retail ones do: every pair whose spheres meet is a pair of ellipsoids, and sampled through
       `EulerMatrix`'s Rz·Ry·Rx they share no point. A mod's can.
-- [ ] Lights beyond a system file's: a nebula's own `[LightSource]`s, and the ones equipment carries.
+- [x] A nebula's own light: a nebula file has no `[LightSource]`, but `[DynamicLightning]` flashes a
+      directional light at the camera, deep inside, in a random direction and colour, brighter while the
+      background flashes (`NebulaAmbientTick`, `0x5097c0`). Every nebula has one by default, checked in
+      `Freelancer-original.exe` (`0x504b4e`). It joins the system's lights after them. Pinned by reading.
+      **Uncaptured.**
+- [ ] Lights equipment and effects carry: player-owned `[Light]` equipment with an `intensity` is a point
+      light of that range, or a spot under 180° of `lightsource_cone` (`client_equip_fx.cpp`, `0x4fdb38`),
+      which needs D3D's spot falloff in the shader. An effect's `lgt_*` is a point light with an animation
+      (`CreateEffectStart`, `0x544299`).
 - [ ] Compute `lodRange` from an archetype's lists (`ComputeLodPickThis`, `ApplyArchLodRanges`), far clamp included.
 - [ ] What `SpaceEffectsDrawFrame` does around effects: `ZFUNC` 4 where the program has `LESS`, the view test
       and `EXIST_OFFSCREEN` (`EffectTypeBucketWalk`), and the screen quads it flushes last (`ScreenQuadFlush`).

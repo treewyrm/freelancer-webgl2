@@ -13,7 +13,7 @@ import { EffectInstance } from '#/alchemy/effect.js'
 import { emitter, sceneOf as fixtureScene } from '#/alchemy/fixtures.js'
 import { projectionMatrix } from './camera.js'
 import { type Frame, type SceneModel } from './frame.js'
-import { BackgroundLightning } from './lightning.js'
+import { NebulaLightning } from './lightning.js'
 import { zoneOf, type SpaceNebula } from './nebula.js'
 import { collectSpaceFrame, type SpaceLimits, type SpaceObject, type SpaceScene } from './space.js'
 
@@ -431,13 +431,21 @@ test('in a nebula effects are fogged to black, and deep in it the clear is its f
   assert.deepEqual(deep.background, { x: 127 / 255, y: 63 / 255, z: 1 })
 })
 
-test("deep in a nebula its lightning flashes the clear, by the scene's step", () => {
-  const lightning = new BackgroundLightning({}, () => 0x4000)
+test("deep in a nebula its lightning flashes the clear and lights what's there", () => {
+  const lightning = new NebulaLightning({}, () => 0x4000)
   const nebulae = [nebulaAt(0, 1000, 100, { lightning })]
-  const at = (step?: number) => collectSpaceFrame(sceneOf([], { nebulae, step })).background
+  const at = (step?: number) =>
+    collectSpaceFrame(sceneOf([objectOf('held', 300)], { nebulae, step }))
   // With no step the wait never ends.
-  assert.deepEqual(at(), { x: 127 / 255, y: 63 / 255, z: 1 })
-  assert.deepEqual(at(1.5), { x: 143 / 255, y: 79 / 255, z: 1 })
+  const still = at()
+  assert.deepEqual(still.background, { x: 127 / 255, y: 63 / 255, z: 1 })
+  assert.deepEqual(still.draws[0]!.lights, [])
+  const flashing = at(1.5)
+  assert.deepEqual(flashing.background, { x: 143 / 255, y: 79 / 255, z: 1 })
+  // A quarter's intensity, by half of a half, down -Z.
+  assert.deepEqual(flashing.draws[0]!.lights, [
+    { color: { x: 15 / 255, y: 15 / 255, z: 15 / 255 }, direction: { x: 0, y: 0, z: -1 } },
+  ])
 })
 
 test("a nebula's ambient pulls the system's towards it, as far as the object is in", () => {
