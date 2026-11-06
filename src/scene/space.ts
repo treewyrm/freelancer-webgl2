@@ -59,6 +59,14 @@ export interface SpaceObject {
    * The game's option 0x1d turns it off, so the host decides.
    */
   pilot?: SceneModel
+  /**
+   * Equipment with a model, each hung on its hardpoint by `attachJoint` and placed with its own
+   * archetype's lists. The engine joins it as the last child of the part holding the hardpoint, so
+   * it draws after that part's subtree (`ConnectInstanceChild`, `RenderInstance`); here, after the
+   * whole model, in the order given. Only the order within the object can differ: batched glass
+   * still waits for its flush, but an unbatched draw on a part with later siblings goes after them.
+   */
+  attached?: readonly SceneModel[]
   /** The archetype's `nomad`: goes three lists up, after everything of its kind (`0x51f5b7`). */
   nomad?: boolean
   /** The archetype's `distance_render`. Past it, it stops reflecting, and `lodRange` may apply. */
@@ -235,6 +243,24 @@ const BLACK: Vector3 = { x: 0, y: 0, z: 0 }
 
 const withoutEnvironment = ({ environment: _, ...model }: SceneModel): SceneModel => model
 
+/**
+ * An attachment under its object's `envmap_material`, which the game sets on the object's instance
+ * (`SetAppearanceInstanceValue`) and its children draw with: the cube is found in the object's.
+ */
+const underOwn =
+  (owner: SceneModel) =>
+  ({ environment: _, ...model }: SceneModel): SceneModel => {
+    const { environment } = owner
+    if (!environment) return model
+    const folded = environment.toLowerCase()
+    return {
+      ...model,
+      environment,
+      texture: (name) =>
+        name.toLowerCase() === folded ? owner.texture(name) : model.texture(name),
+    }
+  }
+
 export const collectSpaceFrame = ({
   camera: given,
   aspect,
@@ -359,20 +385,22 @@ export const collectSpaceFrame = ({
           unregistered,
           resolved,
         )
-      collectModel(
-        // `GameobjSubmitDrawRetail`: only the first tier arms the reflection.
-        picked.tier === 0 ? object.model : withoutEnvironment(object.model),
-        passCamera,
-        aspect,
-        view,
-        time,
-        draws,
-        queued,
-        unsupported,
-        unregistered,
-        resolved,
-        picked.rank === 4 && picked.tier === 0,
-      )
+      // `GameobjSubmitDrawRetail`: only the first tier arms the reflection. What's attached is drawn
+      // in the same `RenderInstance`, under the same flags and the object's reflection.
+      for (const model of [object.model, ...(object.attached ?? []).map(underOwn(object.model))])
+        collectModel(
+          picked.tier === 0 ? model : withoutEnvironment(model),
+          passCamera,
+          aspect,
+          view,
+          time,
+          draws,
+          queued,
+          unsupported,
+          unregistered,
+          resolved,
+          picked.rank === 4 && picked.tier === 0,
+        )
       flushQueued(queued, draws)
       // `GameobjUpdateDrawLighting`, from where it stands and its sphere's radius. A draw with an
       // ambient of its own, an exclusion zone's, keeps it.

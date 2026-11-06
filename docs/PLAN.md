@@ -387,9 +387,21 @@ renderer. Random streams need not match retail; each appearance's sizes, colours
       An object's sphere is the host's: a body's is `get_physical_radius_r`, taken as the `.sur` root
       part's radius and mass centre, and it decided whether the station got the point light. Not
       compared: `mplatform`'s loadout (a turret drawn, a part turned by `mplatform_animate1`) and the
-      effects after the objects. The shot has the chat log's icon in it, from F9; the key is F11 since.
-- [ ] Equipment on a solar or ship from its `loadout`: attached models drawn with their object, and
-      animations (`mplatform_animate1`). `space_order` has one turret and one turned part to check against.
+      effects after the objects, both since built. The shot has the chat log's icon in it, from F9; the
+      key is F11 since.
+- [x] Equipment on a solar or ship from its `loadout`: `SpaceObject.attached`, each model hung on its
+      hardpoint by `attachJoint` (`ConnectAttachedHardpoints`, `0x62940c0`, and `HardpointConnect`): two
+      revolute hardpoints make a revolute joint with the narrower range, opened to ±π past a full turn;
+      otherwise the child's type decides. Drawn after the object in the same `RenderInstance`, so under
+      its flags and its `envmap_material`, each part placed by the equipment's own `[LOD]` blocks.
+      Retail joins it as the last child of the part holding the hardpoint (`ConnectInstanceChild`), so
+      it draws after that part's subtree; here after the whole object, which only reorders within it.
+      An `[InternalFX]`'s `use_animation` loops from the solar's start (`CEInternalFX`, flags 2), which
+      is the host's: `sampleChannel` into `jointState`. **Matched in `space_order`**: one turret part of
+      fourteen, `HpTurret_S1_03`'s `Root`, the rest past their ranges, in state, place and picture; and
+      the quarters to 0.002 at one fitted angle, as the log has no clock. A revolute joint's
+      orientation is the parent's times the child's, untransposed, as read; every turret's `HpConnect`
+      is the identity, so that order is unchecked.
 - [x] Effects in `space_order`: each nozzle's `flame_effect` and `trail_effect_player`
       (`CliEngineAttachExhaustEffects`), and `mplatform`'s `[AttachedFX]` smoke, at `sparam` 0 as an
       engine at rest gives it. Draws 123 to 129 match by order, texture, blend and depth, the rings in

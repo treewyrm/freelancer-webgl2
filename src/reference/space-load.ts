@@ -11,11 +11,17 @@ import { readSurfaceLibrary } from '@treewyrm/freelancer/surface'
 import { Directory } from '@treewyrm/freelancer/utf'
 import { BufferView } from '@treewyrm/freelancer/utility'
 import { getMesh, readVMeshLibrary } from '@treewyrm/freelancer/vmesh'
-import type { CompoundNode } from '@treewyrm/freelancer/compound'
+import { getJointMatrix, type CompoundNode, type Hardpoint } from '@treewyrm/freelancer/compound'
+import {
+  getChannelTime,
+  getScript,
+  readAnimationLibrary,
+  sampleChannel,
+} from '@treewyrm/freelancer/animation'
 import type { RigidPart } from '@treewyrm/freelancer/rigid'
 import type { Camera } from '#/scene/camera.js'
-import { placeParts, type SceneModel } from '#/scene/frame.js'
-import { partTransforms } from '#/scene/hierarchy.js'
+import { placeParts, type PlaceOptions, type SceneModel } from '#/scene/frame.js'
+import { attachJoint, partTransforms } from '#/scene/hierarchy.js'
 import { lodRange, type LodList } from '#/scene/level.js'
 import type { Graph, SpaceLight } from '#/scene/light.js'
 import { placeSphere } from '#/scene/sphere.js'
@@ -47,6 +53,25 @@ const strings = (section: Section, name: string): string[] =>
 
 const vector = ([x, y, z]: readonly number[]): Vector3 => ({ x: x!, y: y!, z: z! })
 
+/** Each nicknamed section's `[LOD]` blocks, the sections that follow it, by nickname, folded. */
+const lodBlocksOf = async (read: ReadAsset, files: string[]): Promise<Map<string, LodList[]>> => {
+  const found = new Map<string, LodList[]>()
+  for (const file of files) {
+    let owner: LodList[] | undefined
+    for (const section of Document.read(await read(file))) {
+      if (section.name.toLowerCase() === 'lod') {
+        const obj = strings(section, 'obj')[0]
+        owner?.push({ ...(obj ? { obj } : {}), ranges: numbers(section, 'LODranges') })
+        continue
+      }
+      const nickname = section.getNickname()?.toLowerCase()
+      owner = nickname && !found.has(nickname) ? [] : undefined
+      if (owner) found.set(nickname!, owner)
+    }
+  }
+  return found
+}
+
 /** Every section of these files, by nickname, folded. */
 const sectionsOf = async (read: ReadAsset, files: string[]): Promise<Map<string, Section>> => {
   const found = new Map<string, Section>()
@@ -63,7 +88,7 @@ interface Archetype {
   model: RigidModel
   lists: LodList[]
   /** Builds the model where the host puts it, its parts placed against `camera`. */
-  place: (world: Matrix4) => SceneModel
+  place: (world: Matrix4, jointState?: PlaceOptions['jointState']) => SceneModel
 }
 
 const loadArchetype = async (
@@ -71,6 +96,7 @@ const loadArchetype = async (
   read: ReadAsset,
   camera: Camera,
   detail: number,
+  blocks: readonly LodList[] = [],
 ): Promise<Archetype> => {
   const root = Directory.read(await read(pathOf(strings(section, 'DA_archetype')[0]!)))
   const libraries = await Promise.all(
@@ -84,17 +110,25 @@ const loadArchetype = async (
   const model = readRigidModel(root)
   const ranges = numbers(section, 'LODranges')
   const minSpecLod = section.getValue('MinSpecLOD')
-  // Its own list only: none of these archetypes has a `[LOD]` block.
-  const lists: LodList[] = ranges.length
-    ? [{ ranges, ...(minSpecLod ? { minSpecLod: Number(minSpecLod.value) } : {}) }]
-    : []
+  // `[LOD]` blocks first, then its own.
+  const lists: LodList[] = [
+    ...blocks,
+    ...(ranges.length
+      ? [{ ranges, ...(minSpecLod ? { minSpecLod: Number(minSpecLod.value) } : {}) }]
+      : []),
+  ]
   const environment = strings(section, 'envmap_material')[0]
   const material = (id: number) => getMaterial(materials, id)
-  const place = (world: Matrix4): SceneModel => ({
+  const place = (world: Matrix4, jointState?: PlaceOptions['jointState']): SceneModel => ({
     parts:
       model.type === 'sphere'
         ? placeSphere(model, world, { camera, width: 1024, material })
-        : placeParts(model, world, { camera, lod: lists, detail }),
+        : placeParts(model, world, {
+            camera,
+            lod: lists,
+            detail,
+            ...(jointState ? { jointState } : {}),
+          }),
     mesh: (id) => getMesh(meshes, id),
     material,
     texture: (name) => textures.find((entry) => entry.name.toLowerCase() === name.toLowerCase()),
@@ -118,24 +152,35 @@ const sources = (model: RigidModel) => {
   return found
 }
 
-/** A hardpoint's frame in the model, wherever in the hierarchy it is. */
-const hardpoint = (model: RigidModel, name: string): Matrix4 | undefined => {
+/** A hardpoint, wherever in the hierarchy it is, and the frame of the part holding it. */
+const findHardpoint = (
+  model: RigidModel,
+  name: string,
+  jointState?: PlaceOptions['jointState'],
+): { point: Hardpoint; part: Matrix4 } | undefined => {
   const nodes: [RigidPart, Matrix4][] =
     model.type === 'compound'
-      ? [...partTransforms(model as CompoundNode<RigidPart>, Matrix4.identity)].map(
+      ? [...partTransforms(model as CompoundNode<RigidPart>, Matrix4.identity, jointState)].map(
           ([node, world]) => [node.part, world],
         )
       : [[model, Matrix4.identity]]
   for (const [part, world] of nodes) {
     if (part.type !== 'rigid') continue
-    const found = part.hardpoints.find((point) => point.name.toLowerCase() === name.toLowerCase())
-    if (found)
-      return Matrix4.multiply(
-        world,
-        Matrix4.fromRotationTranslation(found.orientation, found.position ?? { x: 0, y: 0, z: 0 }),
-      )
+    const point = part.hardpoints.find((entry) => entry.name.toLowerCase() === name.toLowerCase())
+    if (point) return { point, part: world }
   }
   return undefined
+}
+
+/** A hardpoint's frame in the model, wherever in the hierarchy it is. */
+const hardpoint = (model: RigidModel, name: string): Matrix4 | undefined => {
+  const found = findHardpoint(model, name)
+  if (!found) return undefined
+  const { point, part } = found
+  return Matrix4.multiply(
+    part,
+    Matrix4.fromRotationTranslation(point.orientation, point.position ?? { x: 0, y: 0, z: 0 }),
+  )
 }
 
 const SPHERE_TYPES = new Set(['PLANET', 'MOON'])
@@ -170,6 +215,8 @@ export interface SystemOptions {
   effectRate?: number
   /** `generic_effect_perf` from it. */
   effectDetail?: number
+  /** How long a solar's `use_animation` scripts have played. At rest when absent. */
+  animationSeconds?: number
 }
 
 /** `FX/effect_types.ini` over the built-in table, and `FX/effects.ini`'s `[EffectLOD]` rows. */
@@ -226,6 +273,7 @@ const EQUIPMENT = [
   'EQUIPMENT/select_equip.ini',
   'EQUIPMENT/misc_equip.ini',
   'EQUIPMENT/engine_equip.ini',
+  'EQUIPMENT/weapon_equip.ini',
 ]
 
 interface Placed {
@@ -282,7 +330,16 @@ const startEffect = async (
 export const loadSystem = async (
   system: ReferenceSystem,
   read: ReadAsset,
-  { camera, ship, detail, starSphere, effectSeconds, effectDetail, effectRate = 60 }: SystemOptions,
+  {
+    camera,
+    ship,
+    detail,
+    starSphere,
+    effectSeconds,
+    effectDetail,
+    effectRate = 60,
+    animationSeconds,
+  }: SystemOptions,
 ): Promise<SpaceScene> => {
   const archetypes = await sectionsOf(read, ['SOLAR/solararch.ini', 'SHIPS/shiparch.ini'])
   const graphs = await sectionsOf(read, ['igraph.ini'])
@@ -294,6 +351,68 @@ export const loadSystem = async (
   })
   const archetype = (nickname: string) =>
     loadArchetype(archetypes.get(nickname.toLowerCase())!, read, camera, detail)
+
+  const equipment = await sectionsOf(read, EQUIPMENT)
+  const equipmentLods = await lodBlocksOf(read, EQUIPMENT)
+  const loadouts = await sectionsOf(read, ['SOLAR/loadouts.ini'])
+  /** A loadout's items, each with its hardpoint when it has one, in the order it lists them. */
+  const loadoutOf = (section: Section) => {
+    const loadout = strings(section, 'loadout')[0]
+    if (!loadout) return []
+    return loadouts
+      .get(loadout.toLowerCase())!
+      .filterProperties('equip')
+      .map(({ values }) => {
+        const [item, point] = values.map(({ value }) => String(value))
+        return { item: equipment.get(item!.toLowerCase()), point }
+      })
+  }
+
+  /**
+   * Each item with a model and a hardpoint, hung there as `CNonPhysAttachment::Connect` does, its
+   * joints at rest: a turret with nothing to aim at.
+   */
+  const attach = async (
+    model: RigidModel,
+    section: Section,
+    world: Matrix4,
+    jointState: PlaceOptions['jointState'],
+  ) => {
+    const attached: SceneModel[] = []
+    for (const { item, point } of loadoutOf(section)) {
+      if (!item || !point || !strings(item, 'DA_archetype').length) continue
+      const parent = findHardpoint(model, point, jointState)!
+      const nickname = item.getNickname()!.toLowerCase()
+      const child = await loadArchetype(item, read, camera, detail, equipmentLods.get(nickname))
+      const connect = findHardpoint(child.model, strings(item, 'HP_child')[0]!)!
+      const joint = getJointMatrix(attachJoint(parent.point, connect.point))
+      attached.push(child.place(Matrix4.multiply(world, Matrix4.multiply(parent.part, joint))))
+    }
+    return attached
+  }
+
+  /**
+   * Its `[InternalFX]`s' `use_animation` scripts, each looping from when the solar was made
+   * (`CEInternalFX`, `EvalPlayback` with flags 2), as the joint states they give its parts.
+   */
+  const animate = async (section: Section): Promise<PlaceOptions['jointState']> => {
+    const names = loadoutOf(section).flatMap(({ item }) =>
+      item?.name.toLowerCase() === 'internalfx' ? strings(item, 'use_animation') : [],
+    )
+    if (!names.length || animationSeconds === undefined) return undefined
+    const library = readAnimationLibrary(
+      Directory.read(await read(pathOf(strings(section, 'DA_archetype')[0]!))),
+    )
+    const maps = names.flatMap((name) => getScript(library, name)?.maps ?? [])
+    return (part) => {
+      const map = maps.find(
+        (entry) => entry.type === 'joint' && entry.child.toLowerCase() === part.name.toLowerCase(),
+      )
+      if (!map) return undefined
+      const time = getChannelTime(map.channel, animationSeconds, 'loop')
+      return sampleChannel(map.channel, time, part.joint?.type === 'revolute')
+    }
+  }
 
   const objects: SpaceObject[] = []
   for (const { archetype: nickname, position } of system.objects) {
@@ -308,8 +427,11 @@ export const loadSystem = async (
         : await bodySphere(section, at, read)
     const { radius } = sphere
     const range = lodRange(sources(model), lists, { detail })
+    const jointState = await animate(section)
+    const attached = await attach(model, section, Matrix4.translation(at), jointState)
     objects.push({
-      model: place(Matrix4.translation(at)),
+      model: place(Matrix4.translation(at), jointState),
+      ...(attached.length ? { attached } : {}),
       position: at,
       sphere,
       solar: { large: radius > 200, planet },
@@ -321,20 +443,14 @@ export const loadSystem = async (
     effects: await sectionsOf(read, ['FX/effects.ini']),
     visuals: await sectionsOf(read, ALE_TABLES),
   }
-  const equipment = await sectionsOf(read, EQUIPMENT)
-  const loadouts = await sectionsOf(read, ['SOLAR/loadouts.ini'])
   const pools = createPools()
   const placed: Placed[] = []
 
   // A solar's loadout: each `[AttachedFX]` on its hardpoint, as the loadout lists them.
   for (const { archetype: nickname, position } of system.objects) {
     const section = archetypes.get(nickname.toLowerCase())!
-    const loadout = strings(section, 'loadout')[0]
-    if (!loadout) continue
     const { model } = await archetype(nickname)
-    for (const { values } of loadouts.get(loadout.toLowerCase())!.filterProperties('equip')) {
-      const [item, point] = values.map(({ value }) => String(value))
-      const fx = equipment.get(item!.toLowerCase())
+    for (const { item: fx, point } of loadoutOf(section)) {
       if (fx?.name.toLowerCase() !== 'attachedfx' || !point) continue
       const at = vector(position)
       const world = Matrix4.multiply(Matrix4.translation(at), hardpoint(model, point)!)

@@ -26,8 +26,8 @@ const system = systems.get('space_order')!
 
 // After the scene the game clears depth and draws its HUD.
 const SCENE_DRAWS = 123
-// `mplatform`'s loadout puts a `Small_station_turret` on its `HpTurret`s, and one drew. Equipment on a
-// solar isn't built.
+// `mplatform`'s loadout puts a `Small_station_turret` on each `HpTurret`: only `HpTurret_S1_03`'s
+// `Root` is near enough for its `[LOD]` range, and every `barrel` is past its own.
 const TURRET = 98
 // `mplatform_animate1`, in the same loadout, turns this part.
 const ANIMATED = 97
@@ -54,8 +54,8 @@ const load = async () => {
   }
   const { draws: captured, options } = readSpaceRun(folder, system, RUNS.space_order)
   const scene = await loadSystem(system, read, options)
-  const retail = captured.slice(0, SCENE_DRAWS).filter((_, n) => n !== TURRET)
-  return { camera: options.camera, frame: collectSpaceFrame(scene), retail, captured }
+  const retail = captured.slice(0, SCENE_DRAWS)
+  return { camera: options.camera, scene, frame: collectSpaceFrame(scene), retail, captured }
 }
 
 test(
@@ -74,7 +74,7 @@ test('space_order is retail draw for draw, in retail order', { skip }, async () 
   const { frame, retail, captured } = await load()
   // Retail's glass binds `envmapglass` from the archetype's `.txm`, which isn't a model library here.
   assert.deepEqual(frame.unsupported, ['texture envmapglass'])
-  assert.equal(frame.draws.length, FIRST_EFFECT - 1)
+  assert.equal(frame.draws.length, FIRST_EFFECT)
   assert.equal(captured[SCENE_DRAWS - 1]!.stages[0]!.states['COLOROP'] !== undefined, true)
   assertFrameMatches(frame, retail, indexTextures(data), { streamed: true })
 })
@@ -82,7 +82,6 @@ test('space_order is retail draw for draw, in retail order', { skip }, async () 
 test('each draw stands where retail drew it, the far list on its own plane', { skip }, async () => {
   const { frame, retail } = await load()
   frame.draws.forEach(({ world, materialName, projection }, n) => {
-    if (n === ANIMATED) return
     const ours = Matrix4.multiply(frame.view, world)
     const theirs = modelViewOf(retail[n]!.world!)
     for (const axis of ['x', 'y', 'z', 'w'] as const)
@@ -98,6 +97,28 @@ test('each draw stands where retail drew it, the far list on its own plane', { s
     assert.ok(Math.abs(ourQ - q) < 1e-5, `draw ${n}, ${materialName}: _33 ${ourQ} against ${q}`)
   })
 })
+
+test(
+  "the platform's loadout: seven turrets hung, one part near enough, and its quarters turned",
+  { skip },
+  async () => {
+    const { scene, frame, retail } = await load()
+    const platform = scene.objects.find(({ attached }) => attached)!
+    assert.deepEqual(
+      platform.attached!.map(({ parts }) => parts.length),
+      [0, 0, 1, 0, 0, 0, 0],
+    )
+    // The turret reflects with the platform's `envmap_material`, which its own archetype hasn't got.
+    assert.equal(frame.draws[TURRET]!.environment?.toLowerCase(), 'envmapbasic')
+    assert.ok(frame.draws[TURRET]!.environmentTexture)
+    // At the fitted time, the script's angle stands the part where retail drew it.
+    const ours = Matrix4.multiply(frame.view, frame.draws[ANIMATED]!.world)
+    const theirs = modelViewOf(retail[ANIMATED]!.world!)
+    for (const axis of ['x', 'y', 'z', 'w'] as const)
+      for (const cell of ['x', 'y', 'z'] as const)
+        assert.ok(Math.abs(ours[axis][cell] - theirs[axis][cell]) < 0.002, `${axis}.${cell}`)
+  },
+)
 
 test(
   'each object is lit as retail lit it: the same lights, colours and directions',

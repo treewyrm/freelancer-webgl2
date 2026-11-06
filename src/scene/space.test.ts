@@ -227,6 +227,31 @@ test('a pilot draws before its ship, under its lights, and only while the ship r
   assert.deepEqual(pilot!.lights, hull!.lights)
 })
 
+test('what is attached draws after its object, under its lights, flags and reflection', () => {
+  const cube = (() => ({ type: 'cube' })) as unknown as (name: string) => TextureEntry
+  const turret = modelOf('turret', -150)
+  const ship = (distance: number) => {
+    const object = objectOf('ship', distance, {
+      distanceRender: 200,
+      attached: [turret, modelOf('other', -distance)],
+    })
+    return { ...object, model: { ...object.model, environment: 'envmapbasic', texture: cube } }
+  }
+  assert.deepEqual(collected([ship(150)]), ['ship', 'turret', 'other'])
+  // The turret's own library has no cube: the object's is used.
+  const [, near] = collectSpaceFrame(sceneOf([ship(150)])).draws
+  assert.equal(near!.environment, 'envmapbasic')
+  assert.ok(near!.environmentTexture)
+  const [, far] = collectSpaceFrame(sceneOf([ship(250)])).draws
+  assert.equal(far!.environment, undefined)
+  // Its part behind the camera still draws when the object's sphere is wholly inside.
+  const behind = {
+    ...turret,
+    parts: [{ reference, world: Matrix4.translation({ x: 0, y: 0, z: 100 }) }],
+  }
+  assert.deepEqual(collected([objectOf('ship', 100, { attached: [behind] })]), ['ship', 'turret'])
+})
+
 test('what the object sphere misses draws nothing, wholly inside skips each part test', () => {
   assert.deepEqual(
     collected([

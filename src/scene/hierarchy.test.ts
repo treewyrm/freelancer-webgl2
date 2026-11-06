@@ -1,8 +1,13 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import type { CompoundNode, Joint } from '@treewyrm/freelancer/compound'
+import {
+  getJointMatrix,
+  type CompoundNode,
+  type Hardpoint,
+  type Joint,
+} from '@treewyrm/freelancer/compound'
 import { Matrix3, Matrix4 } from '@treewyrm/freelancer/math'
-import { partTransforms } from './hierarchy.js'
+import { attachJoint, partTransforms } from './hierarchy.js'
 
 const part = (
   name: string,
@@ -70,4 +75,76 @@ test('a joint takes its state, and has none by default', () => {
     ).get(tip),
   )
   assert.ok(Math.abs(turned.x) < 1e-9 && Math.abs(turned.y - 1) < 1e-9)
+})
+
+const revolutePoint = (min: number, max: number, x = 0): Hardpoint => ({
+  type: 'revolute',
+  name: 'Hp',
+  position: { x, y: 0, z: 0 },
+  orientation: Matrix3.identity,
+  axis: { x: 0, y: 1, z: 0 },
+  min,
+  max,
+})
+
+test('two revolute hardpoints join by the narrower range, a full turn or more opened to ±π', () => {
+  const limits = (parent: Hardpoint, child: Hardpoint) => {
+    const joint = attachJoint(parent, child)
+    assert.equal(joint.type, 'revolute')
+    return joint.type === 'revolute' ? [joint.min, joint.max] : []
+  }
+  const pi = Math.fround(Math.PI)
+  // `space_order`'s turrets: `HpConnect` spans ±2π, so a platform's quarter turn wins.
+  assert.deepEqual(
+    limits(revolutePoint(-1.5708, 1.5708), revolutePoint(-2 * pi, 2 * pi)),
+    [-1.5708, 1.5708],
+  )
+  // Both full: the range compared is still the written one, so a tie goes to the child, opened.
+  assert.deepEqual(limits(revolutePoint(-2 * pi, 2 * pi), revolutePoint(-2 * pi, 2 * pi)), [
+    -pi,
+    pi,
+  ])
+  assert.deepEqual(limits(revolutePoint(-1, 1), revolutePoint(-0.5, 0.5)), [-0.5, 0.5])
+  // A fixed parent keeps the child's limits as written.
+  const fixedParent: Hardpoint = { type: 'fixed', name: 'Hp', orientation: Matrix3.identity }
+  assert.deepEqual(limits(fixedParent, revolutePoint(-2 * pi, 2 * pi)), [-2 * pi, 2 * pi])
+})
+
+test("a fixed child lands its hardpoint's point and frame on the parent's", () => {
+  const parent: Hardpoint = {
+    type: 'fixed',
+    name: 'HpMount',
+    position: { x: 5, y: 0, z: 0 },
+    orientation: QUARTER,
+  }
+  const child: Hardpoint = {
+    type: 'fixed',
+    name: 'HpConnect',
+    position: { x: 0, y: 2, z: 0 },
+    orientation: QUARTER,
+  }
+  const joint = getJointMatrix(attachJoint(parent, child))
+  const landed = Matrix4.transformPoint({ x: 0, y: 2, z: 0 }, joint)
+  assert.ok(Math.abs(landed.x - 5) < 1e-9 && Math.abs(landed.y) < 1e-9, JSON.stringify(landed))
+  // Equal frames cancel: the child is unturned.
+  const along = Matrix4.transformPoint({ x: 1, y: 2, z: 0 }, joint)
+  assert.ok(Math.abs(along.x - 6) < 1e-9 && Math.abs(along.y) < 1e-9, JSON.stringify(along))
+})
+
+test("a revolute child turns about its axis at the parent's point", () => {
+  const joint = attachJoint(revolutePoint(-1, 1, 3), {
+    ...revolutePoint(-1, 1),
+    position: { x: 0, y: -2, z: 0 },
+  })
+  const rest = Matrix4.transformPoint({ x: 0, y: -2, z: 0 }, getJointMatrix(joint))
+  assert.ok(Math.abs(rest.x - 3) < 1e-9 && Math.abs(rest.y) < 1e-9, JSON.stringify(rest))
+  const turned = Matrix4.transformPoint(
+    { x: 1, y: -2, z: 0 },
+    getJointMatrix(joint, { value: Math.PI / 2 }),
+  )
+  // Asked for a quarter turn about +Y, the joint's limit of 1 holds it: +X goes to (cos 1, 0, -sin 1).
+  assert.ok(
+    Math.abs(turned.x - 3 - Math.cos(1)) < 1e-9 && Math.abs(turned.z + Math.sin(1)) < 1e-9,
+    JSON.stringify(turned),
+  )
 })

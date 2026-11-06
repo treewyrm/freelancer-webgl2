@@ -44,7 +44,9 @@ const cameraOf = (draws: readonly CaptureDraw[], far: readonly number[], at: num
  * Each run's far solar and draws: `space_order`'s first far face, and its hull after the pilot. And
  * how its effects ran: an emitter releases `floor(dt × frequency)` a step, so a flame's count is the
  * frame rate's. Retail's three frames hold 18, 20 and 22 of a 110 Hz flame living 0.2294 s, which is
- * 78 to 96 a second; at 96 its picture is nearest. The log has no frame times to say.
+ * 78 to 96 a second; at 96 its picture is nearest. The log has no frame times to say. Nor how long
+ * the platform's `Sc_rotate living quarters` had looped: one angle, 1.79292, puts its part where
+ * retail drew it to 0.002 in every cell, and the script reaches it at 7.6306 s, a period on.
  */
 export const RUNS = {
   space_order: {
@@ -53,6 +55,7 @@ export const RUNS = {
     hullDraw: 101,
     effectSeconds: 20,
     effectRate: 96,
+    animationSeconds: 7.6306,
   },
 } as const
 
@@ -69,7 +72,15 @@ export const readSpaceRun = (
     hullDraw,
     effectSeconds,
     effectRate,
-  }: { far: string; farDraw: number; hullDraw: number; effectSeconds: number; effectRate: number },
+    animationSeconds,
+  }: {
+    far: string
+    farDraw: number
+    hullDraw: number
+    effectSeconds: number
+    effectRate: number
+    animationSeconds: number
+  },
 ): SpaceRun => {
   const draws = readCapture(readFileSync(join(folder, 'd3d8log.jsonl'), 'utf8')).frames.at(
     -1,
@@ -97,6 +108,7 @@ export const readSpaceRun = (
       effectDetail: option('generic_effect_perf'),
       effectSeconds,
       effectRate,
+      animationSeconds,
     },
   }
 }
