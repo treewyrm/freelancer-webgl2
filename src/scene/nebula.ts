@@ -4,6 +4,7 @@
  * `src/Common/common_zone.cpp`. Pure, no GL.
  */
 import { Quat, type Shape, type Vector3 } from '@treewyrm/freelancer/math'
+import type { BackgroundLightning } from './lightning.js'
 
 /** What a nebula asks of its zone: `IZone`'s position, `GetRadius` and `GetRadiusAlong`. */
 export interface Zone {
@@ -29,6 +30,8 @@ export interface SpaceNebula {
   ambient?: Vector3
   /** `[Exclusion Zones]`, in file order: holes in its fog. */
   exclusions?: readonly NebulaExclusion[]
+  /** Its flashes, which retail gives every nebula. None when absent. */
+  lightning?: BackgroundLightning
 }
 
 /** An `exclusion` of a nebula's file, and its zone, which retail requires to be a sphere. */

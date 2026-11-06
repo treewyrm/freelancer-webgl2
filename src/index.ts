@@ -61,6 +61,12 @@ export {
   type Within,
   type Zone,
 } from '#/scene/nebula.js'
+export {
+  BackgroundLightning,
+  RETAIL_LIGHTNING,
+  type LightningSettings,
+  type Random,
+} from '#/scene/lightning.js'
 export { projectionMatrix, viewMatrix, type Camera } from '#/scene/camera.js'
 export { partTransforms } from '#/scene/hierarchy.js'
 export {

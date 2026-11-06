@@ -315,8 +315,10 @@ renderer. Random streams need not match retail; each appearance's sizes, colours
       keeps the camera's zone between frames while its immersion stays at 1e-4, and finds one above 1e-5;
       this finds it afresh, so only that band and overlapping zones can differ. **Uncaptured.** The host
       reads `[Exclusion Zones]` into `NebulaExclusion`.
-- [ ] `[BackgroundLightning]`: `FillFogRgb` flashes the clear colour on a timer and `rand()`, by default
-      too (a duration of 0.5 every 10 or so). Needs the frame's time step and a random source from the host.
+- [x] `[BackgroundLightning]`: `BackgroundLightning`, from `FillFogRgb`, flashes the clear colour deep in a
+      nebula, on the scene's `step` and the host's random source. Every nebula has one by default, checked
+      in `Freelancer-original.exe` (`0x504b06`). Pinned by reading. Retail's `rand()` is the game's own, so
+      only the kind of flash can match. **Uncaptured.**
 - [ ] An object's nebula is found each frame here, while retail keeps it from when the object moved and tries
       that one first (`StarSysFindNebula`'s hint). Overlapping nebulae are the only difference; check one exists.
 - [ ] Lights beyond a system file's: a nebula's own `[LightSource]`s, and the ones equipment carries.

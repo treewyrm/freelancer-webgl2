@@ -82,6 +82,8 @@ export interface SpaceScene {
   /** `[System] space_color`, 0 to 1. Deep in a nebula, its fog's colour instead. */
   background?: Vector3
   time?: number
+  /** Seconds since the last frame, which a nebula's lightning advances by. 0 when absent. */
+  step?: number
 }
 
 /** What retail hardcodes, and a mod can patch. Distances are in world units. */
@@ -198,6 +200,7 @@ export const collectSpaceFrame = ({
   effects = [],
   background,
   time = 0,
+  step = 0,
 }: SpaceScene): Frame => {
   const resolved = { ...RETAIL_SPACE_LIMITS, ...limits }
   const {
@@ -352,8 +355,9 @@ export const collectSpaceFrame = ({
     field && field.enclosure !== 0
       ? fogOf(field.state.start, fogEnd(field.state, eye), BLACK)
       : undefined
-  // Deep enough in, the clear is the fog's colour. Background lightning, which flashes it, is to come.
-  const fogged = field && field.state.depth >= 1 ? field.state.nebula.fog.color : undefined
+  // Deep enough in, the clear is the fog's colour, which its lightning flashes.
+  const deep = field && field.state.depth >= 1 ? field.state.nebula : undefined
+  const fogged = deep && (deep.lightning?.fogColor(deep.fog.color, step) ?? deep.fog.color)
 
   return {
     background: fogged ? fogOf(0, 0, fogged).color : (background ?? BLACK_BACKGROUND),
