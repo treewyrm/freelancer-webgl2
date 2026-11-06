@@ -13,6 +13,7 @@ import {
   type VMeshRef,
 } from '@treewyrm/freelancer/vmesh'
 import { DEFAULT_SAMPLER, type SamplerState } from '#/texture/texture.js'
+import type { Clouds } from './clouds.js'
 import type { Draw } from './frame.js'
 
 const f = Math.fround
@@ -75,6 +76,8 @@ export interface RingExterior {
   opacity?: number
   /** `num_segments`, 32 when absent. */
   segments?: number
+  /** `transition_dist`, 150 when absent: how far past its edges its immersion fades. */
+  transitionDistance?: number
 }
 
 export interface RingOptions {
@@ -97,6 +100,10 @@ export interface PlanetRing {
   pieces: RingPiece[]
   shape?: TextureShape
   detail?: TextureShape
+  zone: RingShape
+  transitionDistance: number
+  /** Its `[Clouds]`, which the host makes with `RING_CLOUD_VISIBILITY` and its own `rand()`. */
+  clouds?: readonly Clouds[]
 }
 
 // `DAT_005c97f8`, the float 2π as a double, and `DAT_005db098`.
@@ -235,7 +242,46 @@ export const buildRing = (
     }
     pieces.push({ first, last, center, radius, mesh, reference })
   }
-  return { pieces, ...(shape ? { shape } : {}), ...(detail ? { detail } : {}) }
+  return {
+    pieces,
+    zone,
+    transitionDistance: f(exterior.transitionDistance ?? 150),
+    ...(shape ? { shape } : {}),
+    ...(detail ? { detail } : {}),
+  }
+}
+
+/**
+ * `PlanetRing::GetImmersion` (`0x50bd70`): 1 within the band, ramping to 0 over `transition_dist`
+ * past its radii and past its height. Retail takes the zone's `size` z as the half height here, so
+ * `zone.height` is that value as written.
+ */
+export const ringImmersion = (
+  { zone, transitionDistance }: Pick<PlanetRing, 'zone' | 'transitionDistance'>,
+  point: Vector3,
+): number => {
+  const outer = f(zone.radius)
+  const inner = f(zone.innerRadius)
+  const half = f(zone.height)
+  const outerSquared = f(outer * outer)
+  const innerSquared = f(inner * inner)
+  const softOuter = f((outer + transitionDistance) * (outer + transitionDistance))
+  const softInner = f((inner - transitionDistance) * (inner - transitionDistance))
+  const local = Matrix4.transformPoint(point, Matrix4.invert(zoneTransform(zone)))
+  const y = Math.abs(local.y)
+  let factor = 1
+  if (!(y < half)) {
+    const ramp = 1 - (y - half) / transitionDistance
+    factor = f(ramp)
+    if (!(ramp > 0)) return 0
+  }
+  const radial = local.x * local.x + local.z * local.z
+  const radialF = f(radial)
+  if (radial > softOuter) return 0
+  if (radialF > outerSquared) return ((softOuter - radialF) / (softOuter - outerSquared)) * factor
+  if (radialF > innerSquared) return factor
+  if (radialF > softInner) return ((radialF - softInner) / (innerSquared - softInner)) * factor
+  return 0
 }
 
 // `DrawPiece`'s `0x4223d0` and `0x422410` set stage 0's `ADDRESSU` and `ADDRESSV` (13 and 14) to

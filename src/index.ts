@@ -107,7 +107,16 @@ export {
   type SpaceFlare,
 } from '#/scene/flare.js'
 export {
+  Clouds,
+  NEBULA_CLOUD_VISIBILITY,
+  RING_CLOUD_VISIBILITY,
+  type CloudDrawOptions,
+  type CloudSettings,
+  type CloudVisibility,
+} from '#/scene/clouds.js'
+export {
   buildRing,
+  ringImmersion,
   ringPieceDraw,
   textureShape,
   type PlanetRing,

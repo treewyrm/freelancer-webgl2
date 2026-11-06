@@ -14,6 +14,7 @@ import { emitter, sceneOf as fixtureScene } from '#/alchemy/fixtures.js'
 import { projectionMatrix } from './camera.js'
 import { type Frame, type SceneModel } from './frame.js'
 import type { SpaceLight } from './light.js'
+import { Clouds, RING_CLOUD_VISIBILITY } from './clouds.js'
 import { buildRing, textureShape, type PlanetRing } from './ring.js'
 import { LightBlink, RETAIL_FLARE_LIGHT, type SpaceFlare } from './flare.js'
 import { NebulaLightning } from './lightning.js'
@@ -678,4 +679,55 @@ test('a placed effect out of view is not drawn, and the frame says what became o
     { fate: 'draw', lod: 1 },
     undefined,
   ])
+})
+
+test("a ring's clouds draw after the main list, only while the camera is in it, and never in a field", () => {
+  const texture = { name: 'wisps', width: 64, height: 64 } as Texture
+  const shape = textureShape(texture, {})
+  // A flat ring about the camera, its band from 50 to 1000 out: the camera stands in its hole
+  // unless moved back 500 into the band.
+  const ringOf = () => {
+    const ring = buildRing(
+      { shape, segments: 8 },
+      {
+        type: 'ring',
+        center: { x: 0, y: 0, z: 0 },
+        orientation: Quat.identity,
+        radius: 1000,
+        innerRadius: 50,
+        height: 500,
+      },
+    )
+    const clouds = new Clouds(
+      { puffCount: 10, puffRadius: 5, shapes: [shape], maxDistance: 100, nearFade: [1, 2] },
+      { visibility: RING_CLOUD_VISIBILITY },
+    )
+    return { ...ring, clouds: [clouds] }
+  }
+  const inBand = (ring: PlanetRing, fields: Partial<SpaceScene> = {}) =>
+    names(
+      collectSpaceFrame(
+        sceneOf([objectOf('main', 300), objectOf('nomad', 200, { nomad: true })], {
+          rings: [ring],
+          cut: true,
+          ...fields,
+        }),
+      ),
+    ).filter((name) => name !== 'ring')
+  const moved = (ring: PlanetRing) => ({
+    camera: {
+      position: { x: 0, y: 0, z: 500 },
+      orientation: Matrix3.identity,
+      fovh: 30,
+      near: 1,
+      far: 1,
+    },
+    rings: [ring],
+  })
+  assert.deepEqual(inBand(ringOf(), moved(ringOf())), ['main', 'clouds', 'nomad'])
+  // In the hole, well inside its inner edge less the transition: not in it, so no clouds.
+  assert.deepEqual(inBand(ringOf()), ['main', 'nomad'])
+  // In a nebula's field, none.
+  const field = nebulaAt(0, 5000, 100)
+  assert.ok(!inBand(ringOf(), { ...moved(ringOf()), nebulae: [field] }).includes('clouds'))
 })

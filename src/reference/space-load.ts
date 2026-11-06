@@ -25,7 +25,15 @@ import { attachJoint, partTransforms } from '#/scene/hierarchy.js'
 import { LightBlink, RETAIL_FLARE_LIGHT, type FlareLight, type SpaceFlare } from '#/scene/flare.js'
 import { lodRange, type LodList } from '#/scene/level.js'
 import type { Graph, SpaceLight } from '#/scene/light.js'
-import { buildRing, textureShape, type RingExterior, type TextureShape } from '#/scene/ring.js'
+import { Clouds, RING_CLOUD_VISIBILITY, type CloudSettings } from '#/scene/clouds.js'
+import {
+  buildRing,
+  ringImmersion,
+  textureShape,
+  type PlanetRing,
+  type RingExterior,
+  type TextureShape,
+} from '#/scene/ring.js'
 import { placeSphere } from '#/scene/sphere.js'
 import { skyLayers, type SpaceEffect, type SpaceObject, type SpaceScene } from '#/scene/space.js'
 import {
@@ -359,9 +367,16 @@ const startEffect = async (
  * and may cut shapes from it by `shape_name` and `dim`, and each `[Shape]` cuts one by `x`, `y`, `w`
  * and `h`. Then its `[Exterior]`.
  */
-const loadRing = async (read: ReadAsset, file: string, zone: RingShape, highDetailTextures = 1) => {
+const loadRing = async (
+  read: ReadAsset,
+  file: string,
+  zone: RingShape,
+  highDetailTextures: number,
+  random: () => number,
+) => {
   const shapes = new Map<string, TextureShape>()
   const exterior: Record<string, number[] | string> = {}
+  const clouds: Section[] = []
   for (const section of Document.read(await read(pathOf(file)))) {
     const name = section.name.toLowerCase()
     if (name === 'texturepanels')
@@ -398,6 +413,7 @@ const loadRing = async (read: ReadAsset, file: string, zone: RingShape, highDeta
           }
         }
       }
+    if (name === 'clouds') clouds.push(section)
     if (name === 'exterior')
       for (const { name: key, values } of section.properties)
         exterior[key.toLowerCase()] = key.toLowerCase().endsWith('shape')
@@ -426,8 +442,45 @@ const loadRing = async (read: ReadAsset, file: string, zone: RingShape, highDeta
       : {}),
     ...(numbers('opacity') ? { opacity: numbers('opacity')![0]! } : {}),
     ...(numbers('num_segments') ? { segments: numbers('num_segments')![0]! } : {}),
+    ...(numbers('transition_dist') ? { transitionDistance: numbers('transition_dist')![0]! } : {}),
   }
-  return buildRing(ring, zone, { highDetailTextures })
+  // `[Clouds]` keys, as `FUN_00550240` reads them: those a ring file uses.
+  const cloudsOf = (section: Section): Clouds => {
+    const value = (key: string, at = 0) => {
+      const found = section.getValue(key, at)
+      return found === undefined ? undefined : Number(found.value)
+    }
+    const colors = section.properties
+      .filter(({ name }) => /^puff_color[ab]$/i.test(name))
+      .slice(0, 2)
+      .map(({ values }) => {
+        const [x, y, z] = values.map(({ value }) => Math.fround(Number(value) / 255))
+        return { x: x!, y: y!, z: z! }
+      })
+    const settings: CloudSettings = {
+      puffCount: Math.trunc(value('puff_count') ?? 0),
+      shapes: strings(section, 'puff_shape')
+        .slice(0, 8)
+        .map((name) => shapes.get(name.toLowerCase())),
+      ...(value('puff_radius') !== undefined ? { puffRadius: value('puff_radius')! } : {}),
+      ...(colors[0] ? { colorA: colors[0] } : {}),
+      ...(colors[1] ? { colorB: colors[1] } : {}),
+      ...(section.getValue('puff_weights')
+        ? { weights: section.getValues('puff_weights')!.map(({ value }) => Number(value)) }
+        : {}),
+      ...(value('puff_max_alpha') !== undefined ? { maxAlpha: value('puff_max_alpha')! } : {}),
+      ...(value('puff_drift') !== undefined ? { drift: value('puff_drift')! } : {}),
+      ...(value('max_distance') !== undefined ? { maxDistance: value('max_distance')! } : {}),
+      ...(value('near_fade_distance') !== undefined
+        ? { nearFade: [value('near_fade_distance')!, value('near_fade_distance', 1)!] as const }
+        : {}),
+    }
+    return new Clouds(settings, { visibility: RING_CLOUD_VISIBILITY, random })
+  }
+  return {
+    ...buildRing(ring, zone, { highDetailTextures }),
+    ...(clouds.length ? { clouds: clouds.map(cloudsOf) } : {}),
+  }
 }
 
 export const loadSystem = async (
@@ -698,6 +751,37 @@ export const loadSystem = async (
     for (const { effect, world: placement } of placed)
       effect.instance.advance(1 / effectRate, { placement, view, sparam: 0 })
 
+  const rings: PlanetRing[] = await Promise.all(
+    system.objects.flatMap(({ ring }) => {
+      if (!ring) return []
+      const zone = system.zones!.find(({ nickname }) => nickname === ring.zone)!
+      const [x, y, z] = zone.position
+      const shape: RingShape = {
+        type: 'ring',
+        center: { x, y, z },
+        // `EulerMatrix` of a pitch alone: a turn about X.
+        orientation: Quat.axisAngle({
+          axis: { x: 1, y: 0, z: 0 },
+          angle: (zone.pitch * Math.PI) / 180,
+        }),
+        radius: zone.size[0],
+        innerRadius: zone.size[1],
+        height: zone.size[2],
+      }
+      return [loadRing(read, ring.file, shape, highDetailTextures ?? 1, rand)]
+    }),
+  )
+  // Each ring's clouds from entering the system, a cut, on the effects' clock: the game updates
+  // them in its tick and draws them, which keeps their order, while the camera is in the ring.
+  for (const ring of rings)
+    for (const clouds of ring.clouds ?? [])
+      for (let frame = 0; frame < (effectSeconds ?? 0) * effectRate; frame++) {
+        const holds = (point: Vector3) => ringImmersion(ring, point)
+        const visibility = Math.fround(ringImmersion(ring, camera.position))
+        clouds.update(camera, 1 / effectRate, visibility, holds)
+        if (visibility > 0) clouds.draw(camera, { cut: frame === 0, holds })
+      }
+
   return {
     camera,
     aspect: 1024 / 768,
@@ -709,26 +793,7 @@ export const loadSystem = async (
     effects: placed.map(({ effect }) => effect).reverse(),
     effectView: await effectViewOf(read, effectDetail),
     viewport: { width: 1024, height: 768 },
-    rings: await Promise.all(
-      system.objects.flatMap(({ ring }) => {
-        if (!ring) return []
-        const zone = system.zones!.find(({ nickname }) => nickname === ring.zone)!
-        const [x, y, z] = zone.position
-        const shape: RingShape = {
-          type: 'ring',
-          center: { x, y, z },
-          // `EulerMatrix` of a pitch alone: a turn about X.
-          orientation: Quat.axisAngle({
-            axis: { x: 1, y: 0, z: 0 },
-            angle: (zone.pitch * Math.PI) / 180,
-          }),
-          radius: zone.size[0],
-          innerRadius: zone.size[1],
-          height: zone.size[2],
-        }
-        return [loadRing(read, ring.file, shape, highDetailTextures)]
-      }),
-    ),
+    rings,
     shine: { texture: await shapeOf(read, 'shine') },
   }
 }

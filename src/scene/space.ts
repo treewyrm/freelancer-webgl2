@@ -12,7 +12,7 @@ import {
   type EffectViewOptions,
   type PlacedEffect,
 } from './effect-view.js'
-import { ringPieceDraw, type PlanetRing, type RingPiece } from './ring.js'
+import { ringImmersion, ringPieceDraw, type PlanetRing, type RingPiece } from './ring.js'
 import { flareQuads, type FrameRect, type ScreenQuad, type SpaceFlare } from './flare.js'
 import { lightObject, lightSet, systemAmbient, type SpaceLight } from './light.js'
 import {
@@ -135,6 +135,8 @@ export interface SpaceScene {
    * blink, held to 0.1. 0 when absent.
    */
   step?: number
+  /** The camera cut to this frame, as it does entering a system: clouds are placed afresh. */
+  cut?: boolean
   /** Its planets' rings, which the effects option shows (`0x25`). */
   rings?: readonly PlanetRing[]
   /** The viewport in pixels, which flares are sized and clipped in. No flares when absent. */
@@ -306,6 +308,7 @@ export const collectSpaceFrame = ({
   viewport,
   shine,
   rings = [],
+  cut = false,
 }: SpaceScene): SpaceFrame => {
   const resolved = { ...RETAIL_SPACE_LIMITS, ...limits }
   const {
@@ -370,6 +373,13 @@ export const collectSpaceFrame = ({
     if (key < nearDistance * nearDistance) list = field && field.enclosure !== 0 ? FIELD : MAIN
     lists[object.nomad ? list + NOMAD_OFFSET : list]!.push({ object, key, picked, within })
   }
+  // `TexturePanelsUpdateAll`, in the system's tick: each ring's clouds by how far in the camera is.
+  const ringVisibility = rings.map((ring) => {
+    const visibility = Math.fround(ringImmersion(ring, eye))
+    for (const clouds of ring.clouds ?? [])
+      clouds.update(given, step, visibility, (point) => ringImmersion(ring, point))
+    return visibility
+  })
   // `EnqueueTexturePanelPieces` (`0x51be10`): each piece the view's sphere test keeps, near ones by
   // how far past their radius, far ones by distance. Retail makes eight pieces of every ring, so its
   // one-piece branch, keyed by the zone's surface, is never reached and isn't built.
@@ -506,6 +516,16 @@ export const collectSpaceFrame = ({
             projection: farProjection,
           }
     }
+    // `DrainMeshAndAsteroids` outside a field: the main list, then every ring's clouds while the
+    // camera is in it (`TexturePanelsDrawAll`, `DrawPanels`). In a field, no ring's clouds draw.
+    if (at === MAIN && (!field || field.enclosure === 0))
+      rings.forEach((ring, index) => {
+        if (!(ringVisibility[index]! > 0)) return
+        for (const clouds of ring.clouds ?? []) {
+          const draw = clouds.draw(given, { cut, holds: (point) => ringImmersion(ring, point) })
+          if (draw) draws.push(draw)
+        }
+      })
   }
 
   // Bucket `0x2e`'s walk, after the other effects: each light blinks, then queues its flare, and the

@@ -395,9 +395,19 @@ renderer. Random streams need not match retail; each appearance's sizes, colours
 - [x] **You:** `ring_outside` and `ring_inside` (`src/reference/systems.ts`): a tilted ringed planet
       ahead, and one off to the side whose pieces straddle the far threshold; then the ship inside the
       near band, where two pieces about the camera, keyed 0, draw after the ship.
-- [ ] A ring's `[Clouds]` from inside, by its immersion (`GetImmersion`, `DrawPanels`): the puffs
-      `FNebulaClouds` shares with nebulae. `ring_inside`'s draw 66 is one batch of `rock_wisps`,
-      after the lists and before the effects.
+- [x] A ring's `[Clouds]` from inside: `Clouds`, from `FNebulaClouds` (`cli_nebula.cpp`: parse,
+      seed, update) and `TexturePanelDrawClouds` (`FUN_00551500`). Puffs in a sphere ahead of the
+      camera, half `max_distance` plus a puff's radius, set ahead so the near fade's cone fits; each
+      0.8 to 1.2 of `puff_radius`, coloured between `puff_colora` and `puff_colorb`, its shape by
+      `puff_weights`, drifting. The ring's immersion (`ringImmersion`, `GetImmersion`) is their
+      visibility: how many show, how opaque, and, under 1.1, where one may respawn. Drawn in view
+      space, one list of squares turned to a kept up, fading near the camera and at the sphere's
+      edge, far to near, after the main list and only outside a field (`TexturePanelsDrawAll`).
+      A camera cut, as entering a system, places them afresh (`SpaceScene.cut`). Seeded by the
+      game's `rand()`, so **matched in kind in `ring_inside`**: draw 66's states, view-space list,
+      count, sizes, colours, order and sphere hold for retail's puffs and ours alike. Its picture
+      can't be held pixel for pixel. A nebula's clouds, with bolts and exclusion zones, use the same
+      class but aren't wired in.
 - [ ] Asteroid field exteriors and billboards.
 - [ ] Space dust.
 - [ ] Gate tunnels.
