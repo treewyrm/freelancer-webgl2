@@ -389,7 +389,10 @@ renderer. Random streams need not match retail; each appearance's sizes, colours
       ([ADAPTING.md](ADAPTING.md#win3dsettexturefilterlinear-and-win3dsettexturefilterpoint)).
       Pinned by reading and by pixels. **Uncaptured**: stage 1's addressing, both filters, the alpha
       test and the fog are whatever the frame left, taken as off and the default sampler.
-- [ ] **You:** a reference system with a ringed planet, from outside and from within its band.
+- [ ] **You:** capture `ring_outside` and `ring_inside` (`src/reference/systems.ts`, mounted): a tilted
+      ringed planet ahead, every piece on the main list, and one off to the side whose pieces
+      straddle the far threshold; then the ship inside the near band. Load `lab_ring_outside.fl` and
+      `lab_ring_inside.fl`, capture each, and `collect`. Then read rings in `space-load.ts` and match.
 - [ ] A ring's `[Clouds]` from inside, by its immersion (`GetImmersion`, `DrawPanels`): the puffs
       `FNebulaClouds` shares with nebulae.
 - [ ] Asteroid field exteriors and billboards.
