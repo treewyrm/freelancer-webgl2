@@ -33,15 +33,24 @@ export interface ReferenceSystem {
     /** `ring =`: its `RING` zone and ring file, under `DATA`. */
     ring?: { zone: string; file: string }
   }[]
-  /** `[zone]`s: here only a ring's, turned about X alone so `EulerMatrix`'s order can't matter. */
+  /** `[zone]`s, turned about X alone so `EulerMatrix`'s order can't matter. */
   zones?: {
     nickname: string
     position: Vector
     /** Degrees about X. */
     pitch: number
-    /** `size`: outer radius, inner radius, height. */
-    size: Vector
+    shape: 'RING' | 'SPHERE' | 'ELLIPSOID'
+    /** `size`: a ring's outer radius, inner radius and height; a sphere's radius; an ellipsoid's. */
+    size: readonly number[]
+    /** `property_flags`, as retail's field and nebula zones carry them. */
+    propertyFlags?: number
   }[]
+  /** `[Asteroids]`: a field file under `DATA`, and its zone. */
+  asteroids?: { file: string; zone: string }[]
+  /** `[Nebula]`: a nebula file under `DATA`, and its zone. */
+  nebulae?: { file: string; zone: string }[]
+  /** Files the mount writes under `DATA`, by path as the system names them, and their text. */
+  files?: { path: string; text: string }[]
   player: {
     ship: string
     /** Internal, so nothing but the hull is drawn. An engine adds its flame effect. */
@@ -67,6 +76,8 @@ export const systemIni = ({
   lights,
   objects,
   zones = [],
+  asteroids = [],
+  nebulae = [],
 }: ReferenceSystem): string => {
   const lines = [
     '[SystemInfo]',
@@ -104,13 +115,16 @@ export const systemIni = ({
       'ids_info = 1',
       ...(ring ? [`ring = ${ring.zone}, ${ring.file}`] : []),
     ]),
-    ...zones.flatMap(({ nickname, position, pitch, size }) => [
+    ...asteroids.flatMap(({ file, zone }) => ['[Asteroids]', `file = ${file}`, `zone = ${zone}`]),
+    ...nebulae.flatMap(({ file, zone }) => ['[Nebula]', `file = ${file}`, `zone = ${zone}`]),
+    ...zones.flatMap(({ nickname, position, pitch, shape, size, propertyFlags }) => [
       '[zone]',
       `nickname = ${nickname}`,
       `pos = ${list(position)}`,
       `rotate = ${pitch}, 0, 0`,
-      'shape = RING',
-      `size = ${list(size)}`,
+      `shape = ${shape}`,
+      `size = ${size.join(', ')}`,
+      ...(propertyFlags === undefined ? [] : [`property_flags = ${propertyFlags}`]),
       'sort = 99.5',
     ]),
   ]
@@ -199,11 +213,18 @@ const RINGS: Omit<ReferenceSystem, 'name' | 'player'> = {
     },
   ],
   zones: [
-    { nickname: 'Lab_ring', position: [0, -300, -5000], pitch: 20, size: [3000, 1800, 200] },
+    {
+      nickname: 'Lab_ring',
+      position: [0, -300, -5000],
+      pitch: 20,
+      shape: 'RING',
+      size: [3000, 1800, 200],
+    },
     {
       nickname: 'Lab_far_ring',
       position: [8000, 1500, -15000],
       pitch: -30,
+      shape: 'RING',
       size: [4000, 2600, 200],
     },
   ],
@@ -215,8 +236,162 @@ const RING_PLAYER: Omit<ReferenceSystem['player'], 'position'> = {
   rotate: [0, 0, 0],
 }
 
+/** Files written for the asteroid lab, under `DATA`, as its system names them. */
+const ASTEROID_FIELD_FILE = 'solar\\asteroids\\lab\\lab_field.ini'
+const ASTEROID_NEBULA_FILE = 'solar\\nebula\\lab\\lab_nebula.ini'
+
+/**
+ * Br01's Cornwall field, with no `[DynamicAsteroids]` or `[AsteroidBillboards]`, whose `rand()`
+ * would make no two runs alike, and its exclusions the lab's own: the station's, and the hole in the
+ * nebula.
+ */
+const LAB_FIELD = [
+  '[TexturePanels]',
+  'file = solar\\asteroids\\rock_shapes.ini',
+  '[Field]',
+  'cube_size = 400',
+  'fill_dist = 1650',
+  'diffuse_color = 220, 220, 180',
+  'ambient_color = 120, 120, 120',
+  'ambient_increase = 70, 40, 30',
+  'empty_cube_frequency = 0.5',
+  '[Exclusion Zones]',
+  'exclusion = Lab_station_exclusion',
+  'exclusion = Lab_nebula_hole',
+  '[properties]',
+  'flag = rock_objects',
+  'flag = Object_density_med',
+  '[Cube]',
+  'asteroid = minedout_asteroid30, 0.6, 0.2, -0.2, 45, 10, 20',
+  'asteroid = minedout_asteroid30, 0.2, 0.8, 0.3, 45, 30, 0',
+  'asteroid = minedout_asteroid10, -0.3, -0.3, 0.8, 85, 0, 185',
+  'asteroid = minedout_asteroid60, -0.2, -0.1, -0.1, 115, 160, 25',
+  'asteroid = minedout_asteroid30, -0.7, 0.4, -0.6, 75, 30, 80',
+  '[Band]',
+  'render_parts = 6',
+  'shape = asteroid_belt_04',
+  'height = 5000',
+  'offset_dist = 3000',
+  'fade = 1.0, 1.35, 15, 17',
+  'texture_aspect = 1.0',
+  'color_shift = 1.0, 1.0, 1.0',
+  'ambient_intensity = 1.0',
+  'vert_increase = 2',
+].join('\r\n')
+
+/**
+ * The Badlands' fog and light, with no `[Exterior]` or `[Clouds]`, and both lightnings off: all
+ * three are `rand()`'s. An exclusion zone opens a hole in it, with a shell.
+ */
+const LAB_NEBULA = [
+  '[TexturePanels]',
+  'file = solar\\nebula\\generic_shapes.ini',
+  '[NebulaLight]',
+  'ambient = 20, 15, 60',
+  '[Fog]',
+  'fog_enabled = 1',
+  'near = 125',
+  'distance = 1500',
+  'color = 10, 7, 30',
+  '[Exclusion Zones]',
+  'exclusion = Lab_nebula_hole',
+  'fog_far = 2000',
+  'zone_shell = solar\\nebula\\generic_exclusion.3db',
+  'shell_scalar = 1.0',
+  'max_alpha = 0.8',
+  'exclusion_tint = 70, 100, 200',
+  '[BackgroundLightning]',
+  'duration = 0',
+  '[DynamicLightning]',
+  'duration = 0',
+].join('\r\n')
+
+/**
+ * M7: an asteroid field, a nebula over part of it, and what they hold. The field is a sphere of 5000
+ * centred 4000 ahead, so the ship starts in it; a station sits in an exclusion zone in it. The
+ * nebula, to the left, holds part of the field and a hole of its own around a power plant.
+ */
+const ASTEROIDS: Omit<ReferenceSystem, 'name' | 'player'> = {
+  ambient: [40, 40, 50],
+  background: LI01_SKY,
+  lights: [
+    {
+      nickname: 'Lab_sun_light',
+      position: [20000, 15000, 30000],
+      color: [255, 255, 255],
+      range: 120000,
+      type: 'DIRECTIONAL',
+      curve: 'DYNAMIC_DIRECTION',
+    },
+  ],
+  objects: [
+    {
+      nickname: 'Lab_field_station',
+      archetype: 'smallstation1_old_nodock',
+      position: [600, -100, -1500],
+    },
+    { nickname: 'Lab_hole_plant', archetype: 'space_solar_plant', position: [-3500, 0, -3200] },
+  ],
+  zones: [
+    {
+      nickname: 'Lab_field',
+      position: [0, 0, -4000],
+      pitch: 0,
+      shape: 'SPHERE',
+      size: [5000],
+      propertyFlags: 66,
+    },
+    {
+      nickname: 'Lab_station_exclusion',
+      position: [600, -100, -1500],
+      pitch: 0,
+      shape: 'SPHERE',
+      size: [500],
+    },
+    {
+      nickname: 'Lab_nebula',
+      position: [-3500, 0, -3000],
+      pitch: 0,
+      shape: 'SPHERE',
+      size: [2500],
+      propertyFlags: 32768,
+    },
+    {
+      nickname: 'Lab_nebula_hole',
+      position: [-3500, 0, -3200],
+      pitch: 0,
+      shape: 'SPHERE',
+      size: [600],
+    },
+  ],
+  asteroids: [{ file: ASTEROID_FIELD_FILE, zone: 'Lab_field' }],
+  nebulae: [{ file: ASTEROID_NEBULA_FILE, zone: 'Lab_nebula' }],
+  files: [
+    { path: ASTEROID_FIELD_FILE, text: LAB_FIELD },
+    { path: ASTEROID_NEBULA_FILE, text: LAB_NEBULA },
+  ],
+}
+
 export const systems: ReadonlyMap<string, ReferenceSystem> = new Map(
   [
+    {
+      // In the field, 900 from the station's exclusion; the nebula's part of the field off to the left.
+      name: 'asteroid_inside',
+      ...ASTEROIDS,
+      player: { ...RING_PLAYER, position: [0, 0, 0] },
+    } satisfies ReferenceSystem,
+    {
+      // In the nebula and the field, 1200 short of the hole and its plant.
+      name: 'asteroid_nebula',
+      ...ASTEROIDS,
+      player: { ...RING_PLAYER, position: [-3500, 0, -2000] },
+    } satisfies ReferenceSystem,
+    {
+      // Outside the field, 13000 from its centre: no cubes near enough to fill, its band and exterior.
+      name: 'asteroid_outside',
+      ...ASTEROIDS,
+      player: { ...RING_PLAYER, position: [0, 0, 9000] },
+    } satisfies ReferenceSystem,
     {
       name: 'ring_outside',
       ...RINGS,

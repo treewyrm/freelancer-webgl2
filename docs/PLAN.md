@@ -408,7 +408,13 @@ renderer. Random streams need not match retail; each appearance's sizes, colours
       count, sizes, colours, order and sphere hold for retail's puffs and ours alike. Its picture
       can't be held pixel for pixel. A nebula's clouds, with bolts and exclusion zones, use the same
       class but aren't wired in.
-- [ ] Asteroid field exteriors and billboards.
+- [ ] **You:** capture `asteroid_inside`, `asteroid_nebula` and `asteroid_outside` (mounted): a field
+      of Cornwall's cubes and band with no `rand()` in it, a station in its exclusion zone, and a
+      nebula over part of it, fog only, lightning off, with a shelled hole around a plant. From in
+      the field, from in the field and the nebula, and from outside.
+- [ ] Asteroid fields: cubes, their exclusion zones and what a nebula does to them
+      (`cli_asteroid.cpp`, `common_casteroidfield.cpp`).
+- [ ] An asteroid field's band and exterior, then its billboards and dynamic asteroids.
 - [ ] Space dust.
 - [ ] Gate tunnels.
 - [ ] Projectiles and beams; the cockpit pass with its depth clear.

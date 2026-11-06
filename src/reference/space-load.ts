@@ -764,9 +764,9 @@ export const loadSystem = async (
           axis: { x: 1, y: 0, z: 0 },
           angle: (zone.pitch * Math.PI) / 180,
         }),
-        radius: zone.size[0],
-        innerRadius: zone.size[1],
-        height: zone.size[2],
+        radius: zone.size[0]!,
+        innerRadius: zone.size[1]!,
+        height: zone.size[2]!,
       }
       return [loadRing(read, ring.file, shape, highDetailTextures ?? 1, rand)]
     }),

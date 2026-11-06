@@ -65,7 +65,7 @@ test("rings: the near one's band within the main list's reach, the far one's acr
   const extent = (nickname: string) => {
     const zone = outside.zones!.find((entry) => entry.nickname === nickname)!
     const distances = Array.from({ length: 64 }, (_, at) =>
-      distance(onRing(zone, zone.size[0], (at / 64) * 2 * Math.PI)),
+      distance(onRing(zone, zone.size[0]!, (at / 64) * 2 * Math.PI)),
     )
     return [Math.min(...distances), Math.max(...distances)]
   }
@@ -91,6 +91,58 @@ test('ring_inside puts the ship in the near band, between its radii and within i
     Math.sin(p) * offset[1]! + Math.cos(p) * offset[2]!,
   ]
   const radial = Math.hypot(local[0]!, local[2]!)
-  assert.ok(radial > zone.size[1] && radial < zone.size[0], `${radial}`)
-  assert.ok(Math.abs(local[1]!) < zone.size[2] / 2, `${local[1]}`)
+  assert.ok(radial > zone.size[1]! && radial < zone.size[0]!, `${radial}`)
+  assert.ok(Math.abs(local[1]!) < zone.size[2]! / 2, `${local[1]}`)
+})
+
+test('asteroids: each save stands where it says, in or out of the field, the nebula and the hole', () => {
+  const zoneOf = (name: string, nickname: string) =>
+    systems.get(name)!.zones!.find((zone) => zone.nickname === nickname)!
+  const inside = (name: string, nickname: string) => {
+    const { position, size } = zoneOf(name, nickname)
+    const { position: ship } = systems.get(name)!.player
+    return distance(ship.map((c, at) => c - position[at]!)) < size[0]!
+  }
+  const where = (name: string) =>
+    ['Lab_field', 'Lab_nebula', 'Lab_nebula_hole', 'Lab_station_exclusion'].map((zone) =>
+      inside(name, zone),
+    )
+  assert.deepEqual(where('asteroid_inside'), [true, false, false, false])
+  assert.deepEqual(where('asteroid_nebula'), [true, true, false, false])
+  assert.deepEqual(where('asteroid_outside'), [false, false, false, false])
+  // Outside, farther than the field's radius and its fill distance of 1650: no cube near enough.
+  const { position } = zoneOf('asteroid_outside', 'Lab_field')
+  const ship = systems.get('asteroid_outside')!.player.position
+  assert.ok(distance(ship.map((c, at) => c - position[at]!)) > 5000 + 1650)
+  // The station and the plant each stand in their exclusion zone.
+  const system = systems.get('asteroid_inside')!
+  for (const [object, zone] of [
+    ['Lab_field_station', 'Lab_station_exclusion'],
+    ['Lab_hole_plant', 'Lab_nebula_hole'],
+  ] as const) {
+    const at = system.objects.find(({ nickname }) => nickname === object)!.position
+    const { position: centre, size } = zoneOf('asteroid_inside', zone)
+    assert.ok(distance(at.map((c, i) => c - centre[i]!)) < size[0]!, object)
+  }
+})
+
+test('asteroids: the system names its field and nebula, and writes files the game reads', () => {
+  const system = systems.get('asteroid_inside')!
+  const names = sections(systemIni(system))
+  assert.equal(names.filter((name) => name === 'Asteroids').length, 1)
+  assert.equal(names.filter((name) => name === 'Nebula').length, 1)
+  for (const { path, text } of system.files!) {
+    const read = sections(text)
+    assert.ok(read.length > 3, path)
+    // Nothing `rand()` drives.
+    for (const random of ['DynamicAsteroids', 'AsteroidBillboards', 'Exterior', 'Clouds'])
+      assert.ok(!read.includes(random), `${path}: ${random}`)
+  }
+  // Every exclusion a file names is a zone of the system.
+  for (const { text } of system.files!)
+    for (const [, zone] of text.matchAll(/^exclusion = (\S+)/gm))
+      assert.ok(
+        system.zones!.some(({ nickname }) => nickname === zone),
+        `${zone}`,
+      )
 })

@@ -65,6 +65,9 @@ const assertNotCorpus = (): void => {
     throw new Error(`${game} is inside the corpus at ${corpus}`)
 }
 
+/** A path a system names under `DATA`, on the lab install. */
+const labFile = (path: string): string => join(game, path.replaceAll('\\', '/'))
+
 const asText = (file: string): string =>
   Buffer.from(Document.read(readFileSync(file)).write('text')).toString('latin1')
 
@@ -72,6 +75,12 @@ const mountSystem = (name: string): void => {
   const system = systems.get(name)!
   mkdirSync(LAB_SYSTEMS, { recursive: true })
   writeFileSync(join(LAB_SYSTEMS, `${name}.ini`), systemIni(system))
+  // Its own field and nebula files, each in a `lab` folder beside retail's.
+  for (const { path, text } of system.files ?? []) {
+    const file = labFile(path)
+    mkdirSync(dirname(file), { recursive: true })
+    writeFileSync(file, `${text}\r\n`, 'latin1')
+  }
 
   // Every mounted system is listed, so that one save doesn't lose another's.
   const universe = `${UNIVERSE}.retail`
@@ -213,7 +222,10 @@ const restore = (): void => {
     if (existsSync(`${file}.retail`)) renameSync(`${file}.retail`, file)
   rmSync(SCRIPTS, { recursive: true, force: true })
   rmSync(LAB_SYSTEMS, { recursive: true, force: true })
-  for (const name of systems.keys()) rmSync(join(SAVES, saveFile(name)), { force: true })
+  for (const [name, { files = [] }] of systems) {
+    rmSync(join(SAVES, saveFile(name)), { force: true })
+    for (const { path } of files) rmSync(dirname(labFile(path)), { recursive: true, force: true })
+  }
   console.log('menu restored')
 }
 
