@@ -121,7 +121,15 @@ export {
 } from '#/scene/sphere.js'
 export { MATERIAL_MAP, mapMaterialType, type MaterialMapRule } from '#/material/map.js'
 export { sampleUvAnimation, type UvTransform } from '#/scene/uv-animation.js'
-export { levelAt, levelEnds, levelMetric, type LodList } from '#/scene/level.js'
+export {
+  levelAt,
+  levelEnds,
+  levelMetric,
+  lodRange,
+  lodScale,
+  type LodDetail,
+  type LodList,
+} from '#/scene/level.js'
 export {
   ATTRIBUTE_LOCATIONS,
   planReference,

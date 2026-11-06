@@ -10,10 +10,90 @@ export interface LodList {
   obj?: string
   /** As written, at most eight. */
   ranges: readonly number[]
+  /** `MinSpecLOD`: the levels low detail skips. 1 when absent, but 0 under three ranges. */
+  minSpecLod?: number
 }
 
-// `Freelancer.exe` `0x5c7410`, which an INI value is multiplied by as it is written.
-const TAN_35 = Math.tan((35 * Math.PI) / 180)
+/** The `level_of_detail` option, 0 to 1. At 0.75, the default here, it changes nothing. */
+export interface LodDetail {
+  detail?: number
+}
+
+// `Freelancer-original.exe` `0x5c7410`, about tan 35°, which an INI value is multiplied by as it is
+// written, and `0x5c7478`, past which the far clamp holds a range.
+const RANGE_SCALE = 0.700208
+const FAR_CUTOFF = 15000
+
+/** `ApplyLevelOfDetail` (`0x5b4560`): low detail below 0.75, and the scale the far clamp tests. */
+export const lodScale = (detail: number): { low: boolean; scale: number } => {
+  const low = detail < 0.75
+  const scale = low ? detail * (4 / 3) * 0.5 + 0.5 : (detail - 0.75) * 4 + 1
+  return { low, scale: Math.fround(scale) }
+}
+
+/**
+ * `ApplyArchLodRanges` (`0x401ed0`) for one part with `count` levels: each level's end, in the INI's
+ * unit, from the first list with no `obj` or with its name, and the largest range it walked. The
+ * levels low detail skips end at 0; the walk stops at a negative range. Nothing when no list matches.
+ */
+const walkRanges = (
+  count: number,
+  name: string,
+  lists: readonly LodList[],
+  detail: number,
+): { ends: (number | undefined)[]; largest: number } | undefined => {
+  if (count === 0) return undefined
+  const folded = name.toLowerCase()
+  const list = lists.find(({ obj }) => obj === undefined || obj.toLowerCase() === folded)
+  if (!list) return undefined
+  const { low, scale } = lodScale(detail)
+  // Past what's written, the terminator: -1.
+  const range = (at: number) => list.ranges[at] ?? -1
+  const ends: (number | undefined)[] = Array.from({ length: count }, () => undefined)
+
+  // The cap is the first list's, whichever matched.
+  const head = lists[0]!
+  const minSpec = head.minSpecLod ?? (head.ranges.length < 3 ? 0 : 1)
+  const cap = low ? Math.min(minSpec, count) : 0
+  let applied = 0
+  for (; applied < cap; applied++) {
+    if (range(applied + 1) < 0) break
+    ends[applied] = 0
+  }
+  if (applied >= count) return { ends, largest: -1 }
+
+  // At high detail a near list's far ranges are held at 15000, its level added.
+  const farClamp = range(count) < FAR_CUTOFF && scale * range(count) > FAR_CUTOFF
+  let largest = Math.max(-1, range(applied))
+  for (let level = applied; level < count; level++) {
+    let end = range(level + 1)
+    if (!(end >= 0)) break
+    if (farClamp && end * scale > FAR_CUTOFF) end = level + FAR_CUTOFF
+    largest = Math.max(largest, Math.fround(end))
+    ends[level] = Math.fround(RANGE_SCALE * end)
+  }
+  return { ends, largest }
+}
+
+const levelCount = (source: MeshSource): number =>
+  source.type === 'vmeshpart' ? 1 : (source.ranges ?? [0, NaN]).length - 1
+
+/**
+ * The archetype's `LodPick` (`ComputeLodPickThis`, `0x4021b0`): the largest range any part's list
+ * walked, past which the object draws nothing. -1 when none did. A single model's part is `Root`.
+ */
+export const lodRange = (
+  parts: readonly { source: MeshSource; name: string }[],
+  lists: readonly LodList[],
+  { detail = 0.75 }: LodDetail = {},
+): number => {
+  let largest = -1
+  for (const { source, name } of parts) {
+    const walked = walkRanges(levelCount(source), name, lists, detail)
+    if (walked) largest = Math.max(largest, walked.largest)
+  }
+  return largest
+}
 
 // A bare `VMeshPart` is one level (`0x6c33fe0`).
 const BARE = [0, 1e6]
@@ -28,18 +108,12 @@ export const levelEnds = (
   source: MeshSource,
   name: string,
   lists: readonly LodList[] = [],
+  { detail = 0.75 }: LodDetail = {},
 ): number[] => {
   const switches = source.type === 'vmeshpart' ? BARE : (source.ranges ?? [0, NaN])
   const ends = switches.slice(1)
-  const folded = name.toLowerCase()
-  const list = lists.find(({ obj }) => obj === undefined || obj.toLowerCase() === folded)
-  if (!list) return ends
-  for (let at = 0; at < ends.length; at++) {
-    const end = list.ranges[at + 1]
-    if (end === undefined || end < 0) break
-    ends[at] = end * TAN_35
-  }
-  return ends
+  const walked = walkRanges(ends.length, name, lists, detail)
+  return walked ? ends.map((end, at) => walked.ends[at] ?? end) : ends
 }
 
 /**

@@ -339,7 +339,12 @@ renderer. Random streams need not match retail; each appearance's sizes, colours
       keys scaled by `lgt_time_scale` and `lgt_range_scale` (`GameLightBindAnimKeys`, `GameLightTickAnim`),
       and out once the last key passes. Pinned by reading. **Uncaptured.** The host reads `[LightAnim]` into
       `LightAnimation`, and adds the light to the scene's in the order its effects started.
-- [ ] Compute `lodRange` from an archetype's lists (`ComputeLodPickThis`, `ApplyArchLodRanges`), far clamp included.
+- [x] Compute `lodRange` from an archetype's lists: `lodRange`, from `ComputeLodPickThis` (`0x4021b0`) and
+      `ApplyArchLodRanges` (`0x401ed0`), the largest range any part walked. The `level_of_detail` option
+      (`ApplyLevelOfDetail`) skips the first list's `MinSpecLOD` levels below 0.75, and above it holds a near
+      list's far ranges at 15000; `levelEnds` takes it too. The multiplier is 0.700208, read from
+      `Freelancer-original.exe` (`0x5c7410`), not tan 35°. Pinned by reading. The option's retail default is
+      a machine score, so the host gives it; 0.75 changes nothing.
 - [ ] What `SpaceEffectsDrawFrame` does around effects: `ZFUNC` 4 where the program has `LESS`, the view test
       and `EXIST_OFFSCREEN` (`EffectTypeBucketWalk`), and the screen quads it flushes last (`ScreenQuadFlush`).
 - [ ] `level_of_detail` on a space solar's sphere: its level bias and maximum, up to 10, from

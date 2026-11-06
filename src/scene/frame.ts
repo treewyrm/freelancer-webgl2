@@ -110,6 +110,8 @@ export interface PlaceOptions {
   camera?: Camera
   /** The archetype's level-of-detail lists, in matching order, over the model's own `Switch2`. */
   lod?: readonly LodList[]
+  /** The `level_of_detail` option, 0 to 1, which the lists answer to. 0.75 changes nothing. */
+  detail?: number
   /** Pins a level, clamped to what a part has. The top one when there is no `camera` either. */
   level?: number
   /** A part left out draws nothing, and its children still do. */
@@ -666,7 +668,7 @@ const referenceOf = (
   name: string,
   world: Matrix4,
   transform: Matrix4,
-  { level, camera, lod }: PlaceOptions,
+  { level, camera, lod, detail }: PlaceOptions,
 ): VMeshRef | undefined => {
   if (part.type !== 'rigid' || !part.part) return undefined
   const source = part.part
@@ -674,7 +676,7 @@ const referenceOf = (
     return levelAt(
       source,
       levelMetric(source, world, transform, camera),
-      levelEnds(source, name, lod),
+      levelEnds(source, name, lod, { detail }),
     )?.reference
   if (source.type !== 'multilevel') return source.reference
   return source.levels[Math.min(level ?? 0, source.levels.length - 1)]?.reference
