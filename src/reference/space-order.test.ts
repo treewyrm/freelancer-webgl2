@@ -4,13 +4,11 @@ import { existsSync, readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
-import { Document } from '@treewyrm/freelancer/ini'
-import { Matrix3, Matrix4, type Vector3 } from '@treewyrm/freelancer/math'
-import { readCapture, type CaptureDraw } from '#/capture/capture.js'
+import { Matrix4 } from '@treewyrm/freelancer/math'
 import { indexTextures } from '#/capture/texture-names.js'
-import type { Camera } from '#/scene/camera.js'
 import { collectSpaceFrame } from '#/scene/space.js'
 import { assertFrameMatches } from './compare.js'
+import { readSpaceRun, RUNS } from './space-capture.js'
 import { loadSystem } from './space-load.js'
 import { systems } from './systems.js'
 
@@ -47,54 +45,15 @@ const modelViewOf = (world: readonly number[]): Matrix4 => {
   return { x: column(0), y: column(1), z: column(2), w: column(3) }
 }
 
-/** Where the game's chase camera was, from a far planet the system file places. */
-const cameraOf = (draws: readonly CaptureDraw[]): Camera => {
-  // `Lab_far_planet`'s first face. The sky's rotation is the camera's alone.
-  const far = system.objects.find(({ nickname }) => nickname === 'Lab_far_planet')!.position
-  const sky = draws[0]!.world!
-  assert.deepEqual(
-    [sky[0], sky[1], sky[2], sky[4], sky[5], sky[6], sky[8], sky[9], sky[10]],
-    [1, 0, 0, 0, 1, 0, 0, 0, -1],
-    'the camera looked straight down -Z',
-  )
-  const [x, y, z] = draws[10]!.world!.slice(12, 15) as [number, number, number]
-  const projection = draws[20]!.projection!
-  // D3D's `_11` is 1 / tan(half fov x), `_33` is far / (far - near), `_43` is -near times that.
-  const near = -projection[14]! / projection[10]!
-  return {
-    position: { x: far[0] - x, y: far[1] - y, z: far[2] + z },
-    orientation: Matrix3.identity,
-    fovh: (Math.atan(1 / projection[0]!) * 180) / Math.PI,
-    near,
-    far: (projection[10]! * near) / (projection[10]! - 1),
-  }
-}
-
-const options = (): { detail: number; starSphere: number } => {
-  const section = Document.read(readFileSync(join(folder, 'PerfOptions.ini'))).getSection(
-    'PerfOptions',
-  )!
-  const option = (name: string) => Number(section.getValue(name)!.value)
-  return { detail: option('level_of_detail'), starSphere: option('star_sphere') }
-}
-
 const load = async () => {
   const read = async (path: string) => {
     const file = readFileSync(join(data, path))
     return new Uint8Array(file.buffer, file.byteOffset, file.byteLength)
   }
-  const captured = readCapture(readFileSync(run, 'utf8')).frames.at(-1)!.draws
-  const camera = cameraOf(captured)
-  // The hull's root part stands where the ship does: the first draw after the pilot's.
-  const [x, y, z] = captured[101]!.world!.slice(12, 15) as [number, number, number]
-  const ship: Vector3 = {
-    x: camera.position.x + x,
-    y: camera.position.y + y,
-    z: camera.position.z - z,
-  }
-  const scene = await loadSystem(system, read, { camera, ship, ...options() })
+  const { draws: captured, options } = readSpaceRun(folder, system, RUNS.space_order)
+  const scene = await loadSystem(system, read, options)
   const retail = captured.slice(0, SCENE_DRAWS).filter((_, n) => n !== TURRET)
-  return { camera, frame: collectSpaceFrame(scene), retail, captured }
+  return { camera: options.camera, frame: collectSpaceFrame(scene), retail, captured }
 }
 
 test(

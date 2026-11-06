@@ -372,7 +372,9 @@ renderer. Random streams need not match retail; each appearance's sizes, colours
 - [x] **You:** a custom system and a save that places the ship, with screenshots and captures.
       `space_order` (`src/reference/systems.ts`, [how](VALIDATION.md#a-reference-system-for-a-space-frame))
       matches retail in `src/reference/space-order.test.ts`: state, place, far plane and lights on all
-      122 scene draws, the camera read from the capture. It found four things, now built and pinned:
+      122 scene draws, the camera read from the capture. Its picture matches too
+      (`space.gpu.test.ts`): 99.96% within 2 and a mean of 0.32 outside the HUD, the effects and the
+      loadout. It found four things, now built and pinned:
       - Above all, the near lists draw with `ZFUNC` 4: `DrainMeshAndAsteroids` (`0x51f956`) sets it and
         never restores it, where the menu keeps RP8's 2.
       - `skyLayers`: `star_sphere` draws complex or basic stars, never both (`StarSphereApplyDetail`).
