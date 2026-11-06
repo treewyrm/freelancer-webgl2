@@ -13,9 +13,16 @@ import { EffectInstance } from '#/alchemy/effect.js'
 import { emitter, sceneOf as fixtureScene } from '#/alchemy/fixtures.js'
 import { projectionMatrix } from './camera.js'
 import { type Frame, type SceneModel } from './frame.js'
+import type { SpaceLight } from './light.js'
 import { NebulaLightning } from './lightning.js'
 import { zoneOf, type SpaceNebula } from './nebula.js'
-import { collectSpaceFrame, type SpaceLimits, type SpaceObject, type SpaceScene } from './space.js'
+import {
+  collectSpaceFrame,
+  skyLayers,
+  type SpaceLimits,
+  type SpaceObject,
+  type SpaceScene,
+} from './space.js'
 
 const reference: VMeshRef = {
   meshId: 1,
@@ -113,7 +120,8 @@ test('past the range only a solar draws, first, with no depth and on a far plane
   assert.equal(solar!.depthWrite, false)
   const camera = sceneOf([]).camera
   assert.deepEqual(solar!.projection, projectionMatrix({ ...camera, far: 250000 }, 1))
-  assert.equal(near!.depthFunc, 'less')
+  // `DrainMeshAndAsteroids` leaves `ZFUNC` 4 for the near lists.
+  assert.equal(near!.depthFunc, 'lequal')
   assert.equal(near!.depthWrite, true)
   assert.equal(near!.projection, undefined)
 })
@@ -201,6 +209,22 @@ test('distance_render ends the reflection and lets LODranges apply; inside it th
   assert.equal(past.environment, undefined)
   assert.deepEqual(collected([objectOf('ship', 600, { lodRange: 500 })]), [])
   assert.deepEqual(collected([objectOf('ship', 400, { lodRange: 500 })]), ['ship'])
+})
+
+test('a pilot draws before its ship, under its lights, and only while the ship reflects', () => {
+  const ship = (distance: number) =>
+    objectOf('ship', distance, { distanceRender: 200, pilot: modelOf('pilot', -distance) })
+  assert.deepEqual(collected([ship(150)]), ['pilot', 'ship'])
+  assert.deepEqual(collected([ship(250)]), ['ship'])
+  const light: SpaceLight = {
+    type: 'point',
+    position: { x: 0, y: 0, z: -150 },
+    color: { x: 255, y: 0, z: 0 },
+    range: 100,
+  }
+  const [pilot, hull] = collectSpaceFrame(sceneOf([ship(150)], { lights: [light] })).draws
+  assert.equal(pilot!.lights!.length, 1)
+  assert.deepEqual(pilot!.lights, hull!.lights)
 })
 
 test('what the object sphere misses draws nothing, wholly inside skips each part test', () => {
@@ -453,6 +477,13 @@ test("a nebula's ambient pulls the system's towards it, as far as the object is 
   const ambient = { x: 51, y: 102, z: 153 }
   const frame = collectSpaceFrame(sceneOf([objectOf('in', 300)], { nebulae, ambient }))
   assert.deepEqual(frame.draws[0]!.sceneAmbient, { x: 153 / 255, y: 51 / 255, z: 77 / 255 })
+})
+
+test('star_sphere picks complex or basic stars, never both, and nebulae last', () => {
+  assert.deepEqual(skyLayers(1), ['complex', 'nebulae'])
+  assert.deepEqual(skyLayers(0.75), ['basic', 'nebulae'])
+  assert.deepEqual(skyLayers(0.5), ['nebulae'])
+  assert.deepEqual(skyLayers(0.001), [])
 })
 
 test('the sky draws before the far list', () => {

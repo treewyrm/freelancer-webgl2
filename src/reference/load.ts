@@ -20,6 +20,7 @@ import { Directory } from '@treewyrm/freelancer/utf'
 import { getMesh, readVMeshLibrary } from '@treewyrm/freelancer/vmesh'
 import { placeParts, type Scene, type SceneModel } from '#/scene/frame.js'
 import { placeSphere } from '#/scene/sphere.js'
+import { instanceExtent } from '#/scene/extent.js'
 import { placeCostume } from '#/deformable/skin.js'
 import type { Camera } from '#/scene/camera.js'
 import { getResourceId } from '@treewyrm/freelancer'
@@ -194,15 +195,26 @@ const loadCharacter = async (
 
 const SKY_FOLDER = 'SOLAR/STARSPHERE'
 
-/** A sky file as a model of its own: the libraries are inside it. */
-const loadSky = async (file: string, read: ReadAsset): Promise<SceneModel> => {
+/**
+ * A sky file as a model of its own: the libraries are inside it. A space sky stands at its extent's
+ * centre (`StarSphereLoadLayer`); a menu prop at the origin.
+ */
+export const loadSky = async (
+  file: string,
+  read: ReadAsset,
+  { space = false }: { space?: boolean } = {},
+): Promise<SceneModel> => {
   const root = Directory.read(await read(`${SKY_FOLDER}/${file}`))
   const meshes = readVMeshLibrary(root)
   const materials = [...readMaterialLibrary(root)]
   const textures = [...readTextureLibrary(root)]
+  const model = readRigidModel(root)
   return {
     sky: 'starsphere',
-    parts: placeParts(readRigidModel(root), Matrix4.identity),
+    parts: placeParts(
+      model,
+      space ? Matrix4.translation(instanceExtent(model).center) : Matrix4.identity,
+    ),
     mesh: (id) => getMesh(meshes, id),
     material: (id) => getMaterial(materials, id),
     texture: (name) => textures.find((entry) => entry.name.toLowerCase() === name.toLowerCase()),

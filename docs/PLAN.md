@@ -296,12 +296,14 @@ renderer. Random streams need not match retail; each appearance's sizes, colours
 - [x] The game's frame order: `collectSpaceFrame`, from `SpaceObjDrawPass` (`0x51c200`). Five lists sorted far
       to near, the far list on a plane of 250000 with no depth, the batcher flushed per object, effects by
       type. Pinned by reading and by pixels (`src/scene/space.*`). The drain order and its three constants were
-      checked in `Freelancer-original.exe`. **Uncaptured.** The host supplies `lodRange`.
+      checked in `Freelancer-original.exe`. **Matched in `space_order`**: far list, main list and planet
+      keys, draw for draw. The host supplies `lodRange`.
 - [x] Light selection and ambient, per object: `lightObject`, from `StarSysApplyObjectLighting` and
       `engine_light.cpp`. Retail's XZ grid, four lights at most, the widest first and the file breaking ties,
       `atten_curve` turning a sun at each object, `color_curve` on the host's clock, ambient lights, and D3D8
-      point lights in the shader. Pinned by reading and by pixels. **Uncaptured.** The host reads `[IGraph]`
-      and `[LightSource]` into `Graph` and `SpaceLight`.
+      point lights in the shader. Pinned by reading and by pixels. **Matched in `space_order`**: a
+      `DYNAMIC_DIRECTION` sun and a point light, colour, direction and position on every draw. The host
+      reads `[IGraph]` and `[LightSource]` into `Graph` and `SpaceLight`.
 - [x] Fog and nebula state: `collectSpaceFrame` takes the system's nebulae and picks the field as
       `SelectFieldControllers` (`0x51b730`) does, finds each object's nebula (`StarSysFindNebula`), and from
       `FNebulaEffect::Update`, `FogFactor` and `FogFarClamp` gives what a nebula holds its fog and its
@@ -367,8 +369,26 @@ renderer. Random streams need not match retail; each appearance's sizes, colours
 - [ ] Projectiles and beams; the cockpit pass with its depth clear.
 - [ ] Measure effects' CPU cost in a whole system. A pushed lane steps on the CPU, by choice: bring back
       transform feedback only if this shows the need. The picture doesn't depend on it ([ADAPTING.md](ADAPTING.md#alchemy-m6)).
-- [ ] **You:** a custom system and a save that places the ship, with screenshots and captures. `assertFrameMatches`
-      will need a change first: it reads `always` as `ZFUNC` 8, which a sky sets and the far list doesn't.
+- [x] **You:** a custom system and a save that places the ship, with screenshots and captures.
+      `space_order` (`src/reference/systems.ts`, [how](VALIDATION.md#a-reference-system-for-a-space-frame))
+      matches retail in `src/reference/space-order.test.ts`: state, place, far plane and lights on all
+      122 scene draws, the camera read from the capture. It found four things, now built and pinned:
+      - Above all, the near lists draw with `ZFUNC` 4: `DrainMeshAndAsteroids` (`0x51f956`) sets it and
+        never restores it, where the menu keeps RP8's 2.
+      - `skyLayers`: `star_sphere` draws complex or basic stars, never both (`StarSphereApplyDetail`).
+      - `instanceExtent`: a space sky stands at its extent's centre (`StarSphereLoadLayer`), found as the
+        model loads, with its parts unposed: measured on two layers to 1e-4.
+      - `SpaceObject.pilot`: a ship's `pilot_mesh` at `HpPilot`, before the hull, only at tier 0
+        (`AttachPilotMesh`, `Slot188`).
+
+      An object's sphere is the host's: a body's is `get_physical_radius_r`, taken as the `.sur` root
+      part's radius and mass centre, and it decided whether the station got the point light. Not
+      compared: `mplatform`'s loadout (a turret drawn, a part turned by `mplatform_animate1`) and the
+      effects after the objects. The shot has the chat log's icon in it, from F9; the key is F11 since.
+- [ ] Equipment on a solar or ship from its `loadout`: attached models drawn with their object, and
+      animations (`mplatform_animate1`). `space_order` has one turret and one turned part to check against.
+- [ ] Effects in `space_order`: the engine flame, `mplatform`'s running lights and smoke, against draws
+      123 to 130.
 - [ ] Dust against retail, here: a THN host can't show it (see M8), so `FLDustAppearance`'s kite and fade wait
       for a flying camera.
 

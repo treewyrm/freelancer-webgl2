@@ -53,6 +53,12 @@ export interface SpaceObject {
     /** Planet or moon, `TypeBits & 7` with no star sphere: sorted by its surface, not its centre. */
     planet?: boolean
   }
+  /**
+   * A ship's `pilot_mesh`, placed at its `HpPilot` less the pilot's own `HpConnect`
+   * (`AttachPilotMesh`, `0x544380`). Drawn before the model, only where it reflects (`0x546087`).
+   * The game's option 0x1d turns it off, so the host decides.
+   */
+  pilot?: SceneModel
   /** The archetype's `nomad`: goes three lists up, after everything of its kind (`0x51f5b7`). */
   nomad?: boolean
   /** The archetype's `distance_render`. Past it, it stops reflecting, and `lodRange` may apply. */
@@ -90,7 +96,10 @@ export interface SpaceScene {
   /** Its `[LightSource]`s, in file order. */
   lights: readonly SpaceLight[]
   objects: readonly SpaceObject[]
-  /** The star sphere's layers, in the order to draw them: basic stars, complex stars, nebulae. */
+  /**
+   * The star sphere's layers, in the order to draw them: those `skyLayers` names. Each stands at its
+   * `instanceExtent` centre, as `StarSphereLoadLayer` (`0x552fd0`) moves it.
+   */
   sky?: readonly SceneModel[]
   /** `[SystemInfo] space_farclip`, the far plane, past the draw range by `limits.rangeMargin`. */
   farClip?: number
@@ -108,6 +117,22 @@ export interface SpaceScene {
   /** Seconds since the last frame, which each nebula's lightning advances by. 0 when absent. */
   step?: number
 }
+
+/** A `[Background]` key: `basic_stars`, `complex_stars` or `nebulae`. */
+export type SkyLayer = 'basic' | 'complex' | 'nebulae'
+
+/**
+ * The layers that draw, in order, at the `star_sphere` option: never both kinds of stars
+ * (`StarSphereApplyDetail`, `0x552cd0`; `StarSphereRender`, `0x552ea0`). Strictly above each step.
+ */
+export const skyLayers = (detail: number): SkyLayer[] =>
+  detail > 0.75
+    ? ['complex', 'nebulae']
+    : detail > 0.5
+      ? ['basic', 'nebulae']
+      : detail > 0.001
+        ? ['nebulae']
+        : []
 
 /** What retail hardcodes, and a mod can patch. Distances are in world units. */
 export interface SpaceLimits extends FrameLimits, NebulaLimits {
@@ -321,6 +346,19 @@ export const collectSpaceFrame = ({
     const passCamera = onFarList ? farCamera : camera
     for (const { object, picked, within } of lists[at]!) {
       const first = draws.length
+      if (object.pilot && picked.tier === 0)
+        collectModel(
+          object.pilot,
+          passCamera,
+          aspect,
+          view,
+          time,
+          draws,
+          queued,
+          unsupported,
+          unregistered,
+          resolved,
+        )
       collectModel(
         // `GameobjSubmitDrawRetail`: only the first tier arms the reflection.
         picked.tier === 0 ? object.model : withoutEnvironment(object.model),
@@ -360,6 +398,12 @@ export const collectSpaceFrame = ({
           ...(fog && { fog }),
         }
       }
+      // `DrainMeshAndAsteroids` (`0x51f956`) sets `ZFUNC` 4 for the near lists and leaves it, where
+      // RP8's default is 2. No material sets 2, so what would have kept the default reads 4.
+      if (!onFarList)
+        for (let index = first; index < draws.length; index++)
+          if (draws[index]!.depthFunc === 'less')
+            draws[index] = { ...draws[index]!, depthFunc: 'lequal' }
       // `ZENABLE 0` around each node (`DrainBucket`), so it neither reads depth nor leaves any.
       if (onFarList)
         for (let index = first; index < draws.length; index++)

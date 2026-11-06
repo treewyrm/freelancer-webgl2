@@ -22,9 +22,12 @@ export {
   type SceneModel,
   type Spot,
 } from '#/scene/frame.js'
+export { instanceExtent, type Extent } from '#/scene/extent.js'
 export {
   collectSpaceFrame,
   RETAIL_SPACE_LIMITS,
+  skyLayers,
+  type SkyLayer,
   type SpaceEffect,
   type SpaceFrame,
   type SpaceLimits,
