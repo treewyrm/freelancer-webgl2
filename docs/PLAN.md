@@ -570,8 +570,13 @@ renderer. Random streams need not match retail; each appearance's sizes, colours
       share. Lit at the camera's corners by up to four directional lights over the field's ambient
       pass, tinted by `color_shift`; retail picks each corner by rock 0's U flip. Drawn just before
       the field's cubes, opaque at `ALPHAREF` 128, then the faded blended at 5. Its options test,
-      `Asteroids` above 1, is the host's. Pinned by reading. **Uncaptured.**
-- [ ] **You:** `asteroid_billboards` (`src/reference/systems.ts`): the lab field with Cornwall's
+      `Asteroids` above 1, is the host's. Pinned by reading. **Matched in `asteroid_billboards`**
+      (`src/reference/billboards.test.ts`), in kind: draw for draw, both draws' states, in world
+      space under the view. Each of retail's 376 rocks has the alpha our fade gives at its place, to
+      the byte, its size within `size`, its base and point square and facing the camera, its centre's
+      colour ours and its corners' one of ours, by its V flip and one U flip for the frame. Places,
+      sizes and flips are `rand()`'s: we draw 368 rocks to its 376, 374 over 200 seeds.
+- [x] **You:** `asteroid_billboards` (`src/reference/systems.ts`): the lab field with Cornwall's
       billboards, none about the station.
 - [ ] An asteroid field's dynamic asteroids, which `rand()` drives.
 - [ ] Suns: a solar's `star` from `solar\StarArch.ini`, drawn by `FStarSphere` (`star_sphere.cpp`;

@@ -76,6 +76,15 @@ export const RUNS = {
     effectRate: 96,
     animationSeconds: 0,
   },
+  // As asteroid_inside, the billboards' two draws before the cubes.
+  asteroid_billboards: {
+    far: [-1000, -600, -1000],
+    farDraw: 89,
+    hullDraw: 65,
+    effectSeconds: 20,
+    effectRate: 96,
+    animationSeconds: 0,
+  },
   asteroid_nebula: {
     far: [-4600, -600, -3400],
     farDraw: 55,

@@ -11,8 +11,15 @@ export const assertFrameMatches = (
   frame: Frame,
   draws: readonly CaptureDraw[],
   index: TextureIndex,
-  /** Retail streams a sphere's patch, so it has no constant place in an index buffer. */
-  { streamed = false }: { streamed?: boolean } = {},
+  {
+    streamed = false,
+    scattered = [],
+  }: {
+    /** Retail streams a sphere's patch, so it has no constant place in an index buffer. */
+    streamed?: boolean
+    /** Draws whose count is the game's `rand()`: asteroid billboards. */
+    scattered?: readonly number[]
+  } = {},
 ): void => {
   const close = (a: number, b: number, what: string) =>
     assert.ok(Math.abs(a - b) < 1e-5, `${what}: ${a} against ${b}`)
@@ -24,10 +31,12 @@ export const assertFrameMatches = (
     const what = `draw ${n}, ${ours.materialName}`
 
     // A ring piece is drawn from memory, `DrawPrimitiveUP`, with no indices and no buffer.
-    // Win3D's immediate mode: lists unindexed, quads indexed from user memory.
-    const unindexed = retail.call === 'DrawPrimitiveUP'
+    // Win3D's immediate mode: lists unindexed, quads indexed from user memory. Billboards are
+    // unindexed from a buffer, `DrawPrimitive`.
+    const unindexed = retail.call === 'DrawPrimitiveUP' || retail.call === 'DrawPrimitive'
     const immediate = unindexed || retail.call === 'DrawIndexedPrimitiveUP'
-    assert.equal(ours.count, unindexed ? retail.vertices : retail.indices, what)
+    if (!scattered.includes(n))
+      assert.equal(ours.count, unindexed ? retail.vertices : retail.indices, what)
     // Retail's Two, nomad and atmosphere copy their vertices elsewhere, so only the others compare.
     // Retail holds a model's meshes in one index buffer, so each mesh has one constant offset.
     if (!ours.negateNormals && !ours.nomad && !ours.atmosphere && !streamed && !immediate) {

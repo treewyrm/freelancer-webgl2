@@ -319,39 +319,13 @@ export class AsteroidBillboards {
     const shape = this.settings.shape
     const eye = camera.position
     if (!this.near(eye)) return []
-    const frame = Matrix4.fromRotationTranslation(camera.orientation, eye)
-    const look = Matrix4.transformDirection({ x: 0, y: 0, z: -1 }, frame)
-    const forward = { x: f(look.x), y: f(look.y), z: f(look.z) }
-    const centre = {
-      x: f(forward.x * this.ahead + eye.x),
-      y: f(forward.y * this.ahead + eye.y),
-      z: f(forward.z * this.ahead + eye.z),
-    }
-
-    // Right, then up, square to the look, the kept up turning with it.
-    let up = this.#up
-    const cx = forward.y * up.z - forward.z * up.y
-    const cy = forward.z * up.x - forward.x * up.z
-    const cz = f(forward.x * up.y - forward.y * up.x)
-    const rightInverse = f(inverseRoot(f(cx * cx + cz * cz + cy * cy)))
-    const right = { x: f(cx * rightInverse), y: f(cy * rightInverse), z: f(cz * rightInverse) }
-    up = {
-      x: f(right.y * forward.z - right.z * forward.y),
-      y: f(right.z * forward.x - forward.z * right.x),
-      z: f(forward.y * right.x - right.y * forward.x),
-    }
-    const upInverse = inverseRoot(f(up.x * up.x + up.y * up.y + up.z * up.z))
-    up = { x: f(upInverse * up.x), y: f(upInverse * up.y), z: f(upInverse * up.z) }
+    const { forward, right, up, centre } = this.#axes(camera)
     this.#up = up
 
     const colours = this.#colours(lighting, forward, right, up)
     if (!shape) return []
 
     const radiusSquared = this.radius * this.radius
-    const fadeSquared = this.fade * this.fade
-    const inner = radiusSquared - fadeSquared
-    const percent = f(Math.min(Math.max(this.settings.fadePercent ?? 0.3, 0), 1))
-    const [nearHigh, nearLow] = this.nearFade
     const exclusions = this.field.exclusions ?? []
     const order = exclusions.length
       ? exclusions
@@ -396,23 +370,7 @@ export class AsteroidBillboards {
       }
       if (!rock.visible) continue
 
-      const depth = f(
-        (rock.position.x - eye.x) * forward.x +
-          (rock.position.z - eye.z) * forward.z +
-          (rock.position.y - eye.y) * forward.y,
-      )
-      if (depth > this.ahead) {
-        // Past the centre the fading band narrows with depth.
-        const t = Math.min(1 - (this.radius - (depth - this.ahead)) / this.radius, 1)
-        const band = ((1 - percent) * t * 0.5 + percent) * this.radius
-        const bandSquared = band * band
-        rock.alpha =
-          squared > radiusSquared - bandSquared ? f((radiusSquared - squared) / bandSquared) : 1
-      } else rock.alpha = squared > inner ? f((radiusSquared - squared) / fadeSquared) : 1
-      if (rock.alpha < f(0.02)) continue
-      if (depth < nearHigh)
-        rock.alpha =
-          depth < nearLow ? 0 : f(((depth - nearLow) / (nearHigh - nearLow)) * rock.alpha)
+      rock.alpha = this.#fade(rock.position, squared, eye, forward)
     }
 
     const first = this.#rocks[0]
@@ -466,6 +424,86 @@ export class AsteroidBillboards {
     if (faded.length)
       draws.push(this.#drawOf(emit(faded), faded.length * 3, true, shape, lighting.fog))
     return draws
+  }
+
+  /**
+   * The look, right and up at `camera`, the kept up turned to square with the look, and the
+   * sphere's centre ahead.
+   */
+  #axes(camera: Camera): { forward: Vector3; right: Vector3; up: Vector3; centre: Vector3 } {
+    const eye = camera.position
+    const frame = Matrix4.fromRotationTranslation(camera.orientation, eye)
+    const look = Matrix4.transformDirection({ x: 0, y: 0, z: -1 }, frame)
+    const forward = { x: f(look.x), y: f(look.y), z: f(look.z) }
+    const centre = {
+      x: f(forward.x * this.ahead + eye.x),
+      y: f(forward.y * this.ahead + eye.y),
+      z: f(forward.z * this.ahead + eye.z),
+    }
+    const kept = this.#up
+    const cx = forward.y * kept.z - forward.z * kept.y
+    const cy = forward.z * kept.x - forward.x * kept.z
+    const cz = f(forward.x * kept.y - forward.y * kept.x)
+    const rightInverse = f(inverseRoot(f(cx * cx + cz * cz + cy * cy)))
+    const right = { x: f(cx * rightInverse), y: f(cy * rightInverse), z: f(cz * rightInverse) }
+    const turned = {
+      x: f(right.y * forward.z - right.z * forward.y),
+      y: f(right.z * forward.x - forward.z * right.x),
+      z: f(forward.y * right.x - right.y * forward.x),
+    }
+    const upInverse = inverseRoot(
+      f(turned.x * turned.x + turned.y * turned.y + turned.z * turned.z),
+    )
+    const up = {
+      x: f(upInverse * turned.x),
+      y: f(upInverse * turned.y),
+      z: f(upInverse * turned.z),
+    }
+    return { forward, right, up, centre }
+  }
+
+  /**
+   * A rock's alpha at `point`, `squared` from the sphere's centre: faded toward the sphere's edge,
+   * the band narrowing with depth past its centre, then in front of the cubes' reach. Under 0.02
+   * it isn't drawn; retail skips the near fade then, which only lowers it.
+   */
+  #fade(point: Vector3, squared: number, eye: Vector3, forward: Vector3): number {
+    const radiusSquared = this.radius * this.radius
+    const percent = f(Math.min(Math.max(this.settings.fadePercent ?? 0.3, 0), 1))
+    const [nearHigh, nearLow] = this.nearFade
+    const depth = f(
+      (point.x - eye.x) * forward.x + (point.z - eye.z) * forward.z + (point.y - eye.y) * forward.y,
+    )
+    let alpha: number
+    if (depth > this.ahead) {
+      const t = Math.min(1 - (this.radius - (depth - this.ahead)) / this.radius, 1)
+      const band = ((1 - percent) * t * 0.5 + percent) * this.radius
+      const bandSquared = band * band
+      alpha = squared > radiusSquared - bandSquared ? f((radiusSquared - squared) / bandSquared) : 1
+    } else {
+      const fadeSquared = this.fade * this.fade
+      alpha = squared > radiusSquared - fadeSquared ? f((radiusSquared - squared) / fadeSquared) : 1
+    }
+    if (alpha < f(0.02) || depth >= nearHigh) return alpha
+    return depth < nearLow ? 0 : f(((depth - nearLow) / (nearHigh - nearLow)) * alpha)
+  }
+
+  /** The alpha a rock at `point` draws with, seen from `camera`. */
+  alphaAt(camera: Camera, point: Vector3): number {
+    const { forward, centre } = this.#axes(camera)
+    const dx = point.x - centre.x
+    const dy = point.y - centre.y
+    const dz = point.z - centre.z
+    return this.#fade(point, dx * dx + dz * dz + dy * dy, camera.position, forward)
+  }
+
+  /**
+   * The rocks' colours seen from `camera`: a corner's toward the right, the left, the up and the
+   * down, and the centre's.
+   */
+  coloursAt(camera: Camera, lighting: BillboardLighting): { corners: Vector3[]; centre: Vector3 } {
+    const { forward, right, up } = this.#axes(camera)
+    return this.#colours(lighting, forward, right, up)
   }
 
   /**
