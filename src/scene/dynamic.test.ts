@@ -1,8 +1,14 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { Matrix3 } from '@treewyrm/freelancer/math'
+import { Matrix3, type Vector3 } from '@treewyrm/freelancer/math'
+import type { AdvanceOptions, EffectInstance } from '#/alchemy/effect.js'
 import type { Camera } from './camera.js'
-import { DynamicAsteroids, type DynamicField, type DynamicSettings } from './dynamic.js'
+import {
+  DynamicAsteroids,
+  type DynamicEffect,
+  type DynamicField,
+  type DynamicSettings,
+} from './dynamic.js'
 import { zoneOf } from './nebula.js'
 
 const f = Math.fround
@@ -189,4 +195,124 @@ test('exclusion zones more than 100 outside from the camera are not asked', () =
   const rocks = make({}, { exclusions: [{ zone, excludeDynamicAsteroids: true }] })
   rocks.update(camera)
   assert.equal(rocks.rocks.filter(Boolean).length, 12)
+})
+
+/** An effect that records its steps, ending when told. */
+const recorder = () => {
+  const started: {
+    steps: { dt: number; sparam?: number; lod?: number; at: Vector3 }[]
+    ended: boolean
+  }[] = []
+  const effect = (): DynamicEffect => {
+    const record = { steps: [] as (typeof started)[number]['steps'], ended: false }
+    started.push(record)
+    const instance = {
+      advance: (dt: number, { sparam, lod, placement }: AdvanceOptions = {}) =>
+        record.steps.push({ dt, sparam, lod, at: placement!.w }),
+      get finished() {
+        return record.ended
+      },
+    } as unknown as EffectInstance
+    return { instance, texture: () => undefined, type: 5 }
+  }
+  return { started, effect }
+}
+
+test("each rock starts its archetype's effect as it's placed, at intensity 0, held at its frame", () => {
+  const { started, effect } = recorder()
+  const rocks = new DynamicAsteroids({ count: 3, maxVelocity: 0 }, field, {
+    random: msvcRand(),
+    effect,
+  })
+  rocks.update(camera, 1 / 60)
+  assert.equal(started.length, 3)
+  started.forEach(({ steps }, at) => {
+    assert.equal(steps.length, 1)
+    assert.equal(steps[0]!.sparam, 0)
+    assert.deepEqual(steps[0]!.at, { ...rocks.rocks[at]!.position, w: 1 })
+  })
+  const effects = rocks.effects()
+  assert.deepEqual(
+    effects.map(({ effect: { position, type } }) => ({ position, type })),
+    rocks.rocks.map((rock) => ({ position: rock!.position, type: 5 })),
+  )
+})
+
+test("a drawn rock's alpha is its effect's next sparam; one not drawn keeps the last", () => {
+  const { started, effect } = recorder()
+  const rocks = new DynamicAsteroids({ count: 2, maxVelocity: 0 }, field, {
+    random: msvcRand(),
+    effect,
+  })
+  rocks.update(camera, 1 / 60)
+  // Faded in on the sphere's surface; nothing drawn yet, so still 0.
+  rocks.update(camera, 1 / 60)
+  assert.equal(started[0]!.steps[1]!.sparam, 0)
+  rocks.draws()
+  rocks.update(camera, 1 / 60)
+  const alpha = rocks.rocks[0]!.alpha
+  assert.ok(alpha > 0.1 && alpha < 0.2)
+  assert.equal(started[0]!.steps[2]!.sparam, alpha)
+  // Whole within: held at 1.
+  const rock = rocks.rocks[1]! as { position: Vector3 }
+  rock.position = rocks.centre(camera)
+  rocks.update(camera, 1 / 60)
+  rocks.draws()
+  rocks.update(camera, 1 / 60)
+  assert.equal(started[1]!.steps.at(-1)!.sparam, 1)
+})
+
+test('placed afresh, a rock starts a new effect; one that ends is dropped; views give the lod', () => {
+  const { started, effect } = recorder()
+  const rocks = new DynamicAsteroids({ count: 2, maxVelocity: 0 }, field, {
+    random: msvcRand(),
+    effect,
+  })
+  rocks.update(camera, 1 / 60)
+  rocks.viewed([
+    { fate: 'run', lod: 0.25 },
+    { fate: 'draw', lod: 0.5 },
+  ])
+  rocks.update(camera, 1 / 60)
+  assert.deepEqual(
+    started.map(({ steps }) => steps.at(-1)!.lod),
+    [0.25, 0.5],
+  )
+  const rock = rocks.rocks[0]! as { position: Vector3 }
+  rock.position = { x: 1000, y: 0, z: 0 }
+  rocks.update(camera, 1 / 60)
+  assert.equal(started.length, 3)
+  assert.equal(started[2]!.steps[0]!.lod, 1)
+  assert.equal(started[2]!.steps[0]!.sparam, 0)
+  started[1]!.ended = true
+  rocks.update(camera, 1 / 60)
+  assert.equal(rocks.effects().length, 1)
+  assert.equal(started[1]!.steps.length, 4)
+})
+
+test('with no effect, none is carried', () => {
+  const rocks = make()
+  rocks.update(camera, 1 / 60)
+  assert.deepEqual(rocks.effects(), [])
+})
+
+test('a rock placed afresh carries the newest effect, over every field', () => {
+  const { effect } = recorder()
+  const rocks = new DynamicAsteroids({ count: 3, maxVelocity: 0 }, field, {
+    random: msvcRand(),
+    effect,
+  })
+  const other = new DynamicAsteroids({ count: 1, maxVelocity: 0 }, field, {
+    random: msvcRand(),
+    effect,
+  })
+  rocks.update(camera, 1 / 60)
+  other.update(camera, 1 / 60)
+  const [a, b, c] = rocks.effects().map(({ serial }) => serial) as [number, number, number]
+  assert.ok(a < b && b < c)
+  assert.ok(other.effects()[0]!.serial > c)
+  const rock = rocks.rocks[0]! as { position: Vector3 }
+  rock.position = { x: 1000, y: 0, z: 0 }
+  rocks.update(camera, 1 / 60)
+  assert.ok(rocks.effects()[0]!.serial > other.effects()[0]!.serial)
 })

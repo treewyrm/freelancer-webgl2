@@ -43,7 +43,7 @@ import {
 import { AsteroidBand, type BandSettings } from '#/scene/band.js'
 import { NebulaLightning } from '#/scene/lightning.js'
 import { AsteroidBillboards, type BillboardSettings } from '#/scene/billboards.js'
-import { DynamicAsteroids, type DynamicSettings } from '#/scene/dynamic.js'
+import { DynamicAsteroids, type DynamicEffect, type DynamicSettings } from '#/scene/dynamic.js'
 import { NebulaExterior, type ExteriorSettings } from '#/scene/exterior.js'
 import { zoneOf, type NebulaExclusion, type SpaceNebula, type Zone } from '#/scene/nebula.js'
 import {
@@ -329,7 +329,7 @@ const shapeOf = async (read: ReadAsset, name: string): Promise<Texture> => {
 }
 
 // Where the `[VisEffect]`s of what reference systems carry are: `freelancer.ini` lists them all.
-const ALE_TABLES = ['FX/ENGINES/engines_ale.ini', 'FX/MISC/misc_ale.ini']
+const ALE_TABLES = ['FX/ENGINES/engines_ale.ini', 'FX/MISC/misc_ale.ini', 'FX/SPACE/space_ale.ini']
 const EQUIPMENT = [
   'EQUIPMENT/select_equip.ini',
   'EQUIPMENT/misc_equip.ini',
@@ -345,15 +345,18 @@ interface Placed {
   on: Vector3
 }
 
-/** An `[Effect]` started where `world` holds it, through its `[VisEffect]`'s file and textures. */
-const startEffect = async (
+interface EffectTables {
+  effects: Map<string, Section>
+  visuals: Map<string, Section>
+  pools: EffectPools
+}
+
+/** An `[Effect]`'s `[VisEffect]` file and textures, read once: each call starts it afresh. */
+const effectSource = async (
   nickname: string,
-  world: Matrix4,
-  on: Vector3,
-  tables: { effects: Map<string, Section>; visuals: Map<string, Section> },
-  pools: EffectPools,
+  tables: EffectTables,
   read: ReadAsset,
-): Promise<Placed> => {
+): Promise<() => DynamicEffect> => {
   const section = tables.effects.get(nickname.toLowerCase())!
   const visual = tables.visuals.get(strings(section, 'vis_effect')[0]!.toLowerCase())!
   const alchemy = readAlchemy(Directory.read(await read(pathOf(strings(visual, 'alchemy')[0]!))))!
@@ -363,10 +366,7 @@ const startEffect = async (
   const resolve = (crc: number) => nodes.get(crc)
   const crc = Number(visual.getValue('effect_crc')!.value) | 0
   const found = alchemy.effects.effects.find(({ name }) => (getResourceId(name, true) | 0) === crc)!
-  const instance = new EffectInstance(buildEffect(found, resolve), {
-    lookup: lookupOver(alchemy.effects.effects, resolve),
-    pools,
-  })
+  const lookup = lookupOver(alchemy.effects.effects, resolve)
   const textures = (
     await Promise.all(
       strings(visual, 'textures').map(async (path) => [
@@ -375,18 +375,26 @@ const startEffect = async (
     )
   ).flat()
   const type = effectTypeIndex(strings(section, 'effect_type')[0]!)!
+  const texture = (name: string) =>
+    textures.find((entry) => entry.name.toLowerCase() === name.toLowerCase())
+  return () => ({
+    instance: new EffectInstance(buildEffect(found, resolve), { lookup, pools: tables.pools }),
+    texture,
+    type,
+  })
+}
+
+/** An `[Effect]` started where `world` holds it. */
+const startEffect = async (
+  nickname: string,
+  world: Matrix4,
+  on: Vector3,
+  tables: EffectTables,
+  read: ReadAsset,
+): Promise<Placed> => {
+  const effect = (await effectSource(nickname, tables, read))()
   const position = { x: world.w.x, y: world.w.y, z: world.w.z }
-  return {
-    effect: {
-      instance,
-      texture: (name) => textures.find((entry) => entry.name.toLowerCase() === name.toLowerCase()),
-      type,
-      position,
-      watched: { position: on },
-    },
-    world,
-    on,
-  }
+  return { effect: { ...effect, position, watched: { position: on } }, world, on }
 }
 
 /**
@@ -783,6 +791,7 @@ const loadField = async (
   file: string,
   zoneName: string,
   random: () => number,
+  tables: EffectTables,
 ): Promise<SpaceAsteroidField> => {
   const asteroidArchetypes = await sectionsOf(read, ['SOLAR/asteroidarch.ini'])
   const { zone, edgeFraction } = zoneFor(system, zoneName)
@@ -925,6 +934,14 @@ const loadField = async (
       )
     }),
   )
+  // Each archetype's `particle_effect`, which its rocks start as they're placed.
+  const rockEffects = await Promise.all(
+    dynamics.map(async ({ asteroid }) => {
+      const section = asteroid && asteroidArchetypes.get(asteroid.toLowerCase())
+      const nickname = section && strings(section, 'particle_effect')[0]
+      return nickname ? await effectSource(nickname, tables, read) : undefined
+    }),
+  )
   const materials = libraries.flatMap((library) => [...readMaterialLibrary(library)])
   const textures = libraries.flatMap((library) => [...readTextureLibrary(library)])
   const color = (key: string) => {
@@ -1035,7 +1052,7 @@ const loadField = async (
     const rocks = new DynamicAsteroids(
       settings,
       { ...placed, diffuse, ambient, exclusions },
-      { random },
+      { random, ...(rockEffects[at] && { effect: rockEffects[at] }) },
     )
     return [{ rocks, model: { ...model, ...lookups } }]
   })
@@ -1273,11 +1290,11 @@ export const loadSystem = async (
     })
   }
 
-  const tables = {
+  const tables: EffectTables = {
     effects: await sectionsOf(read, ['FX/effects.ini']),
     visuals: await sectionsOf(read, ALE_TABLES),
+    pools: createPools(),
   }
-  const pools = createPools()
   const placed: Placed[] = []
 
   // A solar's loadout: each `[AttachedFX]` on its hardpoint, as the loadout lists them.
@@ -1288,7 +1305,7 @@ export const loadSystem = async (
       if (fx?.name.toLowerCase() !== 'attachedfx' || !point) continue
       const at = vector(position)
       const world = Matrix4.multiply(Matrix4.translation(at), hardpoint(model, point)!)
-      placed.push(await startEffect(strings(fx, 'particles')[0]!, world, at, tables, pools, read))
+      placed.push(await startEffect(strings(fx, 'particles')[0]!, world, at, tables, read))
     }
   }
 
@@ -1319,7 +1336,7 @@ export const loadSystem = async (
   for (const nozzle of nozzles)
     for (const key of ['flame_effect', 'trail_effect_player']) {
       const nickname = strings(engine, key)[0]
-      if (nickname) placed.push(await startEffect(nickname, nozzle, ship, tables, pools, read))
+      if (nickname) placed.push(await startEffect(nickname, nozzle, ship, tables, read))
     }
 
   const range = lodRange(sources(hull.model), hull.lists, { detail })
@@ -1398,7 +1415,9 @@ export const loadSystem = async (
     rings,
     shine: { texture: await shapeOf(read, 'shine') },
     asteroids: await Promise.all(
-      (system.asteroids ?? []).map(({ file, zone }) => loadField(read, system, file, zone, rand)),
+      (system.asteroids ?? []).map(({ file, zone }) =>
+        loadField(read, system, file, zone, rand, tables),
+      ),
     ),
     nebulae: await Promise.all(
       (system.nebulae ?? []).map(({ file, zone }) =>

@@ -3,14 +3,17 @@
  * camera, drifting and turning, faded in as they come within it and placed afresh on its surface
  * once they drift out. `CliDynamicAsteroidUpdate` (`FUN_00525c80`), `Place` (`FUN_00525200`) and
  * `CliDynamicAsteroidDraw` (`FUN_005261b0`) in `src/freelancer/Client/cli_asteroid_dynamic.cpp`.
- * Places and motions are the game's `rand()`, so a run matches retail in kind. Pure, no GL.
+ * Places and motions are the game's `rand()`, so a run matches retail in kind. A rock's archetype
+ * may carry a `particle_effect`, which the host starts and this runs on the rock. Pure, no GL.
  */
 import { Matrix3, Matrix4, type Vector3 } from '@treewyrm/freelancer/math'
 import { outsideSquared, type CubeExclusion } from './asteroids.js'
 import { onSphere } from './billboards.js'
-import type { Camera } from './camera.js'
+import { viewMatrix, type Camera } from './camera.js'
+import type { EffectView } from './effect-view.js'
 import type { Random } from './lightning.js'
 import { immersion, type Zone } from './nebula.js'
+import type { SpaceEffect } from './space.js'
 
 const f = Math.fround
 
@@ -44,6 +47,9 @@ export interface DynamicField {
   exclusions?: readonly CubeExclusion[]
 }
 
+/** A started `particle_effect`: what a `SpaceEffect` is but where it is, which the rock gives it. */
+export type DynamicEffect = Omit<SpaceEffect, 'position' | 'watched'>
+
 /** One rock to draw: its frame and its fade. */
 export interface DynamicDraw {
   world: Matrix4
@@ -60,7 +66,23 @@ interface Rock {
   alpha: number
   /** `bPlaced` (`+0xad`): within the sphere since it was last placed. */
   placed: boolean
+  /** Its companion's `particle_effect`, started as it was placed. */
+  effect?: DynamicEffect
+  /** What the effect's `SetIntensity` was last given: its `sparam`. */
+  intensity: number
+  /** The `ALCHEMY_LOD` blend its effect's last view gave. */
+  lod: number
+  /** When its effect started, over every field's: the game walks a type's newest first. */
+  serial: number
 }
+
+/** A started rock effect, and when it started. */
+export interface DynamicEffectAt {
+  effect: SpaceEffect
+  serial: number
+}
+
+let started = 0
 
 const RAND_UNIT = 3.0517578125e-5
 const RAND_TWICE = 6.103515625e-5
@@ -107,6 +129,8 @@ export class DynamicAsteroids {
   /** `TintedDiffuse` and `TintedAmbient`: `color_shift` times the field's, held under 1. */
   readonly diffuse: Vector3
   readonly ambient: Vector3
+  /** Starts the archetype's `particle_effect` afresh: none when it has none. */
+  readonly effect: (() => DynamicEffect) | undefined
   #rocks: (Rock | undefined)[]
 
   constructor(
@@ -115,11 +139,13 @@ export class DynamicAsteroids {
     {
       random = () => Math.floor(Math.random() * 0x8000),
       detail = 1,
-    }: { random?: Random; detail?: number } = {},
+      effect,
+    }: { random?: Random; detail?: number; effect?: () => DynamicEffect } = {},
   ) {
     this.settings = settings
     this.field = field
     this.random = random
+    this.effect = effect
     // `FUN_00520850` and `CliAsteroidApplyDetail` store the scale as a float.
     const scale = f((1 - detail) * 0.5 + detail)
     this.count = Math.trunc(Math.trunc(settings.count ?? 10) * scale + 0.5)
@@ -246,6 +272,11 @@ export class DynamicAsteroids {
    */
   update(camera: Camera, step = 0, { blocked = false }: { blocked?: boolean } = {}): void {
     this.#move(step)
+    this.#recycle(camera, blocked)
+    this.#run(camera, step)
+  }
+
+  #recycle(camera: Camera, blocked: boolean): void {
     const centre = this.centre(camera)
     const allowed = !blocked && this.#allowed(centre, camera.position)
     for (let index = 0; index < this.count; index++) {
@@ -270,6 +301,9 @@ export class DynamicAsteroids {
         spin: { x: 0, y: 0, z: 0 },
         alpha: 0,
         placed: false,
+        intensity: 0,
+        lod: 1,
+        serial: 0,
       }
       this.#rocks[index] = rock
       const unit = onSphere(this.random)
@@ -278,18 +312,72 @@ export class DynamicAsteroids {
         y: f(this.radius * unit.y + centre.y),
         z: f(this.radius * unit.z + centre.z),
       })
+      // The old effect is dropped and the archetype's started afresh, at intensity 0 (`0x52607e`).
+      if (this.effect) {
+        rock.effect = this.effect()
+        rock.serial = ++started
+        rock.intensity = 0
+        rock.lod = 1
+      }
       rock.placed = true
     }
   }
 
   /**
+   * Each rock's effect stepped on, held at its rock's frame, at the intensity its last draw gave.
+   * Where in the frame retail's effects step against the rocks' update is a guess. One that has
+   * ended is dropped, as its rock's effect list is swept (`FUN_004fd040`).
+   */
+  #run(camera: Camera, step: number): void {
+    if (!this.effect) return
+    const view = viewMatrix(camera)
+    for (const rock of this.#rocks) {
+      if (!rock?.effect) continue
+      rock.effect.instance.advance(step, {
+        sparam: rock.intensity,
+        lod: rock.lod,
+        placement: Matrix4.fromRotationTranslation(rock.orientation, rock.position),
+        view,
+      })
+      if (rock.effect.instance.finished) delete rock.effect
+    }
+  }
+
+  /**
+   * The rocks' effects for the frame's walk, in slot order, each where its rock is, with when it
+   * started: the frame walks every field's newest first, as the game's list is (`FUN_004fc920`).
+   */
+  effects(): DynamicEffectAt[] {
+    const effects: DynamicEffectAt[] = []
+    for (const rock of this.#rocks)
+      if (rock?.effect)
+        effects.push({
+          effect: {
+            ...rock.effect,
+            position: rock.position,
+            watched: { position: rock.position },
+          },
+          serial: rock.serial,
+        })
+    return effects
+  }
+
+  /** What the frame's view test made of `effects()`, in its order: each one's `lod` next step. */
+  viewed(views: readonly (EffectView | undefined)[]): void {
+    let at = 0
+    for (const rock of this.#rocks) if (rock?.effect) rock.lod = views[at++]?.lod ?? rock.lod
+  }
+
+  /**
    * `CliDynamicAsteroidDraw`'s rocks, in slot order: each above 0.005, at the alpha it was last
-   * faded to, which a rock placed this frame kept from before.
+   * faded to, which a rock placed this frame kept from before. Each drawn hands its alpha, held to
+   * [0, 1], to its effect as its intensity (`0x5265c4`, `FParticleEffect::SetIntensity`).
    */
   draws(): DynamicDraw[] {
     const draws: DynamicDraw[] = []
     for (const rock of this.#rocks) {
       if (!rock || !(rock.alpha > VISIBLE)) continue
+      rock.intensity = rock.alpha < 0 ? 0 : rock.alpha > 1 ? 1 : rock.alpha
       draws.push({
         world: Matrix4.fromRotationTranslation(rock.orientation, rock.position),
         alpha: rock.alpha,

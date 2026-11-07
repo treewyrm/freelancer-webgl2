@@ -596,11 +596,33 @@ renderer. Random streams need not match retail; each appearance's sizes, colours
       1e-4, so its state is ours: four whole at `ALPHAREF` 127, eight blended at 5, depth written.
       Tints, the field's ambient and its light match; each frame is turned, unscaled. Retail streams
       the indices for each rock, 120 on each time. Motion is IVP's, taken as constant: damping,
-      precession and collisions are unchecked, as a still can't show them. Not built: the
-      `particle_effect` companion at the rock's alpha, and shooting one (loot, explosion), which are
-      gameplay.
+      precession and collisions are unchecked, as a still can't show them. Not built: shooting one
+      (loot, explosion), which is gameplay.
 - [x] **You:** `asteroid_dynamic` (`src/reference/systems.ts`): the lab field with Cornwall's
       `[DynamicAsteroids]`, from inside it.
+- [x] A dynamic asteroid's `particle_effect`: `DynamicAsteroids`' `effect`, the host's factory for
+      the archetype's `[Effect]`. Started afresh each time its rock is placed (`0x52607e`,
+      `CliCreateEffectOneShot`), at the rock's frame and intensity 0; each draw hands it the rock's
+      alpha, held to [0, 1] (`0x5265c4`, `FParticleEffect::SetIntensity`), which reaches every node's
+      outer time (`IFxEffect` slot 6, `SetNodeOuterTime`): the `sparam`. It matters: both retail
+      effects key their emitters' frequency on it, `gf_blsmallasteroid` none at 0 and 12 a second
+      from 0.2, so a faded rock trails nothing. The rocks step their own effects, at the intensity
+      the last draw gave; `collectSpaceFrame` walks them after the host's, every field's newest
+      first, and hands back each view's `lod`. `EFT_DEBRIS_TRAIL` is `EXIST_OFFSCREEN`, so one out of
+      view runs on; one that ends is dropped. Pinned by reading. **Matched in `asteroid_badlands`**
+      (`src/reference/badlands.test.ts`), in kind: draw for draw to the cubes' end, ten rocks each
+      faded as ours at its place to 1e-4. Our view test at retail's ten places sees exactly the four
+      whose effects retail drew, the rest running unseen. Each of those draws smoke, flare and
+      lightning, additive, `ZFUNC` 4, no depth writes: the flare and lightning in their rock's turned
+      frame to 1e-3, the smoke in the world, its newest puff within 10 of the rock. Retail walks
+      them 9, 1, 6, 3, no slot order, so newest first. Ours draw the same triples at our seen rocks,
+      their particle counts within retail's spread. Seven retail fields carry one: the Badlands' two, Gredos, and the
+      lava fields of Bw03, Bw04 and Rh05 (`gf_dynamiclavaast`, in `FX/SPACE/space_ale.ini`, now
+      among the loader's tables). Unchecked: where in the frame retail steps effects against the
+      rocks' update.
+- [x] **You:** `asteroid_badlands` (`src/reference/systems.ts`): the lab field with the Badlands'
+      `[DynamicAsteroids]`, ten rocks of 200 about a point 140 ahead, each trailing
+      `gf_blsmallasteroid`.
 - [ ] Suns: a solar's `star` from `solar\StarArch.ini`, drawn by `FStarSphere` (`star_sphere.cpp`;
       the name is the decomp's, not a sky). Its `star_center` and `star_glow` fans turned to the camera
       (`FUN_0050cd50`), sized by `radius`. Drawn outside `SpaceObjDrawPass`, around the cockpit pass

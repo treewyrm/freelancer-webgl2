@@ -246,6 +246,7 @@ const ASTEROID_NEBULA_FILE = 'solar\\nebula\\lab\\lab_nebula.ini'
 const ASTEROID_EXBAND_FILE = 'solar\\asteroids\\lab\\lab_field_exband.ini'
 const ASTEROID_BILLBOARDS_FILE = 'solar\\asteroids\\lab\\lab_field_billboards.ini'
 const ASTEROID_DYNAMIC_FILE = 'solar\\asteroids\\lab\\lab_field_dynamic.ini'
+const ASTEROID_BADLANDS_FILE = 'solar\\asteroids\\lab\\lab_field_badlands.ini'
 
 /**
  * Br01's Cornwall field, with no `[DynamicAsteroids]` or `[AsteroidBillboards]`, whose `rand()`
@@ -707,6 +708,33 @@ const ASTEROIDS_DYNAMIC: Omit<ReferenceSystem, 'name' | 'player'> = {
   ],
 }
 
+/**
+ * The lab field with the Badlands' `[DynamicAsteroids]` as written: rocks whose archetype carries
+ * `gf_blsmallasteroid`, its emitters keyed on the rock's alpha.
+ */
+const LAB_FIELD_BADLANDS = LAB_FIELD.concat(
+  [
+    '',
+    '[DynamicAsteroids]',
+    'asteroid = dasteroid_badlands_small1',
+    'count = 10',
+    'placement_radius = 200',
+    'placement_offset = 150',
+    'max_velocity = 50',
+    'max_angular_velocity = 3',
+    'color_shift = 1, 1, 1',
+  ].join('\r\n'),
+)
+
+const ASTEROIDS_BADLANDS: Omit<ReferenceSystem, 'name' | 'player'> = {
+  ...ASTEROIDS,
+  asteroids: [{ file: ASTEROID_BADLANDS_FILE, zone: 'Lab_field' }],
+  files: [
+    { path: ASTEROID_BADLANDS_FILE, text: LAB_FIELD_BADLANDS },
+    { path: ASTEROID_NEBULA_FILE, text: LAB_NEBULA },
+  ],
+}
+
 const ASTEROIDS_EXBAND: Omit<ReferenceSystem, 'name' | 'player'> = {
   ...ASTEROIDS,
   asteroids: [{ file: ASTEROID_EXBAND_FILE, zone: 'Lab_field' }],
@@ -817,6 +845,12 @@ export const systems: ReadonlyMap<string, ReferenceSystem> = new Map(
       // ahead, after the cubes.
       name: 'asteroid_dynamic',
       ...ASTEROIDS_DYNAMIC,
+      player: { ...RING_PLAYER, position: [0, 0, 0] },
+    } satisfies ReferenceSystem,
+    {
+      // As asteroid_dynamic, with the Badlands' ten rocks, each trailing its effect.
+      name: 'asteroid_badlands',
+      ...ASTEROIDS_BADLANDS,
       player: { ...RING_PLAYER, position: [0, 0, 0] },
     } satisfies ReferenceSystem,
     {

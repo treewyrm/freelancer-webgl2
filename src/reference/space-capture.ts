@@ -94,6 +94,15 @@ export const RUNS = {
     effectRate: 96,
     animationSeconds: 0,
   },
+  // As asteroid_dynamic, ten Badlands rocks, then their effects before the engine's.
+  asteroid_badlands: {
+    far: [-1000, -600, -1000],
+    farDraw: 87,
+    hullDraw: 65,
+    effectSeconds: 20,
+    effectRate: 96,
+    animationSeconds: 0,
+  },
   asteroid_nebula: {
     far: [-4600, -600, -3400],
     farDraw: 55,

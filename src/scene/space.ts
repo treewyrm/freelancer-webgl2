@@ -948,16 +948,30 @@ export const collectSpaceFrame = ({
 
   const effectDraws: EffectDraw[] = []
   // A placed effect is drawn only if seen. What it is otherwise the host learns from `effectViews`.
-  const views = effects.map((effect): EffectView | undefined => {
+  // The fields' rocks carry theirs, which they step themselves: walked after the host's.
+  const carried = asteroids.flatMap(({ dynamic = [] }) =>
+    dynamic.map(({ rocks }) => ({ rocks, effects: rocks.effects() })),
+  )
+  // Newest first, over every field's, as the game's list holds them.
+  const rockEffects = carried
+    .flatMap(({ effects }) => effects)
+    .sort((a, b) => b.serial - a.serial)
+    .map(({ effect }) => effect)
+  const all = [...effects, ...rockEffects]
+  const viewsOf = all.map((effect): EffectView | undefined => {
     if (effect.type === SKIPPED_EFFECT_TYPE || !effect.position) return undefined
     const placed = { ...effect, position: effect.position }
     return viewEffect(placed, { camera, aspect, view, field, nebulae: states }, effectView)
   })
-  const walked = effects
+  const views = viewsOf.slice(0, effects.length)
+  const viewOf = new Map(rockEffects.map((effect, at) => [effect, viewsOf[effects.length + at]]))
+  for (const { rocks, effects: theirs } of carried)
+    rocks.viewed(theirs.map(({ effect }) => viewOf.get(effect)))
+  const walked = all
     .map((effect, at) => ({ effect, at }))
     .filter(
       ({ effect, at }) =>
-        effect.type !== SKIPPED_EFFECT_TYPE && (views[at]?.fate ?? 'draw') === 'draw',
+        effect.type !== SKIPPED_EFFECT_TYPE && (viewsOf[at]?.fate ?? 'draw') === 'draw',
     )
     .sort((a, b) => a.effect.type - b.effect.type || a.at - b.at)
   for (const { effect } of walked)
