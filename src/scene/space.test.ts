@@ -1084,3 +1084,21 @@ test('in a field every sun burns through after the overlay: its depth times the 
   assert.equal(alphaOf(glow), 63)
   assert.equal(halfWidthOf(glow), 3500)
 })
+
+test("a sun's corona draws after the effects, with the SunEffect option on and a viewport", () => {
+  const spike = { name: 'spike', width: 64, height: 64, format: 'rgba32_8888' } as Texture
+  const sun = sunOf('sun', 50000)
+  const withGlow = { ...sun, star: { ...sun.star!, lensGlow: { shape: textureShape(spike, {}) } } }
+  const viewport = { width: 100, height: 100 }
+  const frameOf = (fields: Partial<SpaceScene>) =>
+    collectSpaceFrame(sceneOf([withGlow], { viewport, step: 0.1, ...fields }))
+  assert.deepEqual(
+    frameOf({ sunEffect: 1 }).afterEffects?.map(({ materialName }) => materialName),
+    ['corona'],
+  )
+  assert.equal(frameOf({}).afterEffects, undefined)
+  assert.equal(frameOf({ sunEffect: 0 }).afterEffects, undefined)
+  // From a nebula's core: nothing.
+  const core = [nebulaAt(0, 1000, 100)]
+  assert.equal(frameOf({ sunEffect: 1, nebulae: core }).afterEffects, undefined)
+})

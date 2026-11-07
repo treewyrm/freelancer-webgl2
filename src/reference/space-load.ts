@@ -57,6 +57,7 @@ import {
 import { placeSphere } from '#/scene/sphere.js'
 import { skyLayers, type SpaceEffect, type SpaceObject, type SpaceScene } from '#/scene/space.js'
 import { starRadius, type Star, type StarGlow } from '#/scene/star.js'
+import type { LensGlow } from '#/scene/corona.js'
 import {
   effectLodRow,
   effectLodType,
@@ -462,7 +463,7 @@ const loadShapes = async (
 
 /**
  * A `[star]` of `solar\StarArch.ini`, as `FStarSphere::Load` (`0x511020`) reads it: the first
- * `star_glow` that names a `[star_glow]`, the last `star_center`, and `radius`.
+ * `star_glow` and `lens_glow` that name a section, the last `star_center`, `radius` and the fades.
  */
 const loadStar = async (read: ReadAsset, nickname: string): Promise<Star> => {
   const path = 'solar\\stararch.ini'
@@ -490,10 +491,48 @@ const loadStar = async (read: ReadAsset, nickname: string): Promise<Star> => {
     }
     return glow
   }
+  // `LensGlowLoadFromIni` (`0x50d420`).
+  const lensGlowOf = (name: string): LensGlow | undefined => {
+    const section = named('lens_glow', name)
+    if (!section) return undefined
+    const glow: LensGlow = {}
+    for (const { name: key, numbers, strings } of linesOf(section)) {
+      if (key === 'shape') {
+        const shape = shapes.get(strings[0]!.toLowerCase())
+        if (shape) glow.shape = shape
+      }
+      if (key === 'radius_scale') glow.radiusScale = numbers[0]!
+      if (key === 'inner_color') glow.innerColor = vector(numbers)
+      if (key === 'outer_color') glow.outerColor = vector(numbers)
+      if (key === 'glow_fade_in_seconds') glow.fadeIn = numbers[0]!
+      if (key === 'glow_fade_out_seconds') glow.fadeOut = numbers[0]!
+      if (key === 'interior_tween') glow.interiorTween = numbers[0]!
+      if (key === 'interior_ray_tween') glow.interiorRayTween = numbers[0]!
+      if (key === 'max_lod') glow.maxLod = Math.trunc(numbers[0]!)
+    }
+    return glow
+  }
   const section = named('star', nickname)
   if (!section) throw new Error(`no star ${nickname}`)
   const star: Star = {}
+  // An intensity fade of 0 is held to 1e-7; a zone occlusion fade lands there too, unheld.
+  const tiny = Math.fround(1e-7)
   for (const { name: key, numbers, strings } of linesOf(section)) {
+    const value = numbers[0]!
+    if (key === 'intensity_fade_in' || key === 'zone_occlusion_fade_in')
+      star.intensityFade = {
+        ...star.intensityFade,
+        fadeIn: key === 'intensity_fade_in' && value === 0 ? tiny : value,
+      }
+    if (key === 'intensity_fade_out' || key === 'zone_occlusion_fade_out')
+      star.intensityFade = {
+        ...star.intensityFade,
+        fadeOut: key === 'intensity_fade_out' && value === 0 ? tiny : value,
+      }
+    if (key === 'lens_glow' && !star.lensGlow) {
+      const glow = lensGlowOf(strings[0]!)
+      if (glow) star.lensGlow = glow
+    }
     if (key === 'radius') star.radius = numbers[0]!
     if (key === 'star_glow' && !star.glow) {
       const glow = glowOf(strings[0]!)

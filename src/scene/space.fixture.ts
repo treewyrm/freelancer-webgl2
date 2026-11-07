@@ -43,6 +43,8 @@ export interface SpaceReport {
    * the main list over a square in front of it; and a grey one without alpha over dim green.
    */
   suns: { behind: number[][]; over: number[]; screen: number[] }
+  /** A white corona added over a green square in front of its sun: the middle, then a bare corner. */
+  corona: number[][]
 }
 
 // A square of half-size 1 facing +Z: FVF 0x112.
@@ -432,8 +434,34 @@ export default (async (gl) => {
     screen: shot([sunAt(400, greyGlow), square([0, 0.5, 0], 500, 500, 1000)])[0]!,
   }
 
+  // A sun 4000 ahead behind a green square, its glow unshaped: only its corona, 8 pixels across.
+  const coronaSun: SpaceObject = {
+    ...sunAt(4000, redGlow),
+    star: { radius: 1000, lensGlow: { shape: textureShape(solid('white', [255, 255, 255]), {}) } },
+  }
+  renderer.render(
+    collectSpaceFrame({
+      camera: {
+        position: { x: 0, y: 0, z: 0 },
+        orientation: Matrix3.identity,
+        fovh: 45,
+        near: 1,
+        far: 1,
+      },
+      aspect: width / height,
+      ambient: { x: 255, y: 255, z: 255 },
+      lights: [],
+      objects: [coronaSun, square(GREEN, 500, 500, 100)],
+      viewport: { width, height },
+      sunEffect: 1,
+      step: 0.1,
+    }),
+  )
+  const corona = [read(width >> 1, height >> 1), read(4, 4)]
+
   renderer.dispose()
   return {
+    corona,
     suns,
     sheets,
     band,

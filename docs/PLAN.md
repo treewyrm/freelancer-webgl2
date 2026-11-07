@@ -640,24 +640,35 @@ renderer. Random streams need not match retail; each appearance's sizes, colours
       other way round from its caller (`0x5119d9`), but both come to `(P − R) + U` first, top left.
       Pinned by reading and by pixels. **Uncaptured**: the alpha test and fog the frame leaves it,
       taken as `GREATER 0` and the object's own.
-- [ ] A sun's `lens_glow` corona (`FUN_0050da20`, `FUN_0050e6f0`): its alpha by rays from the camera
-      that objects big enough on screen (`FUN_0050c750`) or a nebula (`FUN_00511b90`) block, eased
-      each frame (`FUN_00512460`). Then its `lens_flare` beads and `spines` (`FUN_0050f850`,
-      `FUN_00510160`), drawn at the cockpit pass's end (`SpaceEnvFxEndCockpitPass`, `0x51c9e0`).
-      **Occlusion is by hitbox, not by what's drawn.** Each corona sample casts a ray from the camera
-      through its screen point, as far as the sun, through `PhySys::FindRayCollisions`: the physics
-      engine's test against every object's collision shapes, its `.sur`, at most 6 hits a ray. A hit
-      blocks unless it's a shield part, the sun's own solar, or the player's ship from the cockpit,
-      and only if the object's `CObject::Radius` covers more on screen than 0.65 of the sun's pixel
-      scale. The samples' alphas then drive everything but the glow fans: the corona per sample, the
-      spines from the corona's slots, and the flare and spines through `Intensity` (`Field38`, eased
-      by `intensity_fade_in` and `_out`). The fans never test anything. A nebula's or asteroid
-      field's zone across the line, or the player in a trade lane, hides all of it at once
-      (`ZoneOcclusion`). `@treewyrm/freelancer/surface` already reads a `.sur` into a tree of
-      convex hulls with bounding spheres, but casts no ray, so the test is geometry to build here: down
-      the tree by sphere, then the segment clipped against each leaf hull's faces, in each part's
-      world, a part's hull marked shield or not. The host gives each object its surface and parts,
-      as it gives its model. IVP's order of hits matters only past six. `sun_occluded` checks it.
+- [x] A sun's `lens_glow` corona: `starCorona`, `updateStar` and `Frame.afterEffects`. Not in
+      the cockpit pass's place but after the effects and screen quads (`ScaleEnvironmentEffects`,
+      `0x51c7d4`, from the chase camera; the cockpit's wraps its mesh and HUD around it, which is
+      M8's). `FStarSphere::Draw` (`0x511ca0`): the zone occlusion eased toward whether the player is
+      in a lane or any nebula's or field's zone crosses the line to the sun (`FUN_00511b90`, with
+      `ZONE::Intersect`'s clips as `Zone.meets`), what showed of the corona noted for the flare,
+      the sun projected in the camera's own pixels, then `FUN_0050da20`: a LOD by its pixel scale,
+      less the `SunEffect` option's (`sunEffectQuality`, `sunLeastLod`), 1 to 25 samples on its
+      rim and inner ring each casting a ray from the camera (`Unproject`, as far as the sun),
+      eased by `glow_fade_in_seconds`, the rest filled from their neighbours. `FUN_0050e6f0` draws
+      a fan, or from LOD 3 a band whose diagonals follow the alphas and a fan, at half each
+      sample's alpha, added. The flare's `Intensity` follows what showed (`UpdateIntensity`). A ray
+      is blocked as `FUN_0050c750` decides, from the host's `rayHits`. `Load` stores
+      `zone_occlusion_fade_in` and `_out` over the intensity fades (`0x511381`, checked in
+      `Freelancer-original.exe`), so retail's suns ease their flare over 1 s, and their zone
+      occlusion keeps 2 s. Fully in a field it only sets its occlusion. Pinned by reading and by
+      pixels. **Uncaptured**: the alpha test the screen quads leave, taken as `GREATER 0`.
+- [ ] The corona's rays against hitboxes: `rayHits` from each object's `.sur`. A ray hits through
+      `PhySys::FindRayCollisions`, the physics engine's test against every object's collision
+      shapes, at most 6 hits a ray; each hit's `CObject::Radius` and position decide. A hit on a
+      shield part never blocks. `@treewyrm/freelancer/surface` already reads a `.sur` into a tree
+      of convex hulls with bounding spheres, but casts no ray, so the test is geometry to build
+      here: down the tree by sphere, then the segment clipped against each leaf hull's faces, in
+      each part's world. The host gives each object its surface and parts, as it gives its model.
+      IVP's order of hits matters only past six.
+- [ ] A sun's `spines` and `lens_flare` (`FUN_00510160`, `FUN_0050f850`): the spines before the
+      corona, their reach deciding whether the sun's on screen (`0x511fe5`); the flare's beads at
+      the cockpit pass's end (`SpaceEnvFxEndCockpitPass`, `0x51c9e0`), by `Intensity` and the zone
+      occlusion.
 - [ ] **You:** `sun_ahead`, `sun_occluded` and `sun_nebula`: a sun in view, behind a station's edge,
       and seen from a nebula, with screenshots and captures.
 - [ ] Space dust.

@@ -15,6 +15,7 @@ import {
 } from '@treewyrm/freelancer/vmesh'
 import { DEFAULT_SAMPLER } from '#/texture/texture.js'
 import type { Camera } from './camera.js'
+import type { LensGlow } from './corona.js'
 import { textureHasAlpha } from './exterior.js'
 import type { Draw } from './frame.js'
 import type { TextureShape } from './ring.js'
@@ -47,6 +48,19 @@ export interface Star {
   glow?: StarGlow
   /** `star_center`: the last key's, and none when that names no `[star_glow]`. */
   center?: StarGlow
+  /** `lens_glow`: the first that names a `[lens_glow]`. Its defaults when none does. */
+  lensGlow?: LensGlow
+  /**
+   * `+0x20` and `+0x24`, 1 s each when absent: how fast the flare follows what the corona shows.
+   * `intensity_fade_in` and `_out` write them, a 0 as 1e-7, but so do `zone_occlusion_fade_in` and
+   * `_out`, unheld (`0x511381`, `0x5113b7`): whichever comes last in the section wins.
+   */
+  intensityFade?: { fadeIn?: number; fadeOut?: number }
+  /**
+   * `+0x28` and `+0x2c`, 2 s each when absent: how fast a zone between hides it. No key reaches them
+   * in retail, which a mod's patch could.
+   */
+  zoneOcclusionFade?: { fadeIn?: number; fadeOut?: number }
 }
 
 /** `StarSphereMaxGlowScale` (`0x512620`): the solar's sphere, `Slot178`'s radius about its position. */

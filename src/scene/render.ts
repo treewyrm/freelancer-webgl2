@@ -25,7 +25,7 @@ import {
   type SamplerState,
 } from '#/texture/texture.js'
 import { planUpload } from '#/texture/upload.js'
-import type { Frame, HookName } from './frame.js'
+import type { Draw, Frame, HookName } from './frame.js'
 
 const EFFECT_SAMPLER: SamplerState = { ...DEFAULT_SAMPLER, wrapU: 'clamp', wrapV: 'clamp' }
 
@@ -219,8 +219,7 @@ export const createRenderer = (gl: WebGL2RenderingContext): Renderer => {
     let previousAmbient = false
     let ownLights = false
     let uploaded: Float32Array | undefined
-    frame.draws.forEach((draw, at) => {
-      runHooks(at)
+    const drawOne = (draw: Draw) => {
       setDrawUniforms(gl, active, draw)
       if (draw.cull === 'none') gl.disable(gl.CULL_FACE)
       else {
@@ -283,6 +282,10 @@ export const createRenderer = (gl: WebGL2RenderingContext): Renderer => {
       }
       gl.bindVertexArray(arrayOf(draw.mesh, draw.reference, draw.skin?.influences))
       gl.drawElements(drawMode(draw.mesh.primitive), draw.count, gl.UNSIGNED_SHORT, draw.byteOffset)
+    }
+    frame.draws.forEach((draw, at) => {
+      runHooks(at)
+      drawOne(draw)
     })
 
     runHooks(frame.draws.length, (name) => name !== 'end')
@@ -314,6 +317,10 @@ export const createRenderer = (gl: WebGL2RenderingContext): Renderer => {
       })
       applyState()
     }
+    // `applyState` has put the frame's ambient and lights back.
+    previousAmbient = false
+    ownLights = false
+    frame.afterEffects?.forEach(drawOne)
     runHooks(frame.draws.length, (name) => name === 'end')
     release()
     return true

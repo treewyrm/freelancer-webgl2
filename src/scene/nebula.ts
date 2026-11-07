@@ -9,6 +9,7 @@ import type { Clouds } from './clouds.js'
 import type { NebulaExterior } from './exterior.js'
 import type { NebulaLightning } from './lightning.js'
 import type { TextureShape } from './ring.js'
+import { segmentMeetsZone } from './zone-segment.js'
 
 /**
  * What a nebula asks of its zone: `IZone`'s position, `GetRadius`, `GetRadiusAlong`, `GetSize` and
@@ -26,6 +27,8 @@ export interface Zone {
   axes: readonly [Vector3, Vector3, Vector3]
   /** `GetSurfacePoint` (`ZONE`, vt+0x44): where its surface is, for a point. */
   surfacePoint: (point: Vector3) => Vector3
+  /** `Intersect` (vt+0x4c): whether a segment meets it, or starts in it. */
+  meets: (start: Vector3, end: Vector3) => boolean
 }
 
 /** A system's `[Nebula]`: its zone, and what its file's `[Fog]` and `[NebulaLight]` say. */
@@ -159,7 +162,11 @@ export interface WrittenZone {
  * shape the game knows.
  */
 export const zoneOf = (shape: Shape, written: WrittenZone = {}): Zone => {
-  const zone = reachOf(shape, written)
+  const reach = reachOf(shape, written)
+  const zone = {
+    ...reach,
+    meets: (start: Vector3, end: Vector3) => segmentMeetsZone(shape.type, reach, start, end),
+  }
   const { position: centre, axes, size } = zone
   // In the zone's own frame and back: `EngineTransposeTransform`, `EngineTransformMatrix`.
   const toLocal = (d: Vector3): Vector3 => ({
@@ -245,8 +252,8 @@ export const zoneOf = (shape: Shape, written: WrittenZone = {}): Zone => {
   }
 }
 
-/** Everything of a zone but its surface point. */
-const reachOf = (shape: Shape, written: WrittenZone): Omit<Zone, 'surfacePoint'> => {
+/** Everything of a zone but its surface point and segment test. */
+const reachOf = (shape: Shape, written: WrittenZone): Omit<Zone, 'surfacePoint' | 'meets'> => {
   const position = shape.center
   const turn = written.orientation ?? (shape.type === 'sphere' ? Quat.identity : shape.orientation)
   const axis = (direction: Vector3): Vector3 => {

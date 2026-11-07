@@ -18,6 +18,14 @@ import { flareQuads, type FrameRect, type ScreenQuad, type SpaceFlare } from './
 import type { AsteroidBand } from './band.js'
 import { fogOverlayDraw } from './overlay.js'
 import { starGlowDraws, type Star } from './star.js'
+import {
+  hideStar,
+  starCorona,
+  sunEffectQuality,
+  sunLeastLod,
+  updateStar,
+  type CoronaView,
+} from './corona.js'
 import { fillSheetsDraw } from './sheets.js'
 import {
   directionalLightsAt,
@@ -179,6 +187,18 @@ export interface SpaceScene {
   viewport?: { width: number; height: number }
   /** `fx/efx.txm`'s `shine`, from `[Texture]` in `effect_shapes.ini`, and its frame. */
   shine?: { texture: Texture; frame?: FrameRect }
+  /**
+   * The `SunEffect` option as `PerfOptions.ini` writes it, the effects, sun and sun effects options
+   * (0x25, 0x24, 0x28) being on. With none, or none above 0, no sun's corona draws.
+   */
+  sunEffect?: number
+  /**
+   * `PhySys::FindRayCollisions`: what a ray from the camera hits, the objects' hitboxes. Each hit's
+   * `object` is compared with a sun's own `SpaceObject` and with `player`. Nothing blocks without it.
+   */
+  rayHits?: CoronaView['rayHits']
+  /** The player's ship, seen from the cockpit: a sun's rays pass through it. None from outside. */
+  player?: unknown
 }
 
 /** A `[Background]` key: `basic_stars`, `complex_stars` or `nebulae`. */
@@ -403,6 +423,9 @@ export const collectSpaceFrame = ({
   effectView,
   viewport,
   shine,
+  sunEffect,
+  rayHits,
+  player,
   rings = [],
   cut = false,
   lane = false,
@@ -433,6 +456,8 @@ export const collectSpaceFrame = ({
     immersion(nebula.zone, nebula.edgeFraction ?? 0, point)
   const excludedOf = (nebula: SpaceNebula) => (point: Vector3) =>
     nebulaClock(nebula).order.at(point)?.immersion ?? 0
+  // Each sun's own update, which the solar runs in the game's tick (`UpdateIntensity`).
+  for (const { star } of objects) if (star) updateStar(star, step)
   for (const { nebula, depth, surface } of states) {
     nebula.exterior?.update(eye, step, depth, cut)
     // `FNebulaEffect::Update`: the bits' turn restarts `+0x58`; then, if the camera was in it last
@@ -968,6 +993,34 @@ export const collectSpaceFrame = ({
     )
   }
 
+  // `ScaleEnvironmentEffects` once the effects are done: each sun's corona, in the order its solars
+  // were read (`SpaceEnvFxBeginCockpitPass`, `0x51c970`). Fully in a field, only its occlusion.
+  const afterEffects: Draw[] = []
+  const quality = sunEffect === undefined ? 0 : sunEffectQuality(sunEffect)
+  if (quality > 0 && viewport)
+    for (const object of objects) {
+      const { star, position } = object
+      if (!star) continue
+      if (field?.enclosure === 2) {
+        hideStar(star)
+        continue
+      }
+      // `FUN_00511b90`: the player in a lane, or any nebula's or field's zone across the line.
+      const zones = [...nebulae.map(({ zone }) => zone), ...asteroids.map(({ zone }) => zone)]
+      const zoneBlocked = lane || zones.some((zone) => zone.meets(eye, position))
+      afterEffects.push(
+        ...starCorona(star, position, zoneBlocked, {
+          camera: given,
+          view,
+          ...viewport,
+          ...(rayHits && { rayHits }),
+          own: object,
+          ...(player !== undefined && { player }),
+          leastLod: sunLeastLod(quality),
+        }),
+      )
+    }
+
   const effectDraws: EffectDraw[] = []
   // A placed effect is drawn only if seen. What it is otherwise the host learns from `effectViews`.
   // The fields' rocks carry theirs, which they step themselves: walked after the host's.
@@ -1023,6 +1076,7 @@ export const collectSpaceFrame = ({
     effectDepthFunc: 'lequal',
     effectViews: views,
     ...(quads.length && shine && { screenQuads: [{ texture: shine.texture, quads }] }),
+    ...(afterEffects.length && { afterEffects }),
     unsupported: [...unsupported],
     unregistered: [...unregistered],
   }

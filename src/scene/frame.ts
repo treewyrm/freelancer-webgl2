@@ -286,6 +286,11 @@ export interface Frame {
    * texture's.
    */
   screenQuads?: ScreenQuadBatch[]
+  /**
+   * Drawn after the screen quads, before the `end` hook: a sun's corona, which the game draws once
+   * its effects are done (`ScaleEnvironmentEffects`, `0x51c7d4`).
+   */
+  afterEffects?: Draw[]
   /** What didn't draw as authored: materials M3 is to cover, and any mesh or texture not found. */
   unsupported: string[]
   /** Materials of a type no DLL registers. They draw nothing in retail either. */

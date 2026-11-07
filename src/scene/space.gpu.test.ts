@@ -125,3 +125,11 @@ test('a glow whose texture has no alpha adds itself less what it covers: ONE, IN
   for (const [index, value] of report.suns.screen.entries())
     assert.ok(Math.abs(value - expected[index]!) <= 2, `${report.suns.screen} against ${expected}`)
 })
+
+test("a sun's corona adds over what stands in front of it, at half its samples' alpha", () => {
+  const [middle, corner] = report.corona
+  // White at 127 of 255, added over green.
+  for (const [index, value] of middle!.entries())
+    assert.ok(Math.abs(value - [127, 255, 127][index]!) <= 1, `${middle}`)
+  assert.deepEqual(corner, [0, 0, 0])
+})
