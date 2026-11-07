@@ -56,6 +56,12 @@ import {
   type TextureShape,
 } from '#/scene/ring.js'
 import { placeSphere } from '#/scene/sphere.js'
+import {
+  RETAIL_TUNNEL,
+  RETAIL_TUNNEL_LAYER,
+  type TunnelLayer,
+  type TunnelSettings,
+} from '#/scene/tunnel.js'
 import { skyLayers, type SpaceEffect, type SpaceObject, type SpaceScene } from '#/scene/space.js'
 import { starRadius, type Star, type StarGlow } from '#/scene/star.js'
 import type { Hitbox, HitboxSurface } from '#/scene/hitbox.js'
@@ -367,6 +373,75 @@ const shapeOf = async (read: ReadAsset, name: string): Promise<Texture> => {
     if (found?.type === 'image') return found
   }
   throw new Error(`no texture shape ${name}`)
+}
+
+/**
+ * `FX/gate_tunnel.ini` as `GateTunnelIniLoad` (`0x4fe1c0`) reads it, by nickname folded: each
+ * `[layer]` joins the `[gate_tunnel]` before it, two at most. A colour is three whole bytes over 255.
+ */
+export const loadGateTunnels = async (read: ReadAsset): Promise<Map<string, TunnelSettings>> => {
+  const tunnels = new Map<string, TunnelSettings>()
+  const byte = (value: number) => Math.fround(Math.trunc(value) * Math.fround(1 / 255))
+  const color = (section: Section, name: string, fallback: Vector3): Vector3 => {
+    const values = numbers(section, name)
+    return values.length ? vector(values.map(byte)) : fallback
+  }
+  let current: { nickname: string; settings: TunnelSettings; layers: TunnelLayer[] } | undefined
+  for (const section of Document.read(await read('FX/gate_tunnel.ini'))) {
+    const number = (name: string, fallback: number) => {
+      const value = section.getValue(name)?.value
+      return value === undefined ? fallback : Math.fround(Number(value))
+    }
+    const kind = section.name.toLowerCase()
+    if (kind === 'gate_tunnel') {
+      const base = RETAIL_TUNNEL
+      const layers: TunnelLayer[] = []
+      current = {
+        nickname: (section.getNickname() ?? 'default').toLowerCase(),
+        layers,
+        settings: {
+          writeDepth: number('write_depth_buffer', 1) !== 0,
+          controlPoints: Math.trunc(number('num_spline_control_points', base.controlPoints)),
+          range: {
+            x: number('x_range', base.range.x),
+            y: number('y_range', base.range.y),
+            z: number('z_range', base.range.z),
+          },
+          minRadius: number('min_radius', base.minRadius),
+          maxRadius: number('max_radius', base.maxRadius),
+          farRadiusFactor: number('far_radius_factor', base.farRadiusFactor),
+          minSpeed: number('min_speed', base.minSpeed),
+          maxSpeed: number('max_speed', base.maxSpeed),
+          timeToMaxSpeed: number('time_to_max_speed', base.timeToMaxSpeed),
+          tSteps: number('num_t_steps', base.tSteps),
+          sSteps: number('num_s_steps', base.sSteps),
+          minRotation: number('min_rotation', base.minRotation),
+          maxRotation: number('max_rotation', base.maxRotation),
+          minRgb: color(section, 'min_rgb', base.minRgb),
+          maxRgb: color(section, 'max_rgb', base.maxRgb),
+          layers,
+        },
+      }
+      tunnels.set(current.nickname, current.settings)
+    } else if (kind === 'layer' && current && current.layers.length < 2) {
+      const base = RETAIL_TUNNEL_LAYER
+      const name = strings(section, 'texture')[0]
+      const texture = name === undefined ? undefined : await shapeOf(read, name.toLowerCase())
+      current.layers.push({
+        ...(texture && { texture }),
+        color: color(section, 'color', base.color),
+        nearAlpha: number('near_alpha', base.nearAlpha),
+        farAlpha: number('far_alpha', base.farAlpha),
+        radiusFactor: number('radius_factor', base.radiusFactor),
+        uOffset: number('u_offset', base.uOffset),
+        vOffset: number('v_offset', base.vOffset),
+        du: number('du', base.du),
+        dv: number('dv', base.dv),
+        vScale: number('v_scale', base.vScale),
+      })
+    }
+  }
+  return tunnels
 }
 
 // Where the `[VisEffect]`s of what reference systems carry are: `freelancer.ini` lists them all.

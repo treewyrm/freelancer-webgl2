@@ -182,9 +182,12 @@ export interface PlacedEffect {
   }
 }
 
-/** `draw`: seen. `run`: unseen, and `EXIST_OFFSCREEN`. `die`: unseen, and frozen in place to end. */
+/**
+ * `draw`: seen. `run`: unseen, and `EXIST_OFFSCREEN`. `die`: unseen, and frozen in place to end.
+ * `hold`: not walked this frame, so neither drawn nor stepped, as in a gate tunnel.
+ */
 export interface EffectView {
-  fate: 'draw' | 'run' | 'die'
+  fate: 'draw' | 'run' | 'die' | 'hold'
   /** The `ALCHEMY_LOD` blend, 0 to 1, for its next step's `lod`. */
   lod: number
 }

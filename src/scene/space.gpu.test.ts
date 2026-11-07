@@ -133,3 +133,12 @@ test("a sun's corona adds over what stands in front of it, at half its samples' 
     assert.ok(Math.abs(value - [127, 255, 127][index]!) <= 1, `${middle}`)
   assert.deepEqual(corner, [0, 0, 0])
 })
+
+test("a gate tunnel draws over the jump's clear, its second layer added ONE, INVSRCALPHA", () => {
+  const [middle, corner] = report.tunnel
+  assert.deepEqual(middle, [255, 255, 255])
+  // Blue at 200 whole, then green at 31 / 255 over what that leaves.
+  const expected = [0, 255, 200 * (1 - 31 / 255)]
+  for (const [index, value] of corner!.entries())
+    assert.ok(Math.abs(value - expected[index]!) <= 1, `${corner} against ${expected}`)
+})

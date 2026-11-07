@@ -17,6 +17,7 @@ import { buildRing, textureShape, type RingExterior } from './ring.js'
 import { createRenderer } from './render.js'
 import { collectSpaceFrame, type SpaceObject, type SpaceScene } from './space.js'
 import { starRadius, type Star } from './star.js'
+import { GateTunnel, RETAIL_TUNNEL_LAYER } from './tunnel.js'
 
 export interface SpaceReport {
   error: number
@@ -45,6 +46,11 @@ export interface SpaceReport {
   suns: { behind: number[][]; over: number[]; screen: number[] }
   /** A white corona added over a green square in front of its sun: the middle, then a bare corner. */
   corona: number[][]
+  /**
+   * From the ship, down a straight gate tunnel over the jump's white clear: the middle, open, then a
+   * corner on its wall, an opaque blue layer under a green one at 31 / 255 added `ONE, INVSRCALPHA`.
+   */
+  tunnel: number[][]
 }
 
 // A square of half-size 1 facing +Z: FVF 0x112.
@@ -459,9 +465,57 @@ export default (async (gl) => {
   )
   const corona = [read(width >> 1, height >> 1), read(4, 4)]
 
+  // Every curve at its most: brightness 1, no wander, a radius of 50 all along. The window ends
+  // 0.1 of the path ahead, 178, where the opening still covers the middle pixel.
+  const tunnel = new GateTunnel(
+    {
+      writeDepth: false,
+      controlPoints: 9,
+      range: { x: 0, y: 0, z: 2000 },
+      layers: [
+        {
+          ...RETAIL_TUNNEL_LAYER,
+          texture: solid('white', [255, 255, 255]),
+          color: { x: 0, y: 0, z: 200 / 255 },
+          nearAlpha: 1,
+          farAlpha: 1,
+        },
+        {
+          ...RETAIL_TUNNEL_LAYER,
+          texture: solid('white', [255, 255, 255]),
+          color: { x: 0, y: 1, z: 0 },
+          nearAlpha: 0.5,
+          farAlpha: 0.5,
+        },
+      ],
+    },
+    { random: () => 0x7fff },
+  )
+  tunnel.setState(1)
+  tunnel.setState(2)
+  tunnel.update(1 / 60)
+  const ship = tunnel.ship!.w
+  renderer.render(
+    collectSpaceFrame({
+      camera: { position: ship, orientation: Matrix3.identity, fovh: 45, near: 1, far: 1 },
+      aspect: width / height,
+      ambient: { x: 0, y: 0, z: 0 },
+      lights: [],
+      objects: [],
+      jump: {
+        ship: { ...square([0, 0, 0], 0, 0, 0), position: ship },
+        tunnel,
+        ambient: { x: 0, y: 0, z: 0 },
+        background: { x: 255, y: 255, z: 255 },
+      },
+    }),
+  )
+  const tunnelPixels = [read(width >> 1, height >> 1), read(0, 0)]
+
   renderer.dispose()
   return {
     corona,
+    tunnel: tunnelPixels,
     suns,
     sheets,
     band,

@@ -87,6 +87,7 @@ export const assertFrameMatches = (
         alphaAdd: [5, 2],
         multiply: [9, 1],
         screen: [2, 4],
+        premultiplied: [2, 6],
       }[ours.blendMode]
       assert.deepEqual(
         [retail.states['SRCBLEND'], retail.states['DESTBLEND']],

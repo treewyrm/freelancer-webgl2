@@ -737,7 +737,31 @@ renderer. Random streams need not match retail; each appearance's sizes, colours
       **Matched** (`src/reference/dust.test.ts`), like `dust_zone`: draw for draw, and the emitters
       to the particle, 124, 87 and 75 in the edge (0.2498, its immersion as `GetImmersion` gives it)
       and at a quarter, 249, 174 and 150 off centre.
-- [ ] Gate tunnels.
+- [x] Gate tunnels: `GateTunnel` (`src/scene/tunnel.ts`), from `FGateTunnel` (`gate_tunnel.cpp`), and
+      `SpaceScene.jump`. Nine natural cubic splines of `num_spline_control_points` (`FUN_005018a0`),
+      drawn from `rand()` on load and on each jump out: the path's x and y across their ranges, the
+      first three 0, its z falling `z_range` down the gate's `HpJumpOut` -Z from 5 out; the radius;
+      a rotation nothing reads (checked in `Freelancer-original.exe`); three colour offsets and a
+      brightness of 0.5 to 1. `Update` ramps the speed over `time_to_max_speed`, beams the ship along
+      the path (`GateTunnel.ship`), scrolls every curve on one value near the end, flickers the light
+      once a draw has switched it on, and scrolls each layer's UVs. `Draw` gives each layer's strips
+      from 0.1 of the path ahead of the ship to 0.01 behind, each 1.1 times the last, a ring of 13
+      pairs: alpha far to near, cubed; the radius toward `far_radius_factor` ahead; colour plus the
+      red offset on red and blue (blue's own is never read, `0x500543`) times the brightness. The
+      first layer blends by alpha, the second `ONE, INVSRCALPHA` (`BlendMode` `premultiplied`),
+      unculled, unlit, the texture wrapping (`0x4ffb14`). In the jump's states 2 and 3
+      `SpaceObjDrawPass` draws only the tunnel, the ship lit by the tunnel's light over
+      `jump_ambient` (`Slot184`, `0x546480`), and `EFT_JUMP_EFFECTS` then `EFT_ENGINE_FIRE`; every
+      other effect neither draws nor steps (`EffectView` `hold`), and the clear is
+      `jump_background_color`. Retail's `[layer]`s write `near_alpha_factor` and `far_alpha_factor`,
+      which the exe has no string for, so every layer fades from 1 to 0; `fade_distance` and the
+      tunnel's own alphas are unread too. The host reads `FX/gate_tunnel.ini` into `TunnelSettings`
+      (`loadGateTunnels`) and `jumpeffect.ini` into `SpaceJump`, and drives the state. Pinned by
+      reading and by pixels. **Uncaptured**: the depth test, alpha test and fog the frame leaves,
+      and the first frame's clear, which retail sets for the next.
+- [ ] **You:** a jump through a gate, captured in the tunnel: state, strip order and count, each
+      ring's alpha and colour against our curves' ranges, the ship's light and ambient. Its curves
+      and the light's flicker are `rand()`'s, so in kind.
 - [ ] Projectiles and beams; the cockpit pass with its depth clear.
 - [ ] Measure effects' CPU cost in a whole system. A pushed lane steps on the CPU, by choice: bring back
       transform feedback only if this shows the need. The picture doesn't depend on it ([ADAPTING.md](ADAPTING.md#alchemy-m6)).

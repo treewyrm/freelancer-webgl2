@@ -31,6 +31,7 @@ import {
   type CoronaView,
 } from './corona.js'
 import { fillSheetsDraw } from './sheets.js'
+import type { GateTunnel } from './tunnel.js'
 import {
   directionalLightsAt,
   lightObject,
@@ -214,6 +215,26 @@ export interface SpaceScene {
   dustZones?: readonly DustZone[]
   /** `space_dust_detail` and game option `0x19`. Run times are the effect types'. */
   dustOptions?: Omit<DustOptions, 'runTimes'>
+  /**
+   * The player is jumping, in the tunnel: the frame is the tunnel, the ship and two of the effect
+   * types, and nothing else of the system, whose nebulae, fields and dust it leaves alone.
+   */
+  jump?: SpaceJump
+}
+
+/**
+ * The player's jump while its ship is in states 2 and 3, the tunnel (`SpaceObjDrawPass`, `0x51c235`).
+ * The host steps the tunnel first (`FJumpShipEffect::Update`), which places the ship.
+ */
+export interface SpaceJump {
+  /** The player's ship, where the tunnel beamed it. */
+  ship: SpaceObject
+  /** The gate's descriptor's `jump_tunnel`, when found. */
+  tunnel?: GateTunnel
+  /** The descriptor's `jump_ambient`, as written, 0 to 255: the ship's ambient. */
+  ambient: Vector3
+  /** Its `jump_background_color`, as written, 0 to 255: the clear. */
+  background: Vector3
 }
 
 /** A `[Background]` key: `basic_stars`, `complex_stars` or `nebulae`. */
@@ -278,6 +299,8 @@ const INSIDE_ORDER = [FAR, MAIN, NOMAD_OFFSET + MAIN, FIELD, NOMAD_OFFSET + FIEL
 
 // `SpaceEffectsDrawFrame` walks these and not 0x2b (`0x4f7650`, `0x4f76b2`).
 const SKIPPED_EFFECT_TYPE = 0x2b
+// `EFT_JUMP_EFFECTS` and `EFT_ENGINE_FIRE`, the only buckets walked in a tunnel, in this order.
+const TUNNEL_EFFECT_TYPES = [0x25, 0x1b]
 
 interface Picked {
   rank: 3 | 4
@@ -448,6 +471,7 @@ export const collectSpaceFrame = ({
   dust,
   dustZones = [],
   dustOptions,
+  jump,
 }: SpaceScene): SpaceFrame => {
   const resolved = { ...RETAIL_SPACE_LIMITS, ...limits }
   const {
@@ -463,6 +487,11 @@ export const collectSpaceFrame = ({
     farClip === undefined
       ? (limits?.farClip ?? RETAIL_SPACE_LIMITS.farClip)
       : Math.max(farClip, leastFarClip)
+  if (jump)
+    return collectJumpFrame(jump, { ...given, far: systemFar }, aspect, time, effects, {
+      effectView,
+      limits: resolved,
+    })
   const range = systemFar - rangeMargin
   const { position: eye } = given
   const states = nebulae.map((nebula) => nebulaState(nebula, eye, resolved))
@@ -1129,6 +1158,91 @@ export const collectSpaceFrame = ({
     effectViews: views,
     ...(quads.length && shine && { screenQuads: [{ texture: shine.texture, quads }] }),
     ...(afterEffects.length && { afterEffects }),
+    unsupported: [...unsupported],
+    unregistered: [...unregistered],
+  }
+}
+
+/**
+ * `SpaceObjDrawPass`'s jump arm (`0x51c235`), out to the system's far plane: the tunnel
+ * (`FUN_00504890`), then the ship at its first tier (`Slot188`), lit by the tunnel's light alone
+ * over the jump's ambient (`Slot184`), then only `EFT_JUMP_EFFECTS`' bucket and `EFT_ENGINE_FIRE`'s
+ * (`SpaceEffectsDrawFrame`, `0x51c2bc`), which step only those. No flare, beam or other list draws.
+ * The pass sets the jump's colour for the clear after it, so retail's first tunnel frame clears to
+ * the last colour; here every one clears to it.
+ */
+const collectJumpFrame = (
+  { ship, tunnel, ambient, background }: SpaceJump,
+  camera: Camera,
+  aspect: number,
+  time: number,
+  effects: readonly SpaceEffect[],
+  { effectView, limits }: { effectView: EffectViewOptions | undefined; limits: SpaceLimits },
+): SpaceFrame => {
+  const view = viewMatrix(camera)
+  const draws: Draw[] = tunnel?.draws() ?? []
+  const queued: Queued[] = []
+  const unsupported = new Set<string>()
+  const unregistered = new Set<string>()
+  const first = draws.length
+  const models = [
+    ...(ship.pilot ? [ship.pilot] : []),
+    ship.model,
+    ...(ship.attached ?? []).map(underOwn(ship.model)),
+  ]
+  for (const model of models)
+    collectModel(
+      model,
+      camera,
+      aspect,
+      view,
+      time,
+      draws,
+      queued,
+      unsupported,
+      unregistered,
+      limits,
+    )
+  flushQueued(queued, draws)
+  // `EngineLightClearRegisteredList`, `jump_ambient` into `D3DRS_AMBIENT`, then the tunnel's light.
+  // `ZFUNC` is 4, as the last near list and the tunnel's `Win3DSetDepthWrite` leave it.
+  const light = tunnel?.light
+  const shipAmbient = systemAmbient(ambient)
+  for (let index = first; index < draws.length; index++) {
+    const draw = draws[index]!
+    draws[index] = {
+      ...draw,
+      lights: light ? [light] : [],
+      sceneAmbient: draw.sceneAmbient ?? shipAmbient,
+      ...(draw.depthFunc === 'less' && { depthFunc: 'lequal' as const }),
+    }
+  }
+
+  // The view test is the walk's, with no field: `G_FieldController` is cleared first.
+  const views = effects.map((effect): EffectView | undefined => {
+    if (!TUNNEL_EFFECT_TYPES.includes(effect.type)) return { fate: 'hold', lod: 1 }
+    if (!effect.position) return undefined
+    const placed = { ...effect, position: effect.position }
+    return viewEffect(placed, { camera, aspect, view, nebulae: [] }, effectView)
+  })
+  const effectDraws: EffectDraw[] = []
+  for (const type of TUNNEL_EFFECT_TYPES)
+    effects.forEach((effect, at) => {
+      if (effect.type !== type || (views[at]?.fate ?? 'draw') !== 'draw') return
+      collectEffect(effect.instance, view, effect.texture, effectDraws, unsupported, effect.visible)
+    })
+
+  return {
+    background: { x: background.x / 255, y: background.y / 255, z: background.z / 255 },
+    hooks: hooksOf(draws),
+    view,
+    projection: projectionMatrix(camera, aspect),
+    ambient: shipAmbient,
+    lights: [],
+    draws,
+    effects: effectDraws,
+    effectDepthFunc: 'lequal',
+    effectViews: views,
     unsupported: [...unsupported],
     unregistered: [...unregistered],
   }

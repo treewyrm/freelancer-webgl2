@@ -24,6 +24,7 @@ import { LightBlink, RETAIL_FLARE_LIGHT, type SpaceFlare } from './flare.js'
 import { NebulaLightning } from './lightning.js'
 import { zoneOf, type SpaceNebula } from './nebula.js'
 import { NebulaExterior } from './exterior.js'
+import { GateTunnel, RETAIL_TUNNEL_LAYER } from './tunnel.js'
 import {
   collectSpaceFrame,
   skyLayers,
@@ -1126,4 +1127,57 @@ test("a sun's corona draws after the effects, with the SunEffect option on and a
   // From a nebula's core: nothing.
   const core = [nebulaAt(0, 1000, 100)]
   assert.equal(frameOf({ sunEffect: 1, nebulae: core }).afterEffects, undefined)
+})
+
+test('in a jump the frame is the tunnel, the ship by its light, and only jump and engine fire effects', () => {
+  const tunnel = new GateTunnel(
+    {
+      controlPoints: 9,
+      range: { x: 0, y: 0, z: 20000 },
+      layers: [{ ...RETAIL_TUNNEL_LAYER }, { ...RETAIL_TUNNEL_LAYER }],
+    },
+    { random: () => 0x4000 },
+  )
+  tunnel.setState(1)
+  tunnel.setState(2)
+  tunnel.update(1 / 60)
+  const ship = objectOf('ship', 0, { position: tunnel.ship!.w, pilot: modelOf('pilot', 0) })
+
+  const order: string[] = []
+  const { scene } = fixtureScene([{ node: emitter('emitter') }])
+  const running = (name: string, type: number) => ({
+    type,
+    instance: new EffectInstance(scene),
+    texture: () => undefined,
+    visible: () => (order.push(name), true),
+  })
+  const frame = collectSpaceFrame(
+    sceneOf([objectOf('station', 100)], {
+      lights: [
+        {
+          type: 'directional',
+          position: { x: 0, y: 0, z: 0 },
+          color: { x: 255, y: 255, z: 255 },
+          range: 1e6,
+        },
+      ],
+      effects: [running('fire', 0x1b), running('dust', 0x23), running('jump', 0x25)],
+      jump: {
+        ship,
+        tunnel,
+        ambient: { x: 25, y: 25, z: 50 },
+        background: { x: 255, y: 255, z: 255 },
+      },
+    }),
+  )
+  const strips = names(frame).filter((name) => name === 'gate tunnel').length
+  assert.ok(strips > 2)
+  assert.deepEqual(names(frame).slice(strips), ['pilot', 'ship'])
+  for (const draw of frame.draws.slice(strips)) {
+    assert.deepEqual(draw.lights, [tunnel.light])
+    assert.deepEqual(draw.sceneAmbient, { x: 25 / 255, y: 25 / 255, z: 50 / 255 })
+  }
+  assert.deepEqual(frame.background, { x: 1, y: 1, z: 1 })
+  assert.deepEqual(order, ['jump', 'fire'])
+  assert.deepEqual(frame.effectViews, [undefined, { fate: 'hold', lod: 1 }, undefined])
 })
