@@ -244,3 +244,59 @@ test('in an exclusion zone the fog ends towards its fog_far, and the far plane s
   // From outside the nebula, its exclusion zones play no part.
   assert.equal(nebulaState(nebula(5000), { x: 0, y: 0, z: 20000 }).inExclusion, undefined)
 })
+
+test('a zone holds a point as `InZone` decides, shape by shape', () => {
+  const at = (x: number, y: number, z: number) => ({ x, y, z })
+  const sphere = zoneOf({ type: 'sphere', center: ORIGIN, radius: 100 })
+  assert.equal(sphere.holds(at(99, 0, 0)), true)
+  // Its sphere's test is strict.
+  assert.equal(sphere.holds(at(100, 0, 0)), false)
+  const ellipsoid = zoneOf({
+    type: 'ellipsoid',
+    center: ORIGIN,
+    radii: { x: 100, y: 10, z: 50 },
+    orientation: IDENTITY,
+  })
+  assert.equal(ellipsoid.holds(at(0, 9, 0)), true)
+  assert.equal(ellipsoid.holds(at(0, 11, 0)), false)
+  assert.equal(ellipsoid.holds(at(70, 0, 40)), false)
+  const box = zoneOf({
+    type: 'box',
+    center: ORIGIN,
+    size: { x: 100, y: 20, z: 40 },
+    orientation: TURNED,
+  })
+  // Turned, its x runs along world -z.
+  assert.equal(box.holds(at(0, 0, 49)), true)
+  assert.equal(box.holds(at(19, 0, 0)), true)
+  assert.equal(box.holds(at(21, 0, 0)), false)
+  // On a face is out.
+  assert.equal(box.holds(at(0, 10, 0)), false)
+  const cylinder = zoneOf({
+    type: 'cylinder',
+    center: ORIGIN,
+    radius: 100,
+    height: 40,
+    orientation: IDENTITY,
+  })
+  assert.equal(cylinder.holds(at(99, 20, 0)), true)
+  assert.equal(cylinder.holds(at(99, 21, 0)), false)
+  assert.equal(cylinder.holds(at(0, 0, 101)), false)
+  // A ring of 1000 about a hole of 400, 100 high: past `400 + sqrt(400² + 50²)`, not 400.
+  const ring = zoneOf({
+    type: 'ring',
+    center: ORIGIN,
+    radius: 1000,
+    innerRadius: 400,
+    height: 100,
+    orientation: IDENTITY,
+  })
+  const inner = 400 + Math.sqrt(400 * 400 + 100 * 100 * 0.25)
+  assert.equal(ring.holds(at(500, 0, 0)), false)
+  assert.equal(ring.holds(at(inner - 1, 0, 0)), false)
+  assert.equal(ring.holds(at(inner + 1, 0, 0)), true)
+  assert.equal(ring.holds(at(999, 0, 0)), true)
+  assert.equal(ring.holds(at(900, 51, 0)), false)
+  // Its centre, within 1e-2, holds whatever the shape.
+  assert.equal(ring.holds(at(0, 0, 0.001)), true)
+})

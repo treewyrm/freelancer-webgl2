@@ -18,6 +18,7 @@ import { Clouds, RING_CLOUD_VISIBILITY } from './clouds.js'
 import type { SpaceAsteroidField } from './asteroids.js'
 import { AsteroidBand } from './band.js'
 import { DynamicAsteroids } from './dynamic.js'
+import { SpaceDust } from './dust.js'
 import { buildRing, textureShape, type PlanetRing } from './ring.js'
 import { LightBlink, RETAIL_FLARE_LIGHT, type SpaceFlare } from './flare.js'
 import { NebulaLightning } from './lightning.js'
@@ -754,6 +755,30 @@ test('effects walk by type, in the order given within one, and 0x2b never', () =
     }),
   )
   assert.deepEqual(order, ['first', 'a', 'b', 'beam'])
+})
+
+test("the dust walks after the host's effects, by type, and has no view of its own in the frame", () => {
+  const order: string[] = []
+  const { scene } = fixtureScene([{ node: emitter('emitter') }])
+  const running = (name: string, type: number) => ({
+    type,
+    instance: new EffectInstance(scene),
+    texture: () => undefined,
+    visible: () => (order.push(name), true),
+  })
+  const dust = new SpaceDust('dust', () => running('dust', 36))
+  const zones = [
+    { zone: zoneOf({ type: 'sphere', center: { x: 0, y: 0, z: 0 }, radius: 1000 }), dust: 'ice' },
+  ]
+  const host = running('host', 36)
+  const frameOf = () =>
+    collectSpaceFrame(sceneOf([], { effects: [host], dust, dustZones: zones, step: 1 / 60 }))
+  frameOf()
+  order.length = 0
+  const frame = frameOf()
+  // The system's dust is motion dust, after the host's of its type; the zone's starts the same way.
+  assert.deepEqual(order, ['host', 'dust', 'dust'])
+  assert.equal(frame.effectViews.length, 1)
 })
 
 test('with no field and no objects a frame still clears and runs its hooks', () => {

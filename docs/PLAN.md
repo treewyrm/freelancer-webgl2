@@ -696,7 +696,24 @@ renderer. Random streams need not match retail; each appearance's sizes, colours
       0.14. It found: a sun's draw sets no lighting or fog of its own, so its glow keeps the sky's
       white ambient (`Slot188` returns before `GameobjUpdateDrawLighting`); the alpha test every sun
       draw inherits is `GREATER 0`; and the screen draws inherit `ZWRITEENABLE` 1 under `ZENABLE` 0.
-- [ ] Space dust.
+- [x] Space dust: `SpaceDust` (`src/scene/dust.ts`), from `SpaceDustUpdate` (`FUN_0054beb0`), and
+      `SpaceScene.dust`, which the frame updates and walks after the rocks' effects. Up to three
+      effects at the camera's frame moved 60 along its Z: the system's `[Dust]`, started on the first
+      update and placed from the next at 80 particles over 500, toward 30 as `space_dust_detail`
+      falls; above 0.75 of it, the dust of the smallest zone holding that point
+      (`GetSmallestZoneWithPropertiesAt`, `Zone.holds` as `InZone`), at its
+      `spacedust_maxparticles` (50 when 0) over 500 times its immersion; and the zone's before it,
+      at the rest of that immersion until it's under 1e-5. A new name, compared without case as the
+      string cache interns it, hands the zone's on to fade. A dropped one is killed
+      (`FParticleEffect::Kill`): its emitters stop, it stays where last placed, and its run time,
+      held to 1, counts down by the walk's step, at most 0.1; `EffectType.runTime` is `[EffectType]
+      run_time`, -1 or 15 in `.data`. With option `0x19` off, each frame drops every dust and starts
+      it again, as `Freelancer-original.exe` has it (`0x54becb`: no early return). The ring's
+      `InZone` bound, `Inner + y`, was checked in `common.dll` (`0x63394c0`); the dust's constants
+      and the run times in `Freelancer-original.exe`. Pinned by reading.
+      Retail's dusts: `dust` in every `[Dust]`, an `FLDustAppearance` that fades out at rest; 19
+      zone dusts, `EFT_MISC_DUST`, all `FxBasicAppearance`, so a still camera can capture them.
+      **Uncaptured.** Equal radii take the order given, where retail asks its zone tree.
 - [ ] Gate tunnels.
 - [ ] Projectiles and beams; the cockpit pass with its depth clear.
 - [ ] Measure effects' CPU cost in a whole system. A pushed lane steps on the CPU, by choice: bring back

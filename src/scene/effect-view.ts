@@ -18,6 +18,11 @@ export interface EffectType {
   existOffscreen: boolean
   /** `pbubble`: past near, how far it shows narrows from far by `generic_effect_perf`. */
   pbubble: { near: number; far: number }
+  /**
+   * `run_time`: seconds it runs before it ends, counted down as it's walked (`0x4f8a57`). Under 0,
+   * until its effect ends; killed, at most 1 more (`0x4f8680`).
+   */
+  runTime: number
 }
 
 // Nickname order, which `SpaceEffect.type` indexes: priority, generic priority, lod type, radius,
@@ -41,6 +46,12 @@ const ROWS: readonly (readonly [number, number, number, number, 0 | 1, number, n
   [0.5, 0.5, 4, 50, 1, 100, 500], [0, 0, 5, -1, 0, 100, 500], [1, 0.5, 2, 15, 1, 100, 500],
   [1, 1, 0, -1, 1, 100, 500], [1, 1, 0, -1, 1, 100, 500],
 ]
+
+// `run_time` by row: 15, or -1 where it lasts (`.data` `0x612a80`, `+0x18` of each row).
+const NO_RUN_TIME = new Set([
+  10, 11, 12, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 42,
+  44, 45, 46,
+])
 
 /** Each row's nickname, which an `[Effect]`'s `effect_type` and an `[EffectType]` name. */
 export const EFFECT_TYPE_NAMES: readonly string[] = [
@@ -124,13 +135,14 @@ export const effectLodRow = (name: string): number | undefined => {
 
 /** `EFT_NONE` to `EFT_FLASHLIGHT`, the table `[EffectType]` overlays (`.data` `0x612a68`). */
 export const RETAIL_EFFECT_TYPES: readonly Readonly<EffectType>[] = ROWS.map(
-  ([priority, genericPriority, lodType, radius, existOffscreen, near, far]) => ({
+  ([priority, genericPriority, lodType, radius, existOffscreen, near, far], index) => ({
     priority,
     genericPriority,
     lodType,
     radius,
     existOffscreen: existOffscreen === 1,
     pbubble: { near, far },
+    runTime: NO_RUN_TIME.has(index) ? -1 : 15,
   }),
 )
 

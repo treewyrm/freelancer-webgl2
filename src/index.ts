@@ -98,6 +98,15 @@ export {
 } from '#/scene/corona.js'
 export { fillSheetsDraw } from '#/scene/sheets.js'
 export {
+  RETAIL_DUST_LIMITS,
+  SpaceDust,
+  smallestDustZone,
+  type DustEffect,
+  type DustLimits,
+  type DustOptions,
+  type DustZone,
+} from '#/scene/dust.js'
+export {
   AsteroidBillboards,
   type BillboardField,
   type BillboardLighting,

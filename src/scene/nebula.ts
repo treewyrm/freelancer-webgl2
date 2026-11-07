@@ -27,6 +27,8 @@ export interface Zone {
   axes: readonly [Vector3, Vector3, Vector3]
   /** `GetSurfacePoint` (`ZONE`, vt+0x44): where its surface is, for a point. */
   surfacePoint: (point: Vector3) => Vector3
+  /** `InZone` (`0x6339220`) with no margin: whether a point is in it. */
+  holds: (point: Vector3) => boolean
   /** `Intersect` (vt+0x4c): whether a segment meets it, or starts in it. */
   meets: (start: Vector3, end: Vector3) => boolean
 }
@@ -163,17 +165,18 @@ export interface WrittenZone {
  */
 export const zoneOf = (shape: Shape, written: WrittenZone = {}): Zone => {
   const reach = reachOf(shape, written)
-  const zone = {
-    ...reach,
-    meets: (start: Vector3, end: Vector3) => segmentMeetsZone(shape.type, reach, start, end),
-  }
-  const { position: centre, axes, size } = zone
+  const { position: centre, axes, size } = reach
   // In the zone's own frame and back: `EngineTransposeTransform`, `EngineTransformMatrix`.
   const toLocal = (d: Vector3): Vector3 => ({
     x: f(axes[0].x * d.x + axes[0].y * d.y + axes[0].z * d.z),
     y: f(axes[1].x * d.x + axes[1].y * d.y + axes[1].z * d.z),
     z: f(axes[2].x * d.x + axes[2].y * d.y + axes[2].z * d.z),
   })
+  const zone = {
+    ...reach,
+    meets: (start: Vector3, end: Vector3) => segmentMeetsZone(shape.type, reach, start, end),
+    holds: (point: Vector3) => inZone(shape.type, reach, toLocal, point),
+  }
   const toWorld = (l: Vector3): Vector3 => ({
     x: f(axes[0].x * l.x + axes[1].x * l.y + axes[2].x * l.z),
     y: f(axes[0].y * l.x + axes[1].y * l.y + axes[2].y * l.z),
@@ -252,8 +255,65 @@ export const zoneOf = (shape: Shape, written: WrittenZone = {}): Zone => {
   }
 }
 
-/** Everything of a zone but its surface point and segment test. */
-const reachOf = (shape: Shape, written: WrittenZone): Omit<Zone, 'surfacePoint' | 'meets'> => {
+/**
+ * `ZONE::InZone` (`0x6339220`) at a margin of 0. Within its sphere, then by shape: a sphere is
+ * held, an ellipsoid by its reach that way, a box strictly inside its faces, a cylinder by its
+ * height and radius. A ring's inner bound is `Inner + y`, with `Inner` as `sqrt(y² + z² / 4)` where
+ * the other tests have the margin: an odd bound, but `common.dll` has it (`0x63394c0`, `0x6339543`).
+ */
+const inZone = (
+  type: Shape['type'],
+  { position, radius, radiusAlong, size }: Omit<Zone, 'surfacePoint' | 'meets' | 'holds'>,
+  toLocal: (d: Vector3) => Vector3,
+  point: Vector3,
+): boolean => {
+  const dx = f(point.x - position.x)
+  const dy = f(point.y - position.y)
+  const exact = point.z - position.z
+  const dz = f(exact)
+  const squared = exact * dz + dx * dx + dy * dy
+  if (squared < f(1e-4)) return true
+  const distance = f(squared)
+  if (!(distance < radius * radius)) return false
+  switch (type) {
+    case 'sphere':
+      return true
+    case 'ellipsoid': {
+      const length = f(Math.sqrt(distance))
+      const inverse = 1 / length
+      const unit = { x: f(dx * inverse), y: f(dy * inverse), z: f(dz * inverse) }
+      return radiusAlong(unit) >= length
+    }
+    case 'box': {
+      // `ClampToBoxSurface`'s distance, negated inside, under 0: on a face is out.
+      const local = toLocal({ x: dx, y: dy, z: dz })
+      return (
+        Math.abs(local.x) < f(size.x * 0.5) &&
+        Math.abs(local.y) < f(size.y * 0.5) &&
+        Math.abs(local.z) < f(size.z * 0.5)
+      )
+    }
+    case 'cylinder': {
+      const local = toLocal({ x: dx, y: dy, z: dz })
+      if (!(size.y * 0.5 >= Math.abs(local.y))) return false
+      return local.x * local.x + local.z * local.z - size.x * size.x < 0
+    }
+    case 'ring': {
+      const local = toLocal({ x: dx, y: dy, z: dz })
+      const inner = f(Math.sqrt(size.y * size.y + size.z * size.z * 0.25))
+      if (!(size.z * 0.5 >= Math.abs(local.y))) return false
+      const radial = local.x * local.x + local.z * local.z
+      if (!(radial - size.x * size.x <= 0)) return false
+      return radial - ((inner + inner + size.y) * size.y + inner * inner) >= 0
+    }
+  }
+}
+
+/** Everything of a zone but its surface point and segment and point tests. */
+const reachOf = (
+  shape: Shape,
+  written: WrittenZone,
+): Omit<Zone, 'surfacePoint' | 'meets' | 'holds'> => {
   const position = shape.center
   const turn = written.orientation ?? (shape.type === 'sphere' ? Quat.identity : shape.orientation)
   const axis = (direction: Vector3): Vector3 => {

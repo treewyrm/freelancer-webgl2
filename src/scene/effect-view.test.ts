@@ -45,7 +45,12 @@ test('the retail table has every type, in order', () => {
     radius: 100,
     existOffscreen: true,
     pbubble: { near: 500, far: 2000 },
+    runTime: -1,
   })
+  // Every other row runs 15 seconds or until it ends, as `.data` has them.
+  assert.equal(RETAIL_EFFECT_TYPES[0]!.runTime, 15)
+  assert.equal(RETAIL_EFFECT_TYPES[41]!.runTime, 15)
+  assert.equal(RETAIL_EFFECT_TYPES[35]!.runTime, -1)
 })
 
 test('in view it draws; out of it, it ends, unless it exists off screen', () => {

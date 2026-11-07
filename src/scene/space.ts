@@ -7,11 +7,13 @@ import { Matrix4, type Vector3 } from '@treewyrm/freelancer/math'
 import type { Texture } from '@treewyrm/freelancer/texture'
 import { collectEffect, type EffectDraw } from '#/alchemy/draw.js'
 import {
+  RETAIL_EFFECT_TYPES,
   viewEffect,
   type EffectView,
   type EffectViewOptions,
   type PlacedEffect,
 } from './effect-view.js'
+import type { DustOptions, DustZone, SpaceDust } from './dust.js'
 import { ringImmersion, ringPieceDraw, type PlanetRing, type RingPiece } from './ring.js'
 import { fieldCubes, nearFieldFraction, type SpaceAsteroidField } from './asteroids.js'
 import { flareQuads, type FrameRect, type ScreenQuad, type SpaceFlare } from './flare.js'
@@ -206,6 +208,12 @@ export interface SpaceScene {
   rayHits?: CoronaView['rayHits']
   /** The player's ship, seen from the cockpit: a sun's rays pass through it. None from outside. */
   player?: unknown
+  /** The system's space dust, which the frame updates and steps (`StarSysUpdate`, `0x554ecb`). */
+  dust?: SpaceDust
+  /** Its zones with a `spacedust`, in file order, which `dust` looks among. */
+  dustZones?: readonly DustZone[]
+  /** `space_dust_detail` and game option `0x19`. Run times are the effect types'. */
+  dustOptions?: Omit<DustOptions, 'runTimes'>
 }
 
 /** A `[Background]` key: `basic_stars`, `complex_stars` or `nebulae`. */
@@ -437,6 +445,9 @@ export const collectSpaceFrame = ({
   cut = false,
   lane = false,
   asteroids = [],
+  dust,
+  dustZones = [],
+  dustOptions,
 }: SpaceScene): SpaceFrame => {
   const resolved = { ...RETAIL_SPACE_LIMITS, ...limits }
   const {
@@ -1065,7 +1076,14 @@ export const collectSpaceFrame = ({
     .flatMap(({ effects }) => effects)
     .sort((a, b) => b.serial - a.serial)
     .map(({ effect }) => effect)
-  const all = [...effects, ...rockEffects]
+  // The dust's, held ahead of the camera, after the rocks'.
+  if (dust) {
+    const types = effectView?.effectTypes ?? []
+    const runTimes = RETAIL_EFFECT_TYPES.map((row, at) => types[at]?.runTime ?? row.runTime)
+    dust.update(given, step, dustZones, { ...dustOptions, runTimes })
+  }
+  const dustEffects = dust ? dust.effects().map(({ effect }) => effect) : []
+  const all = [...effects, ...rockEffects, ...dustEffects]
   const viewsOf = all.map((effect): EffectView | undefined => {
     if (effect.type === SKIPPED_EFFECT_TYPE || !effect.position) return undefined
     const placed = { ...effect, position: effect.position }
@@ -1075,6 +1093,7 @@ export const collectSpaceFrame = ({
   const viewOf = new Map(rockEffects.map((effect, at) => [effect, viewsOf[effects.length + at]]))
   for (const { rocks, effects: theirs } of carried)
     rocks.viewed(theirs.map(({ effect }) => viewOf.get(effect)))
+  dust?.viewed(viewsOf.slice(effects.length + rockEffects.length))
   const walked = all
     .map((effect, at) => ({ effect, at }))
     .filter(

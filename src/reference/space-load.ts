@@ -322,6 +322,7 @@ const effectViewOf = async (
         ? { existOffscreen: String(value('visibility')).toUpperCase() === 'EXIST_OFFSCREEN' }
         : {}),
       ...(near !== undefined ? { pbubble: { near, far: number('pbubble', 1)! } } : {}),
+      ...(number('run_time') !== undefined ? { runTime: number('run_time')! } : {}),
     }
     effectTypes[index] = row
   }
