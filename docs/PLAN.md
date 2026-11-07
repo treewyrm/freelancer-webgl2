@@ -714,13 +714,21 @@ renderer. Random streams need not match retail; each appearance's sizes, colours
       Retail's dusts: `dust` in every `[Dust]`, an `FLDustAppearance` that fades out at rest; 19
       zone dusts, `EFT_MISC_DUST`, all `FxBasicAppearance`, so a still camera can capture them.
       **Uncaptured.** Equal radii take the order given, where retail asks its zone tree.
-- [ ] **You:** `dust_zone` and `dust_zone_edge` (`src/reference/systems.ts`), with screenshots and
-      captures: `sun_ahead` with retail's `[Dust]` and a sphere of `asteroiddust` at 250 particles
-      about the ship; then that zone 1500 to the right with `edge_fraction` 0.5, the dust's point
-      about half in. Leave each 20 seconds before capturing, at rest. `asteroiddust`'s
-      `Emitter_MaxParticles` follows the intensity, so its count checks it: ours holds 124 a list
-      deep in and 62 in the edge. Captures will also settle where the dust stands, and whether the
-      system's `dust` at rest, an `FLDustAppearance` faded to nothing, issues a draw: ours does.
+- [x] **You:** `dust_zone` and `dust_zone_edge` (`src/reference/systems.ts`): `sun_ahead` with retail's
+      `[Dust]` and a sphere of `asteroiddust` at 250 particles about the ship; then that zone 1500 to
+      the right with `edge_fraction` 0.5. In `dust_zone` retail draws it as read: `rock1` and `rock2`
+      after the engine's effects, 120 and 118 particles to our 124 a list, every one 58.8 from the
+      point 60 ahead of the camera, so placed where `SpaceDustUpdate` puts it. The system's `dust`, at
+      rest, issues no draw; ours issues one faded to nothing. **In `dust_zone_edge` retail draws no
+      dust at all**, where ours runs at 0.2498 and holds 62. Nothing read explains it: the zone
+      query, `InZone`, `GetImmersion`, `ClassifyPoint`, `GetRadiusAlong` and the emitter's linear
+      outer key were each checked in `common.dll` and the decomp's Alchemy, and the camera is
+      `sun_ahead`'s. This `common.dll` sits 0x80 below the decomp's addresses for `ZONE`
+      (`GetImmersion` at `0x633abb0`, its vtable at `0x63a5064`).
+- [ ] **You:** `dust_zone_off` and `dust_zone_quarter`, to split that: the edge's zone with no
+      `edge_fraction`, whole at 0.5; and the deep zone at 125 particles, 0.25 with no immersion. Ours
+      holds 124 and 62. If `_off` draws and `_quarter` doesn't, a quarter's cap is what retail reads
+      otherwise; if `_quarter` draws and `_off` doesn't, it's the zone off centre.
 - [ ] Gate tunnels.
 - [ ] Projectiles and beams; the cockpit pass with its depth clear.
 - [ ] Measure effects' CPU cost in a whole system. A pushed lane steps on the CPU, by choice: bring back

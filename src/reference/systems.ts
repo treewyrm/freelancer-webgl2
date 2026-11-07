@@ -883,6 +883,20 @@ const DUST_EDGE: Omit<ReferenceSystem, 'name' | 'player'> = {
   zones: [{ ...DUST_ZONE, position: [1500, 0, 0], edgeFraction: 0.5 }],
 }
 
+/** The edge's zone with no edge: off centre, but whole wherever the dust is in it. */
+const DUST_OFF: Omit<ReferenceSystem, 'name' | 'player'> = {
+  ...DUST,
+  zones: [{ ...DUST_ZONE, position: [1500, 0, 0] }],
+}
+
+/** The deep zone at 125 particles: the edge's intensity, 0.25, with no immersion in it. */
+const DUST_QUARTER: Omit<ReferenceSystem, 'name' | 'player'> = {
+  ...DUST,
+  zones: [
+    { ...DUST_ZONE, position: [0, 0, 0], spacedust: { effect: 'asteroiddust', maxParticles: 125 } },
+  ],
+}
+
 export const systems: ReadonlyMap<string, ReferenceSystem> = new Map(
   [
     {
@@ -1020,6 +1034,18 @@ export const systems: ReadonlyMap<string, ReferenceSystem> = new Map(
       // In its edge, about half in: an intensity near 0.25, and its cap with it.
       name: 'dust_zone_edge',
       ...DUST_EDGE,
+      player: { ...RING_PLAYER, position: [0, 0, 0] },
+    } satisfies ReferenceSystem,
+    {
+      // Bisects the edge: its zone 1500 off with no edge_fraction, so whole: 0.5.
+      name: 'dust_zone_off',
+      ...DUST_OFF,
+      player: { ...RING_PLAYER, position: [0, 0, 0] },
+    } satisfies ReferenceSystem,
+    {
+      // Bisects the edge: the deep zone at 125 particles, so 0.25 with no immersion.
+      name: 'dust_zone_quarter',
+      ...DUST_QUARTER,
       player: { ...RING_PLAYER, position: [0, 0, 0] },
     } satisfies ReferenceSystem,
     {
