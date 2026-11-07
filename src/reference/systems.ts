@@ -744,7 +744,8 @@ export const systems: ReadonlyMap<string, ReferenceSystem> = new Map(
       player: { ...RING_PLAYER, position: [0, 0, 0] },
     } satisfies ReferenceSystem,
     {
-      // In the hole, toward its edge ahead: the puffs deep in it hidden, those past it shown.
+      // In the hole, toward its edge ahead. Placed on entering, before the zones were first sorted,
+      // no puff is hidden, deep in it or not.
       name: 'nebula_clouds_hole',
       ...CLOUDS,
       player: { ...RING_PLAYER, position: [3000, 0, -150] },

@@ -543,11 +543,17 @@ renderer. Random streams need not match retail; each appearance's sizes, colours
       allows (`FNebulaEffect::Update`, `0x5072ac`), a respawn held to its zone's immersion
       (`SpaceNebula.edgeFraction`); drawn last in a field, after its nomads (`DrawCloudsPanels`,
       `0x51fbb4`), fogged to its own start and end, unculled. A puff more than 0.9 into an exclusion
-      zone the camera is in counts but is hidden, on respawn and on a cut (`FUN_00550d40`,
-      `FUN_005513b0`, `is_in_exclusion_zone`), now `exclusionAt` for any point. Pinned by reading.
-      **Uncaptured.** Their flashes are the clouds' own; the bolts (`lightning_shape`) aren't built.
-- [ ] **You:** `nebula_clouds` and `nebula_clouds_hole` (`src/reference/systems.ts`): deep in a nebula
-      with the Badlands' clouds, lightning off; then in its exclusion zone, where about half hide.
+      zone counts but is hidden, on respawn and on a cut (`FUN_00550d40`, `FUN_005513b0`,
+      `is_in_exclusion_zone`), asked of the zones in the order the nebula last sorted them
+      (`ExclusionOrder`). Each key starts at 1e7 (`NebulaExclusionZone`), and `Update` sorts only once
+      the camera was in the nebula the frame before, so what's placed on entering a system is never
+      hidden. **Matched in kind in `nebula_clouds` and `nebula_clouds_hole`**
+      (`src/reference/clouds.test.ts`): both frames draw for draw, the clouds' state, fog, view-space
+      list, count, sizes, colours, order and sphere. The hole found the unsorted start: retail drew
+      all ten, puffs deep in the zone among them, where a fresh lookup hid five. A puff hidden later
+      is uncaptured. Their flashes are the clouds' own; the bolts (`lightning_shape`) aren't built.
+- [x] **You:** `nebula_clouds` and `nebula_clouds_hole` (`src/reference/systems.ts`): deep in a nebula
+      with the Badlands' clouds, lightning off; then in its exclusion zone.
 - [ ] A nebula's lightning bolts (`[Clouds] lightning_shape`), which `rand()` drives.
 - [ ] An asteroid field's billboards and dynamic asteroids, which `rand()` drives.
 - [ ] Suns: a solar's `star` from `solar\StarArch.ini`, drawn by `FStarSphere` (`star_sphere.cpp`;

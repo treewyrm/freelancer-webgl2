@@ -169,6 +169,24 @@ export const RUNS = {
     effectRate: 96,
     animationSeconds: 0,
   },
+  // In a core with no sky or world-space draw: the camera is found from the hull, as if the ship
+  // stood where its save puts it. Everything drawn is about the camera, so that offset is shared.
+  nebula_clouds: {
+    far: [0, 0, 0],
+    farDraw: 2,
+    hullDraw: 2,
+    effectSeconds: 20,
+    effectRate: 96,
+    animationSeconds: 0,
+  },
+  nebula_clouds_hole: {
+    far: [3000, 0, -150],
+    farDraw: 2,
+    hullDraw: 2,
+    effectSeconds: 20,
+    effectRate: 96,
+    animationSeconds: 0,
+  },
   ring_outside: {
     far: 'Lab_ringed_planet',
     farDraw: 32,

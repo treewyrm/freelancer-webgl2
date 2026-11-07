@@ -30,7 +30,7 @@ import {
   fogEnd,
   fogFar,
   fogOf,
-  exclusionAt,
+  ExclusionOrder,
   immersion,
   listNebulae,
   nebulaState,
@@ -307,7 +307,33 @@ interface ListedNebula {
   key: number
 }
 
+const f = Math.fround
 const BLACK: Vector3 = { x: 0, y: 0, z: 0 }
+
+/** What `FNebulaEffect` keeps between frames for its exclusion zones, kept here as retail keeps it. */
+interface NebulaClock {
+  order: ExclusionOrder
+  /** `+0x294` as last worked out: the constructor's 0. */
+  depth: number
+  /** `+0x50`, from the constructor's 0.1. */
+  since: number
+  /** `+0x58`, from the constructor's 0.2, restarted as the bits turn. */
+  sinceTurned: number
+}
+const clocks = new WeakMap<SpaceNebula, NebulaClock>()
+const nebulaClock = (nebula: SpaceNebula): NebulaClock => {
+  let clock = clocks.get(nebula)
+  if (!clock) {
+    clock = {
+      order: new ExclusionOrder(nebula.exclusions ?? []),
+      depth: 0,
+      since: f(0.1),
+      sinceTurned: f(0.2),
+    }
+    clocks.set(nebula, clock)
+  }
+  return clock
+}
 
 /**
  * A one-piece band's key (`0x51babc`): how far past its zone's surface the camera is, squared, by a
@@ -391,17 +417,27 @@ export const collectSpaceFrame = ({
   const { field, deferred } = listNebulae(states, eye, range)
   // `FNebulaEffect::Update`, every nebula's, before the frame. A flashing light joins the system's.
   const flashes: SpaceLight[] = []
-  // A nebula's clouds: held to its zone, and hidden deep in its exclusion zones.
+  // A nebula's clouds: held to its zone, and hidden deep in its exclusion zones as last sorted.
   const holdsOf = (nebula: SpaceNebula) => (point: Vector3) =>
     immersion(nebula.zone, nebula.edgeFraction ?? 0, point)
   const excludedOf = (nebula: SpaceNebula) => (point: Vector3) =>
-    exclusionAt(nebula.exclusions ?? [], eye, point)?.immersion ?? 0
+    nebulaClock(nebula).order.at(point)?.immersion ?? 0
   for (const { nebula, depth, surface } of states) {
     nebula.exterior?.update(eye, step, depth, cut)
+    // `FNebulaEffect::Update`: the bits' turn restarts `+0x58`; then, if the camera was in it last
+    // frame, its exclusion zones are sorted about it on a cut, or once `+0x50` passes 0.25 while
+    // `+0x58` isn't 0.
+    const clock = nebulaClock(nebula)
+    if (clock.depth < 1 && (clock.sinceTurned > 1 || cut)) clock.sinceTurned = 0
+    if (clock.depth > 0 && (cut || (clock.since > f(0.25) && clock.sinceTurned !== 0)))
+      clock.order.sort(eye)
     // Within 300 of its surface, its clouds follow the camera, as many as its depth allows.
     if (surface < 300)
       for (const clouds of nebula.clouds ?? [])
         clouds.update(given, step, depth, holdsOf(nebula), excludedOf(nebula))
+    clock.since = f(step + clock.since)
+    clock.sinceTurned = f(step + clock.sinceTurned)
+    clock.depth = depth
     nebula.lightning?.update(step, depth, eye)
     const light = nebula.lightning?.light
     if (light) flashes.push(light)

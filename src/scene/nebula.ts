@@ -365,6 +365,37 @@ const sortKey = ({ zone }: NebulaExclusion, eye: Vector3): number => {
 }
 
 /**
+ * A nebula's `NebulaExclusionZoneMgr` as its clouds see it: the zones in the order its last sort left
+ * them, each keyed by the camera's squared distance from it then. Before the first sort every key is
+ * 1e7 (`NebulaExclusionZone`'s constructor), so nothing is in a zone. `FNebulaEffect::Update` sorts
+ * only once the camera was in the nebula the frame before, so what it places on entering a system is
+ * never hidden.
+ */
+export class ExclusionOrder {
+  #sorted: { exclusion: NebulaExclusion; key: number }[]
+
+  constructor(exclusions: readonly NebulaExclusion[]) {
+    this.#sorted = exclusions.map((exclusion) => ({ exclusion, key: f(1e7) }))
+  }
+
+  /** `sort`, about `eye`. Equal keys keep their order, where retail's sort isn't stable. */
+  sort(eye: Vector3): void {
+    for (const entry of this.#sorted) entry.key = sortKey(entry.exclusion, eye)
+    this.#sorted.sort((a, b) => a.key - b.key)
+  }
+
+  /** `is_in_exclusion_zone` for `point`: only zones keyed within 10 are asked. */
+  at(point: Vector3): InExclusion | undefined {
+    for (const { exclusion, key } of this.#sorted) {
+      if (key > 10) return undefined
+      const value = immersion(exclusion.zone, exclusion.edgeFraction ?? 0, point)
+      if (value > f(1e-5)) return { exclusion, immersion: f(value) }
+    }
+    return undefined
+  }
+}
+
+/**
  * `NebulaExclusionZoneMgr::is_in_exclusion_zone` for `point`, over the zones sorted around the camera:
  * only those within √10 of it are asked. Retail keeps the camera's zone while its immersion stays at
  * 1e-4 or more, and sorts now and then; this looks afresh each time, and an equal distance keeps
