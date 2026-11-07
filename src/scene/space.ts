@@ -18,6 +18,7 @@ import { flareQuads, type FrameRect, type ScreenQuad, type SpaceFlare } from './
 import type { AsteroidBand } from './band.js'
 import { fogOverlayDraw } from './overlay.js'
 import { starGlowDraws, type Star } from './star.js'
+import { castRay, type Hitbox } from './hitbox.js'
 import {
   hideStar,
   starCorona,
@@ -113,6 +114,11 @@ export interface SpaceObject {
    * game's sun option (0x24) turns it off, so the host decides.
    */
   star?: Star
+  /**
+   * Its collision shapes, which a sun's corona rays test. A hit reports `position` and `CObject::Radius`,
+   * taken as `solar.extent`, else `sphere`'s radius. Nothing to hit when absent.
+   */
+  hitbox?: Hitbox
   /** The archetype's `nomad`: goes three lists up, after everything of its kind (`0x51f5b7`). */
   nomad?: boolean
   /** The archetype's `distance_render`. Past it, it stops reflecting, and `lodRange` may apply. */
@@ -193,8 +199,8 @@ export interface SpaceScene {
    */
   sunEffect?: number
   /**
-   * `PhySys::FindRayCollisions`: what a ray from the camera hits, the objects' hitboxes. Each hit's
-   * `object` is compared with a sun's own `SpaceObject` and with `player`. Nothing blocks without it.
+   * `PhySys::FindRayCollisions`: what a ray from the camera hits. Each hit's `object` is compared
+   * with a sun's own `SpaceObject` and with `player`. From the objects' `hitbox`es when absent.
    */
   rayHits?: CoronaView['rayHits']
   /** The player's ship, seen from the cockpit: a sun's rays pass through it. None from outside. */
@@ -997,6 +1003,22 @@ export const collectSpaceFrame = ({
   // were read (`SpaceEnvFxBeginCockpitPass`, `0x51c970`). Fully in a field, only its occlusion.
   const afterEffects: Draw[] = []
   const quality = sunEffect === undefined ? 0 : sunEffectQuality(sunEffect)
+  // Each object hit is itself, so a sun's own solar is told apart.
+  const hitboxes = objects.flatMap((object) =>
+    object.hitbox
+      ? [
+          {
+            object,
+            position: object.position,
+            radius: object.solar?.extent ?? object.sphere.radius,
+            hitbox: object.hitbox,
+          },
+        ]
+      : [],
+  )
+  const castFrom: CoronaView['rayHits'] =
+    rayHits ??
+    (hitboxes.length ? (from, to, limit) => castRay(hitboxes, from, to, limit) : undefined)
   if (quality > 0 && viewport)
     for (const object of objects) {
       const { star, position } = object
@@ -1013,7 +1035,7 @@ export const collectSpaceFrame = ({
           camera: given,
           view,
           ...viewport,
-          ...(rayHits && { rayHits }),
+          ...(castFrom && { rayHits: castFrom }),
           own: object,
           ...(player !== undefined && { player }),
           leastLod: sunLeastLod(quality),

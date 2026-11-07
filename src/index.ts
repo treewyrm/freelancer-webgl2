@@ -80,6 +80,7 @@ export {
 } from '#/scene/nebula.js'
 export { fogOverlayDraw } from '#/scene/overlay.js'
 export { starGlowDraws, starRadius, type Star, type StarGlow } from '#/scene/star.js'
+export { castRay, type Hitbox, type HitboxObject, type HitboxSurface } from '#/scene/hitbox.js'
 export {
   starCorona,
   starIntensity,

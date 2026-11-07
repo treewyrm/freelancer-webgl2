@@ -657,14 +657,20 @@ renderer. Random streams need not match retail; each appearance's sizes, colours
       `Freelancer-original.exe`), so retail's suns ease their flare over 1 s, and their zone
       occlusion keeps 2 s. Fully in a field it only sets its occlusion. Pinned by reading and by
       pixels. **Uncaptured**: the alpha test the screen quads leave, taken as `GREATER 0`.
-- [ ] The corona's rays against hitboxes: `rayHits` from each object's `.sur`. A ray hits through
-      `PhySys::FindRayCollisions`, the physics engine's test against every object's collision
-      shapes, at most 6 hits a ray; each hit's `CObject::Radius` and position decide. A hit on a
-      shield part never blocks. `@treewyrm/freelancer/surface` already reads a `.sur` into a tree
-      of convex hulls with bounding spheres, but casts no ray, so the test is geometry to build
-      here: down the tree by sphere, then the segment clipped against each leaf hull's faces, in
-      each part's world. The host gives each object its surface and parts, as it gives its model.
-      IVP's order of hits matters only past six.
+- [x] The corona's rays against hitboxes: `castRay` and `SpaceObject.hitbox`, from
+      `PhysicalSystem::FindRayCollisions` (`FUN_0628d1a0`): every object's shapes, nearest hit
+      first, at most 6, each hull the ray enters a hit of its own. The shapes are what
+      `BuildIVP_Real` (`0x6288dd0`) gives the body: the `.sur`'s root part at the object, which
+      carries its fixed children's hulls, and each `!fxd` part at its own model part
+      (`@treewyrm/freelancer`'s SURFACE.md). A `.sph` solar, planet or sun, is a ball of its
+      `solar_radius` instead (`CSolar`, `0x62b78c5`; `BuildIVP_Sphere`), which is how a planet
+      hides a sun. Down each part's ledge tree by its spheres, then the segment against each
+      terminal hull's faces. A hull's id says whether it's a shield's (`Hitbox.shield`). With no
+      `rayHits` the frame casts against the objects' hitboxes. A ray from inside a hull is taken
+      as not hitting it: IVP's solver there isn't read. Pinned by reading; every ray toward the
+      centre of `li_elite`, `space_solar_plant` and `station_small_b_lod` hits, none beside them,
+      and culling by the tree changes nothing over 2000 rays at `station_large_a_lod`. Attached
+      equipment, shield bubbles and asteroids aren't given shapes yet. **Uncaptured.**
 - [ ] A sun's `spines` and `lens_flare` (`FUN_00510160`, `FUN_0050f850`): the spines before the
       corona, their reach deciding whether the sun's on screen (`0x511fe5`); the flare's beads at
       the cockpit pass's end (`SpaceEnvFxEndCockpitPass`, `0x51c9e0`), by `Intensity` and the zone

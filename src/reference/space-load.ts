@@ -57,6 +57,7 @@ import {
 import { placeSphere } from '#/scene/sphere.js'
 import { skyLayers, type SpaceEffect, type SpaceObject, type SpaceScene } from '#/scene/space.js'
 import { starRadius, type Star, type StarGlow } from '#/scene/star.js'
+import type { Hitbox, HitboxSurface } from '#/scene/hitbox.js'
 import type { LensGlow } from '#/scene/corona.js'
 import {
   effectLodRow,
@@ -238,6 +239,42 @@ const bodySphere = async (
   const [root] = readSurfaceLibrary(BufferView.from(await read(path)))
   const { massCenter: c, radius } = root!
   return { center: { x: at.x + c.x, y: at.y + c.y, z: at.z + c.z }, radius }
+}
+
+/**
+ * An archetype's collision shapes, as the game builds its body: a `.sph` solar's ball of
+ * `solar_radius`, or its `.sur`'s root part at `world` and each `!fxd` part at its model part's.
+ */
+const hitboxOf = async (
+  section: Section,
+  model: RigidModel,
+  world: Matrix4,
+  read: ReadAsset,
+  jointState?: PlaceOptions['jointState'],
+): Promise<Hitbox | undefined> => {
+  const archetype = pathOf(strings(section, 'DA_archetype')[0]!)
+  if (/\.sph$/i.test(archetype)) {
+    const radius = numbers(section, 'solar_radius')[0] ?? 0
+    return radius > 0 ? { ball: radius } : undefined
+  }
+  const parts = readSurfaceLibrary(
+    BufferView.from(await read(archetype.replace(/\.[^.]+$/, '.sur'))),
+  )
+  const nodes =
+    model.type === 'compound'
+      ? [...partTransforms(model as CompoundNode<RigidPart>, world, jointState)]
+      : []
+  const frameOf = (id: number) => nodes.find(([node]) => getResourceId(node.name) === id)?.[1]
+  // The root's part is the model's root's, or the file's first.
+  const rootId = model.type === 'compound' ? getResourceId(model.name) : undefined
+  const root = parts.find(({ id }) => id === rootId) ?? parts[0]!
+  const surfaces: HitboxSurface[] = [{ surface: root, world }]
+  for (const part of parts) {
+    if (part === root || part.fixed) continue
+    const frame = frameOf(part.id)
+    if (frame) surfaces.push({ surface: part, world: frame })
+  }
+  return { surfaces }
 }
 
 export interface SystemOptions {
@@ -1375,6 +1412,7 @@ export const loadSystem = async (
     const jointState = await animate(section)
     const attached = await attach(model, section, Matrix4.translation(at), jointState)
     const flares = flaresOf(model, section, Matrix4.translation(at), jointState)
+    const hitbox = await hitboxOf(section, model, Matrix4.translation(at), read, jointState)
     objects.push({
       model: place(Matrix4.translation(at), jointState),
       ...(attached.length ? { attached } : {}),
@@ -1383,6 +1421,7 @@ export const loadSystem = async (
       sphere,
       solar: { large: extent > 200, extent, planet },
       ...(star && { star }),
+      ...(hitbox && { hitbox }),
       // `systemIni` writes every `[Object]` before any `[Nebula]`: no solar finds one.
       ...(system.nebulae?.length ? { nebula: null } : {}),
       ...(range > 0 ? { lodRange: range } : {}),
@@ -1445,6 +1484,7 @@ export const loadSystem = async (
     position: ship,
     sphere: await bodySphere(hull.section, ship, read),
     ...(pilot ? { pilot } : {}),
+    hitbox: (await hitboxOf(hull.section, hull.model, world, read))!,
     ...(range > 0 ? { lodRange: range } : {}),
     ...(distanceRender ? { distanceRender: Number(distanceRender.value) } : {}),
   })
