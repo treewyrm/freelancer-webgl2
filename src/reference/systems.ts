@@ -49,9 +49,13 @@ export interface ReferenceSystem {
     propertyFlags?: number
     /** `edge_fraction`: a nebula's exclusion zone without one logs an error (`0x62bc720`). */
     edgeFraction?: number
+    /** `spacedust` and `spacedust_maxparticles`: the dust ahead of the camera while it's in it. */
+    spacedust?: { effect: string; maxParticles?: number }
   }[]
   /** `[Asteroids]`: a field file under `DATA`, and its zone. */
   asteroids?: { file: string; zone: string }[]
+  /** `[Dust] spacedust`: the system's dust, an `[Effect]`. None when absent. */
+  dust?: string
   /** `[Nebula]`: a nebula file under `DATA`, and its zone. */
   nebulae?: { file: string; zone: string }[]
   /** Files the mount writes under `DATA`, by path as the system names them, and their text. */
@@ -83,6 +87,7 @@ export const systemIni = ({
   zones = [],
   asteroids = [],
   nebulae = [],
+  dust,
 }: ReferenceSystem): string => {
   const lines = [
     '[SystemInfo]',
@@ -90,7 +95,7 @@ export const systemIni = ({
     'local_faction = li_p_grp',
     '[TexturePanels]',
     'file = universe\\heavens\\shapes.ini',
-    // No `[Dust]`: dust follows the camera and isn't built yet.
+    ...(dust ? ['[Dust]', `spacedust = ${dust}`] : []),
     '[Music]',
     'space = music_li_space',
     'danger = music_li_danger',
@@ -123,17 +128,23 @@ export const systemIni = ({
     ]),
     ...asteroids.flatMap(({ file, zone }) => ['[Asteroids]', `file = ${file}`, `zone = ${zone}`]),
     ...nebulae.flatMap(({ file, zone }) => ['[Nebula]', `file = ${file}`, `zone = ${zone}`]),
-    ...zones.flatMap(({ nickname, position, pitch, shape, size, propertyFlags, edgeFraction }) => [
-      '[zone]',
-      `nickname = ${nickname}`,
-      `pos = ${list(position)}`,
-      `rotate = ${pitch}, 0, 0`,
-      `shape = ${shape}`,
-      `size = ${size.join(', ')}`,
-      ...(propertyFlags === undefined ? [] : [`property_flags = ${propertyFlags}`]),
-      ...(edgeFraction === undefined ? [] : [`edge_fraction = ${edgeFraction}`]),
-      'sort = 99.5',
-    ]),
+    ...zones.flatMap(
+      ({ nickname, position, pitch, shape, size, propertyFlags, edgeFraction, spacedust }) => [
+        '[zone]',
+        `nickname = ${nickname}`,
+        `pos = ${list(position)}`,
+        `rotate = ${pitch}, 0, 0`,
+        `shape = ${shape}`,
+        `size = ${size.join(', ')}`,
+        ...(propertyFlags === undefined ? [] : [`property_flags = ${propertyFlags}`]),
+        ...(edgeFraction === undefined ? [] : [`edge_fraction = ${edgeFraction}`]),
+        ...(spacedust ? [`spacedust = ${spacedust.effect}`] : []),
+        ...(spacedust?.maxParticles === undefined
+          ? []
+          : [`spacedust_maxparticles = ${spacedust.maxParticles}`]),
+        'sort = 99.5',
+      ],
+    ),
   ]
   return `${lines.join('\r\n')}\r\n`
 }
@@ -846,6 +857,32 @@ const SUN_NEBULA: Omit<ReferenceSystem, 'name' | 'player'> = {
   files: [{ path: SUN_NEBULA_FILE, text: LAB_SUN_NEBULA }],
 }
 
+/** Where the dust zones stand: about the ship, and 1500 to its right, so its point is half in. */
+const DUST_ZONE = {
+  nickname: 'Lab_dust',
+  pitch: 0,
+  shape: 'SPHERE' as const,
+  size: [2000],
+  spacedust: { effect: 'asteroiddust', maxParticles: 250 },
+}
+
+/**
+ * M7: `sun_ahead` with retail's `[Dust]` and a zone of `asteroiddust`, whose emitters' most
+ * particles follow the intensity. The system's `dust` is an `FLDustAppearance`, which fades out at
+ * rest, so only the zone's draws.
+ */
+const DUST: Omit<ReferenceSystem, 'name' | 'player'> = {
+  ...SUN,
+  dust: 'Dust',
+  zones: [{ ...DUST_ZONE, position: [0, 0, 0] }],
+}
+
+/** In the zone's edge: `edge_fraction` 0.5 of 2000, the dust's point about 1500 out, near half in. */
+const DUST_EDGE: Omit<ReferenceSystem, 'name' | 'player'> = {
+  ...DUST,
+  zones: [{ ...DUST_ZONE, position: [1500, 0, 0], edgeFraction: 0.5 }],
+}
+
 export const systems: ReadonlyMap<string, ReferenceSystem> = new Map(
   [
     {
@@ -971,6 +1008,18 @@ export const systems: ReadonlyMap<string, ReferenceSystem> = new Map(
       // In a nebula's edge, the sun beyond it.
       name: 'sun_nebula',
       ...SUN_NEBULA,
+      player: { ...RING_PLAYER, position: [0, 0, 0] },
+    } satisfies ReferenceSystem,
+    {
+      // Deep in a zone of `asteroiddust` at 250 particles: an intensity of 0.5.
+      name: 'dust_zone',
+      ...DUST,
+      player: { ...RING_PLAYER, position: [0, 0, 0] },
+    } satisfies ReferenceSystem,
+    {
+      // In its edge, about half in: an intensity near 0.25, and its cap with it.
+      name: 'dust_zone_edge',
+      ...DUST_EDGE,
       player: { ...RING_PLAYER, position: [0, 0, 0] },
     } satisfies ReferenceSystem,
     {

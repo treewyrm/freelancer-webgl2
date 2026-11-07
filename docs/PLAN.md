@@ -714,6 +714,13 @@ renderer. Random streams need not match retail; each appearance's sizes, colours
       Retail's dusts: `dust` in every `[Dust]`, an `FLDustAppearance` that fades out at rest; 19
       zone dusts, `EFT_MISC_DUST`, all `FxBasicAppearance`, so a still camera can capture them.
       **Uncaptured.** Equal radii take the order given, where retail asks its zone tree.
+- [ ] **You:** `dust_zone` and `dust_zone_edge` (`src/reference/systems.ts`), with screenshots and
+      captures: `sun_ahead` with retail's `[Dust]` and a sphere of `asteroiddust` at 250 particles
+      about the ship; then that zone 1500 to the right with `edge_fraction` 0.5, the dust's point
+      about half in. Leave each 20 seconds before capturing, at rest. `asteroiddust`'s
+      `Emitter_MaxParticles` follows the intensity, so its count checks it: ours holds 124 a list
+      deep in and 62 in the edge. Captures will also settle where the dust stands, and whether the
+      system's `dust` at rest, an `FLDustAppearance` faded to nothing, issues a draw: ours does.
 - [ ] Gate tunnels.
 - [ ] Projectiles and beams; the cockpit pass with its depth clear.
 - [ ] Measure effects' CPU cost in a whole system. A pushed lane steps on the CPU, by choice: bring back

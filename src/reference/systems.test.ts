@@ -156,3 +156,17 @@ test('asteroids: the system names its field and nebula, and writes files the gam
         `${zone}`,
       )
 })
+
+test("dust: the system's [Dust] and a zone's spacedust, the edge's point about half in", () => {
+  const deep = systems.get('dust_zone')!
+  const text = systemIni(deep)
+  assert.ok(sections(text).includes('Dust'))
+  assert.ok(text.includes('spacedust = Dust'))
+  assert.ok(text.includes('spacedust = asteroiddust'))
+  assert.ok(text.includes('spacedust_maxparticles = 250'))
+  const edge = systems.get('dust_zone_edge')!.zones![0]!
+  // The dust stands 60 ahead of a camera near the ship: about 1500 from the centre, of 2000.
+  const out = distance([edge.position[0]!, edge.position[1]!, edge.position[2]! + 60]) / 2000
+  const immersion = (1 - out) / edge.edgeFraction!
+  assert.ok(Math.abs(immersion - 0.5) < 0.01)
+})

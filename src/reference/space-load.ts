@@ -44,6 +44,7 @@ import { AsteroidBand, type BandSettings } from '#/scene/band.js'
 import { NebulaLightning } from '#/scene/lightning.js'
 import { AsteroidBillboards, type BillboardSettings } from '#/scene/billboards.js'
 import { DynamicAsteroids, type DynamicEffect, type DynamicSettings } from '#/scene/dynamic.js'
+import { SpaceDust, type DustZone } from '#/scene/dust.js'
 import { NebulaExterior, type ExteriorSettings } from '#/scene/exterior.js'
 import { zoneOf, type NebulaExclusion, type SpaceNebula, type Zone } from '#/scene/nebula.js'
 import {
@@ -1585,6 +1586,35 @@ export const loadSystem = async (
       return [loadRing(read, ring.file, shape, highDetailTextures ?? 1, rand)]
     }),
   )
+  // The dust's effects, read once: each zone's and the system's, by name without case.
+  const dustNames = [
+    ...(system.dust ? [system.dust] : []),
+    ...(system.zones ?? []).flatMap(({ spacedust }) => (spacedust ? [spacedust.effect] : [])),
+  ]
+  const dustSources = new Map(
+    await Promise.all(
+      dustNames.map(
+        async (name) => [name.toLowerCase(), await effectSource(name, tables, read)] as const,
+      ),
+    ),
+  )
+  const dust = new SpaceDust(system.dust, (name) => dustSources.get(name.toLowerCase())?.())
+  const dustZones: DustZone[] = (system.zones ?? []).flatMap(({ nickname, spacedust }) => {
+    if (!spacedust) return []
+    const { zone, edgeFraction } = zoneFor(system, nickname)
+    return [
+      {
+        zone,
+        edgeFraction,
+        dust: spacedust.effect,
+        ...(spacedust.maxParticles !== undefined && { maxParticles: spacedust.maxParticles }),
+      },
+    ]
+  })
+  // From entering the system, on the effects' clock: the camera at rest all along.
+  for (let frame = 0; frame < (effectSeconds ?? 0) * effectRate; frame++)
+    dust.update(camera, 1 / effectRate, dustZones)
+
   // Each ring's clouds from entering the system, a cut, on the effects' clock: the game updates
   // them in its tick and draws them, which keeps their order, while the camera is in the ring.
   for (const ring of rings)
@@ -1607,6 +1637,7 @@ export const loadSystem = async (
     effects: placed.map(({ effect }) => effect).reverse(),
     effectView: await effectViewOf(read, effectDetail),
     viewport: { width: 1024, height: 768 },
+    ...(dustNames.length && { dust, dustZones }),
     rings,
     shine: { texture: await shapeOf(read, 'shine') },
     asteroids: await Promise.all(
