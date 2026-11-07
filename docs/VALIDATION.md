@@ -58,6 +58,10 @@ the dust scenes; a sun, but in the sun and dust scenes; `rotate` and `spin`, so 
 is the bare hull the menu captures already measured. The engine stays, and its flame is in the frame.
 The HUD and the chase camera are the game's, so the camera comes from the capture's matrices.
 
+**Every mounted lab system loads, so a zone's nickname is the universe's.** The universe keeps one
+zone a nickname and drops a later one silently, from its system's list too (`InsertZone`). Two scenes
+may share a zone only if it is the same zone; `systems.test.ts` holds them to it.
+
 **The menu as a scene gives an almost empty frame**: one camera and what you put in it, plus button
 quads that are filterable as `D3DFVF_XYZRHW`, and a software cursor to keep out of the way. See
 `freelancer-vscode/docs/renderer/ALCHEMY-LAB.md`, "Mounts, ranked by what a measurement needs".

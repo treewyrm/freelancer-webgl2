@@ -714,25 +714,26 @@ renderer. Random streams need not match retail; each appearance's sizes, colours
       Retail's dusts: `dust` in every `[Dust]`, an `FLDustAppearance` that fades out at rest; 19
       zone dusts, `EFT_MISC_DUST`, all `FxBasicAppearance`, so a still camera can capture them.
       **Uncaptured.** Equal radii take the order given, where retail asks its zone tree.
-- [x] **You:** `dust_zone` and `dust_zone_edge` (`src/reference/systems.ts`): `sun_ahead` with retail's
-      `[Dust]` and a sphere of `asteroiddust` at 250 particles about the ship; then that zone 1500 to
-      the right with `edge_fraction` 0.5. In `dust_zone` retail draws it as read: `rock1` and `rock2`
-      after the engine's effects, 120 and 118 particles to our 124 a list, every one 58.8 from the
-      point 60 ahead of the camera, so placed where `SpaceDustUpdate` puts it. The system's `dust`, at
-      rest, issues no draw; ours issues one faded to nothing. **In `dust_zone_edge` retail draws no
-      dust at all**, where ours runs at 0.2498 and holds 62. Nothing read explains it: the zone
-      query, `InZone`, `GetImmersion`, `ClassifyPoint`, `GetRadiusAlong` and the emitter's linear
-      outer key were each checked in `common.dll` and the decomp's Alchemy, and the camera is
-      `sun_ahead`'s. This `common.dll` sits 0x80 below the decomp's addresses for `ZONE`
-      (`GetImmersion` at `0x633abb0`, its vtable at `0x63a5064`).
-- [ ] **You:** all four again, `dust_zone`, `dust_zone_edge`, `dust_zone_off` and `dust_zone_quarter`,
-      now with `attractdust`: `asteroiddust` is dark rocks a unit across, barely seen against space,
-      where `attractdust` is three additive `small-flare` emitters, their caps about 499, 350 and 300 at
-      full and linear in the intensity. `_off` is the edge's zone with no `edge_fraction`, whole at
-      0.5; `_quarter` the deep zone at 125 particles, 0.25 with no immersion. Ours holds 249, 174 and
-      150 deep in and off centre, and 124, 87 and 75 in the edge and at a quarter. If `_off` draws and
-      `_quarter` doesn't, a quarter's cap is what retail reads otherwise; if `_quarter` draws and
-      `_off` doesn't, it's the zone off centre; if both, `edge_fraction` itself.
+- [x] **You:** `dust_zone`, with `attractdust`, three additive `small-flare` emitters whose caps are
+      linear in the intensity. **Matched** (`src/reference/dust.test.ts`): the scene draw for draw,
+      then the zone's three emitters after the engine's effects, holding 249, 174 and 150, ours to the
+      particle, so the intensity is 0.5 as read; every particle within the emitter's sphere about the
+      point 60 ahead of the camera; added, `ZFUNC` 4, no depth writes. The system's `dust` at rest
+      issues no draw in retail; ours issues one faded to 0, which draws nothing. The first round, with
+      `asteroiddust`, matched the place too, but its rocks are dark and a unit across.
+      **`dust_zone_edge`, `_off` and `_quarter` drew no dust, and it was the scenes**: each named its
+      zone `Lab_dust`, as `dust_zone` does. The universe keeps one zone a nickname and drops the rest
+      without a word, off their system's list too (`InsertZone`, `common_universe.cpp`); every lab
+      system is loaded, and `dust_zone` sorts first. Each now has its own, and `systems.test.ts`
+      holds a shared nickname to one zone. The asteroid scenes shared `Lab_field` and got away with
+      it: their zones are the same. Reading on the way: `ZONE`'s query, `InZone`, `GetImmersion`,
+      `ClassifyPoint` and `GetRadiusAlong` are the decomp's in `common.dll`, which sits 0x80 below its
+      addresses (`GetImmersion` at `0x633abb0`, the vtable at `0x63a5064`); the emitter's outer key is
+      linear.
+- [ ] **You:** `dust_zone_edge`, `dust_zone_off` and `dust_zone_quarter` again, each with its own zone
+      now: the edge about half in, with `edge_fraction` 0.5; the same zone without it, whole at 0.5;
+      and the deep zone at 125 particles, 0.25. Ours holds 249, 174 and 150 in `_off`, and 124, 87 and
+      75 in the other two.
 - [ ] Gate tunnels.
 - [ ] Projectiles and beams; the cockpit pass with its depth clear.
 - [ ] Measure effects' CPU cost in a whole system. A pushed lane steps on the CPU, by choice: bring back

@@ -170,3 +170,16 @@ test("dust: the system's [Dust] and a zone's spacedust, the edge's point about h
   const immersion = (1 - out) / edge.edgeFraction!
   assert.ok(Math.abs(immersion - 0.5) < 0.01)
 })
+
+test('a zone nickname two systems share is one zone: the game keeps only the first loaded', () => {
+  // `InsertZone` (`common_universe.cpp`): the universe's zone map takes no duplicate, and a zone it
+  // drops isn't on its system's list, so a later system's differing zone is simply gone.
+  const seen = new Map<string, { system: string; zone: unknown }>()
+  for (const [name, { zones = [] }] of systems)
+    for (const zone of zones) {
+      const key = zone.nickname.toLowerCase()
+      const first = seen.get(key)
+      if (first) assert.deepEqual(zone, first.zone, `${name} and ${first.system} share ${key}`)
+      else seen.set(key, { system: name, zone })
+    }
+})

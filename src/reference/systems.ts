@@ -880,20 +880,25 @@ const DUST: Omit<ReferenceSystem, 'name' | 'player'> = {
 /** In the zone's edge: `edge_fraction` 0.5 of 2000, the dust's point about 1500 out, near half in. */
 const DUST_EDGE: Omit<ReferenceSystem, 'name' | 'player'> = {
   ...DUST,
-  zones: [{ ...DUST_ZONE, position: [1500, 0, 0], edgeFraction: 0.5 }],
+  zones: [{ ...DUST_ZONE, nickname: 'Lab_dust_edge', position: [1500, 0, 0], edgeFraction: 0.5 }],
 }
 
 /** The edge's zone with no edge: off centre, but whole wherever the dust is in it. */
 const DUST_OFF: Omit<ReferenceSystem, 'name' | 'player'> = {
   ...DUST,
-  zones: [{ ...DUST_ZONE, position: [1500, 0, 0] }],
+  zones: [{ ...DUST_ZONE, nickname: 'Lab_dust_off', position: [1500, 0, 0] }],
 }
 
 /** The deep zone at 125 particles: the edge's intensity, 0.25, with no immersion in it. */
 const DUST_QUARTER: Omit<ReferenceSystem, 'name' | 'player'> = {
   ...DUST,
   zones: [
-    { ...DUST_ZONE, position: [0, 0, 0], spacedust: { effect: 'attractdust', maxParticles: 125 } },
+    {
+      ...DUST_ZONE,
+      nickname: 'Lab_dust_quarter',
+      position: [0, 0, 0],
+      spacedust: { effect: 'attractdust', maxParticles: 125 },
+    },
   ],
 }
 

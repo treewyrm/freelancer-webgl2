@@ -120,6 +120,15 @@ export const RUNS = {
     effectRate: 96,
     animationSeconds: 0,
   },
+  // `sun_ahead` with a zone of dust: the same camera, the dust after the engine's effects.
+  dust_zone: {
+    far: [0, 0, 0],
+    farDraw: 10,
+    hullDraw: 14,
+    effectSeconds: 20,
+    effectRate: 96,
+    animationSeconds: 0,
+  },
   sun_occluded: {
     far: [0, 0, 0],
     farDraw: 10,
