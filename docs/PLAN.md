@@ -713,7 +713,10 @@ renderer. Random streams need not match retail; each appearance's sizes, colours
       and the run times in `Freelancer-original.exe`. Pinned by reading.
       Retail's dusts: `dust` in every `[Dust]`, an `FLDustAppearance` that fades out at rest; 19
       zone dusts, `EFT_MISC_DUST`, all `FxBasicAppearance`, so a still camera can capture them.
-      **Uncaptured.** Equal radii take the order given, where retail asks its zone tree.
+      **Matched in `dust_zone`, `_edge`, `_off` and `_quarter`** (`src/reference/dust.test.ts`): the
+      zone's dust where it stands and at the intensity its particles and immersion give, to the
+      particle. Uncaptured: zones changing, the fade, detail, and the system's dust in motion. Equal
+      radii take the order given, where retail asks its zone tree.
 - [x] **You:** `dust_zone`, with `attractdust`, three additive `small-flare` emitters whose caps are
       linear in the intensity. **Matched** (`src/reference/dust.test.ts`): the scene draw for draw,
       then the zone's three emitters after the engine's effects, holding 249, 174 and 150, ours to the
@@ -730,10 +733,10 @@ renderer. Random streams need not match retail; each appearance's sizes, colours
       `ClassifyPoint` and `GetRadiusAlong` are the decomp's in `common.dll`, which sits 0x80 below its
       addresses (`GetImmersion` at `0x633abb0`, the vtable at `0x63a5064`); the emitter's outer key is
       linear.
-- [ ] **You:** `dust_zone_edge`, `dust_zone_off` and `dust_zone_quarter` again, each with its own zone
-      now: the edge about half in, with `edge_fraction` 0.5; the same zone without it, whole at 0.5;
-      and the deep zone at 125 particles, 0.25. Ours holds 249, 174 and 150 in `_off`, and 124, 87 and
-      75 in the other two.
+- [x] **You:** `dust_zone_edge`, `dust_zone_off` and `dust_zone_quarter` again, each with its own zone.
+      **Matched** (`src/reference/dust.test.ts`), like `dust_zone`: draw for draw, and the emitters
+      to the particle, 124, 87 and 75 in the edge (0.2498, its immersion as `GetImmersion` gives it)
+      and at a quarter, 249, 174 and 150 off centre.
 - [ ] Gate tunnels.
 - [ ] Projectiles and beams; the cockpit pass with its depth clear.
 - [ ] Measure effects' CPU cost in a whole system. A pushed lane steps on the CPU, by choice: bring back
