@@ -509,6 +509,9 @@ renderer. Random streams need not match retail; each appearance's sizes, colours
 - [x] **You:** `nebula_sheets` and `nebula_sheets_edge` (`src/reference/systems.ts`): from outside a
       pitched ellipsoid with both sheets, B at about half, a far sphere's on the far list; then in the
       ellipsoid's edge. A system with no `[Object]` crashes the game, so it has a station.
+- [ ] **You:** `nebula_sheets_axis` (`src/reference/systems.ts`): looking along two ellipsoids' long
+      axes, where only the one-step look keeps a sheet: the near one's sheet A at an alpha of 85, the
+      far one's gone. An exact alignment, and its 0/0, can't be staged from a chase camera.
 - [ ] A nebula's exterior from outside (`[Exterior]` puffs and slices), and its `[Clouds]` inside.
 - [ ] An asteroid field's billboards and dynamic asteroids, which `rand()` drives.
 - [ ] Suns: a solar's `star` from `solar\StarArch.ini`, drawn by `FStarSphere` (`star_sphere.cpp`;

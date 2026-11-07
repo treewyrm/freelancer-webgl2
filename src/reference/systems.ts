@@ -482,6 +482,39 @@ const SHEETS: Omit<ReferenceSystem, 'name' | 'player'> = {
   files: [{ path: SHEETS_NEBULA_FILE, text: LAB_SHEETS_NEBULA }],
 }
 
+/**
+ * M7: a sheet looked at along its own axis. Two ellipsoids straight ahead, longest along z, so sheet A
+ * stands along the look, edge-on. Retail's one Newton step leaves the look up to 0.17% short, and how
+ * short by its length: from the chase camera, the near one's sheet A keeps an alpha of 85 at 13000,
+ * and the far one's, at 60500 and on the far list, fades out. Sheet B faces the camera in both. The
+ * look is never exactly along the axis, so its 0/0 isn't reached.
+ */
+const SHEETS_AXIS: Omit<ReferenceSystem, 'name' | 'player'> = {
+  ...SHEETS,
+  zones: [
+    {
+      nickname: 'Lab_sheets_axis_near',
+      position: [0, 0, -13000],
+      pitch: 0,
+      shape: 'ELLIPSOID',
+      size: [2000, 2000, 4000],
+      propertyFlags: 32768,
+    },
+    {
+      nickname: 'Lab_sheets_axis_far',
+      position: [0, 0, -60500],
+      pitch: 0,
+      shape: 'ELLIPSOID',
+      size: [2000, 2000, 4000],
+      propertyFlags: 32768,
+    },
+  ],
+  nebulae: [
+    { file: SHEETS_NEBULA_FILE, zone: 'Lab_sheets_axis_near' },
+    { file: SHEETS_NEBULA_FILE, zone: 'Lab_sheets_axis_far' },
+  ],
+}
+
 const ASTEROIDS_EXBAND: Omit<ReferenceSystem, 'name' | 'player'> = {
   ...ASTEROIDS,
   asteroids: [{ file: ASTEROID_EXBAND_FILE, zone: 'Lab_field' }],
@@ -549,6 +582,12 @@ export const systems: ReadonlyMap<string, ReferenceSystem> = new Map(
       name: 'nebula_sheets_edge',
       ...SHEETS,
       player: { ...RING_PLAYER, position: [-600, 200, -8700] },
+    } satisfies ReferenceSystem,
+    {
+      // Looking along both ellipsoids' long axes, from where `nebula_sheets` had its camera.
+      name: 'nebula_sheets_axis',
+      ...SHEETS_AXIS,
+      player: { ...RING_PLAYER, position: [0, 0, 0] },
     } satisfies ReferenceSystem,
     {
       name: 'ring_outside',
