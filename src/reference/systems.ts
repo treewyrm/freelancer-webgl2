@@ -863,11 +863,11 @@ const DUST_ZONE = {
   pitch: 0,
   shape: 'SPHERE' as const,
   size: [2000],
-  spacedust: { effect: 'asteroiddust', maxParticles: 250 },
+  spacedust: { effect: 'attractdust', maxParticles: 250 },
 }
 
 /**
- * M7: `sun_ahead` with retail's `[Dust]` and a zone of `asteroiddust`, whose emitters' most
+ * M7: `sun_ahead` with retail's `[Dust]` and a zone of `attractdust`, three additive flares whose most
  * particles follow the intensity. The system's `dust` is an `FLDustAppearance`, which fades out at
  * rest, so only the zone's draws.
  */
@@ -893,7 +893,7 @@ const DUST_OFF: Omit<ReferenceSystem, 'name' | 'player'> = {
 const DUST_QUARTER: Omit<ReferenceSystem, 'name' | 'player'> = {
   ...DUST,
   zones: [
-    { ...DUST_ZONE, position: [0, 0, 0], spacedust: { effect: 'asteroiddust', maxParticles: 125 } },
+    { ...DUST_ZONE, position: [0, 0, 0], spacedust: { effect: 'attractdust', maxParticles: 125 } },
   ],
 }
 

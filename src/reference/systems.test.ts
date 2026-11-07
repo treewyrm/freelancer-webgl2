@@ -162,7 +162,7 @@ test("dust: the system's [Dust] and a zone's spacedust, the edge's point about h
   const text = systemIni(deep)
   assert.ok(sections(text).includes('Dust'))
   assert.ok(text.includes('spacedust = Dust'))
-  assert.ok(text.includes('spacedust = asteroiddust'))
+  assert.ok(text.includes('spacedust = attractdust'))
   assert.ok(text.includes('spacedust_maxparticles = 250'))
   const edge = systems.get('dust_zone_edge')!.zones![0]!
   // The dust stands 60 ahead of a camera near the ship: about 1500 from the centre, of 2000.

@@ -725,10 +725,14 @@ renderer. Random streams need not match retail; each appearance's sizes, colours
       outer key were each checked in `common.dll` and the decomp's Alchemy, and the camera is
       `sun_ahead`'s. This `common.dll` sits 0x80 below the decomp's addresses for `ZONE`
       (`GetImmersion` at `0x633abb0`, its vtable at `0x63a5064`).
-- [ ] **You:** `dust_zone_off` and `dust_zone_quarter`, to split that: the edge's zone with no
-      `edge_fraction`, whole at 0.5; and the deep zone at 125 particles, 0.25 with no immersion. Ours
-      holds 124 and 62. If `_off` draws and `_quarter` doesn't, a quarter's cap is what retail reads
-      otherwise; if `_quarter` draws and `_off` doesn't, it's the zone off centre.
+- [ ] **You:** all four again, `dust_zone`, `dust_zone_edge`, `dust_zone_off` and `dust_zone_quarter`,
+      now with `attractdust`: `asteroiddust` is dark rocks a unit across, barely seen against space,
+      where `attractdust` is three additive `small-flare` emitters, their caps about 499, 350 and 300 at
+      full and linear in the intensity. `_off` is the edge's zone with no `edge_fraction`, whole at
+      0.5; `_quarter` the deep zone at 125 particles, 0.25 with no immersion. Ours holds 249, 174 and
+      150 deep in and off centre, and 124, 87 and 75 in the edge and at a quarter. If `_off` draws and
+      `_quarter` doesn't, a quarter's cap is what retail reads otherwise; if `_quarter` draws and
+      `_off` doesn't, it's the zone off centre; if both, `edge_fraction` itself.
 - [ ] Gate tunnels.
 - [ ] Projectiles and beams; the cockpit pass with its depth clear.
 - [ ] Measure effects' CPU cost in a whole system. A pushed lane steps on the CPU, by choice: bring back
