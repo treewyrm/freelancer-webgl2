@@ -390,6 +390,7 @@ export const collectSpaceFrame = ({
   // `FNebulaEffect::Update`, every nebula's, before the frame. A flashing light joins the system's.
   const flashes: SpaceLight[] = []
   for (const { nebula, depth } of states) {
+    nebula.exterior?.update(eye, step, depth, cut)
     nebula.lightning?.update(step, depth, eye)
     const light = nebula.lightning?.light
     if (light) flashes.push(light)
@@ -660,6 +661,11 @@ export const collectSpaceFrame = ({
       }
     }
   }
+  // `DrawBoltsPass`'s bits, on the far list's plane.
+  const drawExterior = (state: NebulaState) => {
+    const draw = state.nebula.exterior?.draw(state, farCamera, view, aspect, farProjection)
+    if (draw) draws.push(draw)
+  }
   for (const at of !field || field.enclosure === 0 ? OUTSIDE_ORDER : INSIDE_ORDER) {
     const onFarList = at === FAR
     const passCamera = onFarList ? farCamera : camera
@@ -671,10 +677,11 @@ export const collectSpaceFrame = ({
     }
     for (const listed of lists[at]!) {
       const first = draws.length
-      // `ZItemNebula`: its sheets, then its exterior, which isn't built.
+      // `ZItemNebula`: its sheets, then its exterior.
       if ('nebula' in listed) {
         const sheets = fillSheetsDraw(listed.nebula, eye, farProjection)
         if (sheets) draws.push(sheets)
+        drawExterior(listed.nebula)
         continue
       }
       if ('band' in listed) {
@@ -775,6 +782,13 @@ export const collectSpaceFrame = ({
       const overlay = fogOverlayDraw(field.state, view, viewport)
       if (overlay) draws.push(overlay)
     }
+    // `DrawBoltsPass`: outside a field after its list (`0x51fa10`), in its edge after the overlay
+    // (`0x51fb3b`). The suns' billboards between, in its edge, aren't built.
+    if (
+      (at === FIELD && field?.enclosure === 0) ||
+      (at === NOMAD_OFFSET + MAIN && field?.enclosure === 1)
+    )
+      drawExterior(field.state)
     // `CliAsteroidTickFields`: outside a field after the main list and the rings' clouds, inside one
     // after its own list, and its nebula's exclusion shell before them (`0x51fb7e`).
     if (at === FIELD && field && field.enclosure !== 0) drawShell(field.state)

@@ -515,7 +515,25 @@ renderer. Random streams need not match retail; each appearance's sizes, colours
 - [x] **You:** `nebula_sheets_axis` (`src/reference/systems.ts`): looking along two ellipsoids' long
       axes, where only the one-step look keeps a sheet: the near one's sheet A at an alpha of 85, the
       far one's gone. An exact alignment, and its 0/0, can't be staged from a chase camera.
-- [ ] A nebula's exterior from outside (`[Exterior]` puffs and slices), and its `[Clouds]` inside.
+- [x] A nebula's exterior: `NebulaExterior`, from `NebulaRebuild` (`FUN_00506600`), `NebulaOrientBolts`
+      (`FUN_00507340`) and `NebulaDrawBolts` (`FUN_00507ed0`). `[Exterior]`'s bits on `plane_slices`
+      rings of latitude, `min_bits` at the ends to `max_bits` at the middle, spread by `equator_bias`,
+      each ring past the middle turned half a step, and a cap at each pole; each placed on the surface
+      (`GetSurfacePoint`, now on `Zone` for every shape) and pulled in `move_bit_percent` of
+      `bit_radius`. Its size within `bit_radius_random_variation`, its spin and its shape are the
+      game's `rand()`. Turned to the camera once a second or on a cut, sorted far to near once 1.15 s
+      pass, each billboard faces the camera about its up; one on the far side is skipped, and one
+      nearly edge-on or nearer than its radius fades, as does all of it over the second half of the
+      camera's depth. Unlit, unculled, no depth, `ALPHAREF` 4, blended by alpha or added by the
+      texture's format, fogged in the nebula's colour from its surface to twenty times as far past
+      its span. Drawn by `DrawBoltsPass`: after each far node's sheets, from outside after the field's
+      list, in its edge after the overlay. The `Nebula` option scales count, size and opacity
+      (`ExteriorLimits`). The decomp's constructor lacks six defaults
+      ([ADAPTING.md](ADAPTING.md#fnebulaeffectfnebulaeffect)). Pinned by reading. **Uncaptured.**
+- [ ] **You:** `nebula_exterior` and `nebula_exterior_edge` (`src/reference/systems.ts`): a pitched
+      ellipsoid's three rings and caps from outside, a far sphere's from the far list, then from the
+      ellipsoid's edge. Only each bit's spin is random.
+- [ ] A nebula's `[Clouds]` inside (`DrawCloudsPanels`), and its lightning bolts.
 - [ ] An asteroid field's billboards and dynamic asteroids, which `rand()` drives.
 - [ ] Suns: a solar's `star` from `solar\StarArch.ini`, drawn by `FStarSphere` (`star_sphere.cpp`;
       the name is the decomp's, not a sky). Its `star_center` and `star_glow` fans turned to the camera

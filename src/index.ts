@@ -81,6 +81,13 @@ export {
 export { fogOverlayDraw } from '#/scene/overlay.js'
 export { fillSheetsDraw } from '#/scene/sheets.js'
 export {
+  NebulaExterior,
+  RETAIL_EXTERIOR_LIMITS,
+  textureHasAlpha,
+  type ExteriorLimits,
+  type ExteriorSettings,
+} from '#/scene/exterior.js'
+export {
   NebulaLightning,
   RETAIL_BACKGROUND_LIGHTNING,
   RETAIL_DYNAMIC_LIGHTNING,

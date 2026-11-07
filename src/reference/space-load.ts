@@ -36,6 +36,7 @@ import {
 } from '#/scene/asteroids.js'
 import { AsteroidBand, type BandSettings } from '#/scene/band.js'
 import { NebulaLightning } from '#/scene/lightning.js'
+import { NebulaExterior, type ExteriorSettings } from '#/scene/exterior.js'
 import { zoneOf, type NebulaExclusion, type SpaceNebula, type Zone } from '#/scene/nebula.js'
 import {
   buildRing,
@@ -597,6 +598,7 @@ const loadNebula = async (
   file: string,
   zoneName: string,
   camera: Camera,
+  random: () => number,
 ): Promise<SpaceNebula> => {
   const { zone } = zoneFor(system, zoneName)
   // `zone_shell` and the keys after it, by name, shared by every zone naming it.
@@ -614,6 +616,11 @@ const loadNebula = async (
   const dynamic: { duration?: number } = {}
   const shapes = new Map<string, TextureShape>()
   let fillName: string | undefined
+  // `[Exterior]`'s keys, as `ParseExteriorSection` reads them: at most eight shapes, by name.
+  const exterior: { shapes: string[]; numbers: Record<string, number[]> } = {
+    shapes: [],
+    numbers: {},
+  }
   for (const section of Document.read(await read(pathOf(file)))) {
     const kind = section.name.toLowerCase()
     if (kind === 'texturepanels')
@@ -621,6 +628,9 @@ const loadNebula = async (
         shapes.set(key, value)
     for (const { name, numbers, strings } of linesOf(section)) {
       if (kind === 'exterior' && name === 'fill_shape') fillName = strings[0]!.toLowerCase()
+      if (kind === 'exterior' && name === 'shape' && exterior.shapes.length < 8)
+        exterior.shapes.push(strings[0]!.toLowerCase())
+      else if (kind === 'exterior') exterior.numbers[name] = numbers
       if (kind === 'fog') {
         if (name === 'near') fog = { ...fog, near: numbers[0]! }
         if (name === 'distance') fog = { ...fog, distance: numbers[0]! }
@@ -682,6 +692,33 @@ const loadNebula = async (
   })
   // A name the shapes don't hold finds nothing, as `FShapeDB::Find` warns and gives null.
   const fill = fillName === undefined ? undefined : shapes.get(fillName)
+  const value = (key: string) => exterior.numbers[key]?.[0]
+  const color = exterior.numbers['color']
+  const settings: ExteriorSettings = {
+    shapes: exterior.shapes.map((name) => shapes.get(name)),
+    ...(exterior.numbers['shape_weights'] && {
+      weights: exterior.numbers['shape_weights'].slice(0, exterior.shapes.length),
+    }),
+    // Uninitialised in retail when absent; every retail file has both.
+    bitRadius: value('bit_radius') ?? 0,
+    color: color
+      ? {
+          x: Math.fround(color[0]! / 255),
+          y: Math.fround(color[1]! / 255),
+          z: Math.fround(color[2]! / 255),
+        }
+      : { x: 0, y: 0, z: 0 },
+    ...(value('bit_radius_random_variation') !== undefined && {
+      radiusVariation: value('bit_radius_random_variation')!,
+    }),
+    // `plane_slices`, `min_bits` and `max_bits` are truncated to integers.
+    ...(value('plane_slices') !== undefined && { planeSlices: Math.trunc(value('plane_slices')!) }),
+    ...(value('min_bits') !== undefined && { minBits: Math.trunc(value('min_bits')!) }),
+    ...(value('max_bits') !== undefined && { maxBits: Math.trunc(value('max_bits')!) }),
+    ...(value('equator_bias') !== undefined && { equatorBias: value('equator_bias')! }),
+    ...(value('move_bit_percent') !== undefined && { moveBitPercent: value('move_bit_percent')! }),
+    ...(value('opacity') !== undefined && { opacity: value('opacity')! }),
+  }
   return {
     zone,
     fog,
@@ -689,6 +726,7 @@ const loadNebula = async (
     exclusions,
     lightning: new NebulaLightning({ background, dynamic }),
     ...(fill ? { fill } : {}),
+    exterior: new NebulaExterior(settings, zone, { random }),
   }
 }
 
@@ -1206,7 +1244,9 @@ export const loadSystem = async (
       (system.asteroids ?? []).map(({ file, zone }) => loadField(read, system, file, zone)),
     ),
     nebulae: await Promise.all(
-      (system.nebulae ?? []).map(({ file, zone }) => loadNebula(read, system, file, zone, camera)),
+      (system.nebulae ?? []).map(({ file, zone }) =>
+        loadNebula(read, system, file, zone, camera, rand),
+      ),
     ),
   }
 }

@@ -5,6 +5,7 @@
  */
 import { Quat, type Matrix4, type Shape, type Vector3 } from '@treewyrm/freelancer/math'
 import type { SceneModel } from './frame.js'
+import type { NebulaExterior } from './exterior.js'
 import type { NebulaLightning } from './lightning.js'
 import type { TextureShape } from './ring.js'
 
@@ -22,6 +23,8 @@ export interface Zone {
   size: Vector3
   /** `GetOrientation`'s columns: its own x, y and z in world space. */
   axes: readonly [Vector3, Vector3, Vector3]
+  /** `GetSurfacePoint` (`ZONE`, vt+0x44): where its surface is, for a point. */
+  surfacePoint: (point: Vector3) => Vector3
 }
 
 /** A system's `[Nebula]`: its zone, and what its file's `[Fog]` and `[NebulaLight]` say. */
@@ -43,6 +46,8 @@ export interface SpaceNebula {
   lightning?: NebulaLightning
   /** `[Exterior] fill_shape`: the two sheets drawn across it from outside and in its edge. */
   fill?: TextureShape
+  /** `[Exterior]`'s bits about it, seen from outside and in its edge. */
+  exterior?: NebulaExterior
 }
 
 /** An `exclusion` of a nebula's file, and its zone, which retail requires to be a sphere. */
@@ -138,8 +143,99 @@ export interface WrittenZone {
   orientation?: Quat
 }
 
-/** `ZONE::GetRadius`, `GetRadiusAlong`, `GetSize` and `GetOrientation` for each shape the game knows. */
+/**
+ * `ZONE::GetRadius`, `GetRadiusAlong`, `GetSize`, `GetOrientation` and `GetSurfacePoint` for each
+ * shape the game knows.
+ */
 export const zoneOf = (shape: Shape, written: WrittenZone = {}): Zone => {
+  const zone = reachOf(shape, written)
+  const { position: centre, axes, size } = zone
+  // In the zone's own frame and back: `EngineTransposeTransform`, `EngineTransformMatrix`.
+  const toLocal = (d: Vector3): Vector3 => ({
+    x: f(axes[0].x * d.x + axes[0].y * d.y + axes[0].z * d.z),
+    y: f(axes[1].x * d.x + axes[1].y * d.y + axes[1].z * d.z),
+    z: f(axes[2].x * d.x + axes[2].y * d.y + axes[2].z * d.z),
+  })
+  const toWorld = (l: Vector3): Vector3 => ({
+    x: f(axes[0].x * l.x + axes[1].x * l.y + axes[2].x * l.z),
+    y: f(axes[0].y * l.x + axes[1].y * l.y + axes[2].y * l.z),
+    z: f(axes[0].z * l.x + axes[1].z * l.y + axes[2].z * l.z),
+  })
+  const plus = (a: Vector3, b: Vector3): Vector3 => ({
+    x: f(a.x + b.x),
+    y: f(a.y + b.y),
+    z: f(a.z + b.z),
+  })
+
+  if (shape.type === 'box') {
+    // `ClampPointToBoxSurface` (`FUN_062dba00`): each axis outside held to its face; a point
+    // inside goes to the face it's nearest.
+    const half = [f(size.x * 0.5), f(size.y * 0.5), f(size.z * 0.5)]
+    return {
+      ...zone,
+      surfacePoint: (point) => {
+        const local = toLocal(sub(point, centre))
+        const values = [local.x, local.y, local.z]
+        const over = values.map((value, axis) => f(Math.abs(value) - half[axis]!))
+        let outside = false
+        const out = values.map((value, axis) => {
+          if (over[axis]! < 0) return value
+          outside = true
+          return Math.sign(value) < 0 || Object.is(value, -0) ? -half[axis]! : half[axis]!
+        })
+        if (!outside) {
+          let nearest = 2
+          if (over[0]! >= over[1]!) {
+            if (over[0]! >= over[2]!) nearest = 0
+          } else if (over[1]! >= over[2]!) nearest = 1
+          const value = values[nearest]!
+          out[nearest] =
+            Math.sign(value) < 0 || Object.is(value, -0) ? -half[nearest]! : half[nearest]!
+        }
+        return plus(toWorld({ x: out[0]!, y: out[1]!, z: out[2]! }), centre)
+      },
+    }
+  }
+
+  if (shape.type === 'ring') {
+    // `LAB_0633a398`: the nearest point of its middle circle, out along the tube to its surface.
+    const middle = f((size.y + size.x) * 0.5)
+    const half = size.z * 0.5
+    const cutoff = half / Math.sqrt(size.x * size.x + half * half)
+    return {
+      ...zone,
+      surfacePoint: (point) => {
+        const local = toLocal(sub(point, centre))
+        const rim = scaled({ x: local.x, y: 0, z: local.z }, middle / Math.hypot(local.x, local.z))
+        let tube = sub(local, rim)
+        const length = Math.sqrt(tube.x * tube.x + tube.y * tube.y + tube.z * tube.z)
+        if (!(length < f(1e-4))) tube = scaled(tube, 1 / length)
+        const y = Math.abs(tube.y)
+        const reach =
+          y > cutoff
+            ? half / y
+            : ((size.x - size.y) * 0.5) / Math.sqrt(tube.z * tube.z + tube.x * tube.x)
+        return plus(centre, toWorld(plus(rim, scaled(tube, reach))))
+      },
+    }
+  }
+
+  // `0x633a2af`: any other shape, out from the centre to its reach that way.
+  return {
+    ...zone,
+    surfacePoint: (point) => {
+      const delta = sub(point, centre)
+      const length = Math.sqrt(delta.x * delta.x + delta.y * delta.y + delta.z * delta.z)
+      if (length < f(1e-4)) return centre
+      const unit = scaled(delta, 1 / length)
+      const reach = f(zone.radiusAlong(unit))
+      return plus(scaled(unit, reach), centre)
+    },
+  }
+}
+
+/** Everything of a zone but its surface point. */
+const reachOf = (shape: Shape, written: WrittenZone): Omit<Zone, 'surfacePoint'> => {
   const position = shape.center
   const turn = written.orientation ?? (shape.type === 'sphere' ? Quat.identity : shape.orientation)
   const axis = (direction: Vector3): Vector3 => {

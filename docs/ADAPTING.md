@@ -113,6 +113,17 @@ needs its own frame's `dt` to compare against.
 Places where the decomp disagrees with the retail binary. Keep these, and report them upstream if you
 want them fixed there.
 
+### `FNebulaEffect::FNebulaEffect`
+
+`src/freelancer/Client/cli_nebula.cpp`, retail `FUN_00504970`, at `0x504a77` to `0x504aa7`. Found
+2026-11-07.
+
+The decomp's constructor leaves out six of retail's stores, the `[Exterior]` defaults: `min_bits` 4
+(`+0xc0`), `max_bits` 8 (`+0xc4`), both radius bounds 1.0 (`+0xc8`, `+0xcc`, from `ebp`, set to
+`0x3f800000` at `0x504a4b`), `move_bit_percent` 0.75 (`+0xd4`), and 1 at `+0xd8`. Nothing else writes
+`+0xd8`, so `NebulaDrawBolts` always takes its second facing branch: a bit on the far side is skipped,
+and the edge fade beside it never runs. Read in the binary, **uncaptured** until `nebula_exterior`.
+
 ### `NebulaUpdateBoltCamera`
 
 `src/freelancer/Client/cli_nebula.cpp`, retail `FUN_005074e0`, at `0x507644`. Found 2026-11-07.

@@ -515,6 +515,71 @@ const SHEETS_AXIS: Omit<ReferenceSystem, 'name' | 'player'> = {
   ],
 }
 
+const EXTERIOR_NEBULA_FILE = 'solar\\nebula\\lab\\lab_exterior.ini'
+
+/**
+ * The Badlands' `[Exterior]`, its bits made the same size and shape: one `shape` and no
+ * `bit_radius_random_variation`, so only each bit's spin is the game's `rand()`. Its fill sheets too,
+ * and both lightnings off.
+ */
+const LAB_EXTERIOR_NEBULA = [
+  '[TexturePanels]',
+  'file = solar\\nebula\\generic_shapes.ini',
+  '[Exterior]',
+  'shape = generic_exterior2',
+  'fill_shape = nebula_circle2',
+  'plane_slices = 3',
+  'bit_radius = 1500',
+  'min_bits = 4',
+  'max_bits = 7',
+  'move_bit_percent = 0.5',
+  'equator_bias = 0.5',
+  'color = 40, 30, 90',
+  '[NebulaLight]',
+  'ambient = 15, 10, 45',
+  '[Fog]',
+  'fog_enabled = 1',
+  'near = 125',
+  'distance = 1500',
+  'color = 10, 7, 30',
+  '[BackgroundLightning]',
+  'duration = 0',
+  '[DynamicLightning]',
+  'duration = 0',
+].join('\r\n')
+
+/**
+ * M7: a nebula's exterior (`NebulaDrawBolts`). An ellipsoid ahead and to the left, pitched 20, which
+ * the camera answers to: three rings of 4, 7 and 4 bits and its two caps, the near half drawn after
+ * its list. A sphere far past the draw range, its bits from the far list after its sheets.
+ */
+const EXTERIOR: Omit<ReferenceSystem, 'name' | 'player'> = {
+  ...SHEETS,
+  zones: [
+    {
+      nickname: 'Lab_exterior_near',
+      position: [-3000, 0, -14000],
+      pitch: 20,
+      shape: 'ELLIPSOID',
+      size: [5000, 2500, 3000],
+      propertyFlags: 32768,
+    },
+    {
+      nickname: 'Lab_exterior_far',
+      position: [12000, 2000, -55000],
+      pitch: 0,
+      shape: 'SPHERE',
+      size: [6000],
+      propertyFlags: 32768,
+    },
+  ],
+  nebulae: [
+    { file: EXTERIOR_NEBULA_FILE, zone: 'Lab_exterior_near' },
+    { file: EXTERIOR_NEBULA_FILE, zone: 'Lab_exterior_far' },
+  ],
+  files: [{ path: EXTERIOR_NEBULA_FILE, text: LAB_EXTERIOR_NEBULA }],
+}
+
 const ASTEROIDS_EXBAND: Omit<ReferenceSystem, 'name' | 'player'> = {
   ...ASTEROIDS,
   asteroids: [{ file: ASTEROID_EXBAND_FILE, zone: 'Lab_field' }],
@@ -588,6 +653,18 @@ export const systems: ReadonlyMap<string, ReferenceSystem> = new Map(
       name: 'nebula_sheets_axis',
       ...SHEETS_AXIS,
       player: { ...RING_PLAYER, position: [0, 0, 0] },
+    } satisfies ReferenceSystem,
+    {
+      // Outside both: the far sphere's sheets and bits, then the ellipsoid's sheets and its bits.
+      name: 'nebula_exterior',
+      ...EXTERIOR,
+      player: { ...RING_PLAYER, position: [0, 0, 0] },
+    } satisfies ReferenceSystem,
+    {
+      // In the ellipsoid's edge, about 500 in along its x: its bits after the fog overlay.
+      name: 'nebula_exterior_edge',
+      ...EXTERIOR,
+      player: { ...RING_PLAYER, position: [1500, 0, -13800] },
     } satisfies ReferenceSystem,
     {
       name: 'ring_outside',

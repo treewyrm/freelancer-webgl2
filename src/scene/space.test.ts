@@ -21,6 +21,7 @@ import { buildRing, textureShape, type PlanetRing } from './ring.js'
 import { LightBlink, RETAIL_FLARE_LIGHT, type SpaceFlare } from './flare.js'
 import { NebulaLightning } from './lightning.js'
 import { zoneOf, type SpaceNebula } from './nebula.js'
+import { NebulaExterior } from './exterior.js'
 import {
   collectSpaceFrame,
   skyLayers,
@@ -572,6 +573,43 @@ test("a nebula's sheets: outside before its field's list, in its edge after the 
   ])
   const core = { ...slabOf(350, -650, 100), fill: ahead.fill! }
   assert.ok(!collected(edge, { nebulae: [core, ahead] }).includes('fill sheets'))
+})
+
+test("a nebula's bits: after its field's list from outside, after the overlay in its edge", () => {
+  const shape = textureShape(
+    { name: 'bits', width: 64, height: 64, format: 'rgba32_8888' } as Texture,
+    {},
+  )
+  const fill = textureShape({ name: 'fill', width: 64, height: 64 } as Texture, {})
+  const withBits = (nebula: SpaceNebula): SpaceNebula => ({
+    ...nebula,
+    fill,
+    exterior: new NebulaExterior(
+      { shapes: [shape], bitRadius: 5, color: { x: 1, y: 1, z: 1 }, planeSlices: 1, maxBits: 8 },
+      nebula.zone,
+    ),
+  })
+  const objects = [objectOf('main', 900), objectOf('in field', 300)]
+  // From outside: its sheets, its list, then its bits, before the main list.
+  assert.deepEqual(collected(objects, { nebulae: [withBits(AHEAD)], cut: true }), [
+    'fill sheets',
+    'in field',
+    'nebula exterior',
+    'main',
+  ])
+  // Another, on the far list: its sheets, then its bits.
+  const far = withBits(nebulaAt(-30000, 2000, 100))
+  const both = collected(objects, { nebulae: [withBits(AHEAD), far], cut: true })
+  assert.deepEqual(both.slice(0, 2), ['fill sheets', 'nebula exterior'])
+  // In its edge: the main lists, its sheets, the overlay, its bits, then its own list.
+  const slab = withBits(slabOf(50, -350, 100))
+  assert.deepEqual(collected(objects, { nebulae: [slab], cut: true }), [
+    'main',
+    'fill sheets',
+    'fog overlay',
+    'nebula exterior',
+    'in field',
+  ])
 })
 
 test('at its edge, what it fully holds shows only within the fog', () => {
