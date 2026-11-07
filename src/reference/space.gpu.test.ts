@@ -48,6 +48,7 @@ const RUNS_COMPARED: Run[] = [
   { name: 'ring_outside', draws: 70, effects: 4, particles: [FLAME] },
   { name: 'nebula_sheets', draws: 71, effects: 4, particles: [FLAME] },
   { name: 'nebula_sheets_edge', draws: 37, effects: 4, particles: [FLAME] },
+  { name: 'nebula_sheets_axis', draws: 71, effects: 4, particles: [FLAME] },
 ]
 
 const screenshot = (folder: string): Buffer | undefined => {

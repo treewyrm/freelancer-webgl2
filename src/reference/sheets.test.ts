@@ -17,18 +17,25 @@ import { systems } from './systems.js'
 const data = process.env['FREELANCER_DATA'] ?? join(homedir(), 'Downloads/Freelancer/DATA')
 const references = process.env['FREELANCER_REFERENCES'] ?? 'references'
 
-const RUNS_COMPARED = [
-  // The sky, the far sphere's sheet A alone, the near ellipsoid's two, the station, then the ship.
-  { name: 'nebula_sheets', scene: 75 },
-  // In the ellipsoid's edge: the same sheets, then the fog overlay, then the ship in its field.
-  { name: 'nebula_sheets_edge', scene: 41 },
-] as const
-
-// Draws 10 and 11 in both, and the zone each stands about.
+// Draws 10 and 11 in each, and the zone each stands about.
 const SHEETS = [
   { n: 10, zone: 'Lab_sheets_far' },
   { n: 11, zone: 'Lab_sheets_near' },
 ]
+const AXIS_SHEETS = [
+  { n: 10, zone: 'Lab_sheets_axis_far' },
+  { n: 11, zone: 'Lab_sheets_axis_near' },
+]
+
+const RUNS_COMPARED = [
+  // The sky, the far sphere's sheet A alone, the near ellipsoid's two, the station, then the ship.
+  { name: 'nebula_sheets', scene: 75, sheets: SHEETS },
+  // In the ellipsoid's edge: the same sheets, then the fog overlay, then the ship in its field.
+  { name: 'nebula_sheets_edge', scene: 41, sheets: SHEETS },
+  // Along both ellipsoids' long axes: the far one's sheet A faded out by the one-step look, the near
+  // one's kept, edge-on, at 85.
+  { name: 'nebula_sheets_axis', scene: 75, sheets: AXIS_SHEETS },
+] as const
 
 const skipOf = (name: string) =>
   !existsSync(data)
@@ -50,7 +57,7 @@ const load = async (name: (typeof RUNS_COMPARED)[number]['name']) => {
   return { frame: collectSpaceFrame(scene), captured: draws }
 }
 
-for (const { name, scene } of RUNS_COMPARED) {
+for (const { name, scene, sheets } of RUNS_COMPARED) {
   test(`${name} is retail draw for draw`, { skip: skipOf(name) }, async () => {
     const { frame, captured } = await load(name)
     // Less the engine's four effect draws at the end.
@@ -65,7 +72,7 @@ for (const { name, scene } of RUNS_COMPARED) {
     { skip: skipOf(name) },
     async () => {
       const { frame, captured } = await load(name)
-      for (const { n, zone } of SHEETS) {
+      for (const { n, zone } of sheets) {
         const centre = systems.get(name)!.zones!.find(({ nickname }) => nickname === zone)!.position
         const ours = frame.draws[n]!
         const theirs = captured[n]!

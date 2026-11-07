@@ -145,6 +145,14 @@ export const RUNS = {
     effectRate: 96,
     animationSeconds: 0,
   },
+  nebula_sheets_axis: {
+    far: [0, 0, 0],
+    farDraw: 10,
+    hullDraw: 49,
+    effectSeconds: 20,
+    effectRate: 96,
+    animationSeconds: 0,
+  },
   ring_outside: {
     far: 'Lab_ringed_planet',
     farDraw: 32,
