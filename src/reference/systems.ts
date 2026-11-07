@@ -24,7 +24,8 @@ export interface ReferenceSystem {
   }[]
   /**
    * `[Object]`s, with no `rotate` or `spin`, so that nothing moves between frames. Nothing dockable:
-   * one with no `base` logs an error (`CSolar`), and the first try crashed loading three of them.
+   * one with no `base` logs an error (`CSolar`), and the first try crashed loading three of them. At
+   * least one: a system with none warns that it found no solars (`load_solars`) and crashes.
    */
   objects: {
     nickname: string
@@ -403,6 +404,84 @@ const ASTEROIDS: Omit<ReferenceSystem, 'name' | 'player'> = {
   ],
 }
 
+const SHEETS_NEBULA_FILE = 'solar\\nebula\\lab\\lab_sheets.ini'
+
+/**
+ * The Badlands' `[Exterior]` reduced to its `fill_shape`: no slices, so no bits, and both lightnings
+ * off. No exclusion zones.
+ */
+const LAB_SHEETS_NEBULA = [
+  '[TexturePanels]',
+  'file = solar\\nebula\\generic_shapes.ini',
+  '[Exterior]',
+  'fill_shape = nebula_circle2',
+  'plane_slices = 0',
+  'color = 40, 30, 90',
+  '[NebulaLight]',
+  'ambient = 15, 10, 45',
+  '[Fog]',
+  'fog_enabled = 1',
+  'near = 125',
+  'distance = 1500',
+  'color = 10, 7, 30',
+  '[BackgroundLightning]',
+  'duration = 0',
+  '[DynamicLightning]',
+  'duration = 0',
+].join('\r\n')
+
+/**
+ * M7: a nebula's fill sheets (`DrawFogShell`). An ellipsoid ahead and to the left, longest along x
+ * and pitched 40, which the camera answers to: from the start, sheet A along its x at full and sheet B
+ * along its turned y at about half. A sphere written with one value, far past the draw range, on the
+ * far list: its sheet A alone, as its sheet B has no height and faces away.
+ */
+const SHEETS: Omit<ReferenceSystem, 'name' | 'player'> = {
+  ambient: [40, 40, 50],
+  background: LI01_SKY,
+  lights: [
+    {
+      nickname: 'Lab_sun_light',
+      position: [20000, 15000, 30000],
+      color: [255, 255, 255],
+      range: 120000,
+      type: 'DIRECTIONAL',
+      curve: 'DYNAMIC_DIRECTION',
+    },
+  ],
+  // Ahead and to the right, outside both nebulae: a system needs one.
+  objects: [
+    {
+      nickname: 'Lab_sheets_station',
+      archetype: 'smallstation1_old_nodock',
+      position: [1500, -300, -2000],
+    },
+  ],
+  zones: [
+    {
+      nickname: 'Lab_sheets_near',
+      position: [-4000, 0, -9000],
+      pitch: 40,
+      shape: 'ELLIPSOID',
+      size: [4000, 1500, 2500],
+      propertyFlags: 32768,
+    },
+    {
+      nickname: 'Lab_sheets_far',
+      position: [15000, 3000, -60000],
+      pitch: 0,
+      shape: 'SPHERE',
+      size: [6000],
+      propertyFlags: 32768,
+    },
+  ],
+  nebulae: [
+    { file: SHEETS_NEBULA_FILE, zone: 'Lab_sheets_near' },
+    { file: SHEETS_NEBULA_FILE, zone: 'Lab_sheets_far' },
+  ],
+  files: [{ path: SHEETS_NEBULA_FILE, text: LAB_SHEETS_NEBULA }],
+}
+
 const ASTEROIDS_EXBAND: Omit<ReferenceSystem, 'name' | 'player'> = {
   ...ASTEROIDS,
   asteroids: [{ file: ASTEROID_EXBAND_FILE, zone: 'Lab_field' }],
@@ -457,6 +536,19 @@ export const systems: ReadonlyMap<string, ReferenceSystem> = new Map(
       name: 'asteroid_exband_edge',
       ...ASTEROIDS_EXBAND,
       player: { ...RING_PLAYER, position: [0, 0, 1500] },
+    } satisfies ReferenceSystem,
+    {
+      // Outside both nebulae: the near one's sheets before its list, the far one's on the far list.
+      name: 'nebula_sheets',
+      ...SHEETS,
+      player: { ...RING_PLAYER, position: [0, 0, 0] },
+    } satisfies ReferenceSystem,
+    {
+      // In the near one's edge, about 500 in from its surface along x, off its axis so neither sheet's
+      // edge is 0/0: its sheets after the main lists, before the fog overlay.
+      name: 'nebula_sheets_edge',
+      ...SHEETS,
+      player: { ...RING_PLAYER, position: [-600, 200, -8700] },
     } satisfies ReferenceSystem,
     {
       name: 'ring_outside',

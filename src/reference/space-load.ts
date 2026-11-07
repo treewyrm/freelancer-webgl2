@@ -544,10 +544,15 @@ const zoneFor = (
     angle: (found.pitch * Math.PI) / 180,
   })
   const [a = 0, b = a, c = a] = found.size
+  // `GetSize` keeps what's written, a missing value 0, and a sphere's pitch turns its axes.
+  const written = {
+    size: { x: found.size[0] ?? 0, y: found.size[1] ?? 0, z: found.size[2] ?? 0 },
+    orientation,
+  }
   const zone =
     found.shape === 'SPHERE'
-      ? zoneOf({ type: 'sphere', center, radius: a })
-      : zoneOf({ type: 'ellipsoid', center, orientation, radii: { x: a, y: b, z: c } })
+      ? zoneOf({ type: 'sphere', center, radius: a }, written)
+      : zoneOf({ type: 'ellipsoid', center, orientation, radii: { x: a, y: b, z: c } }, written)
   return { zone, edgeFraction: found.edgeFraction ?? 0 }
 }
 
@@ -607,9 +612,15 @@ const loadNebula = async (
   const exclusions: NebulaExclusion[] = []
   const background: { duration?: number } = {}
   const dynamic: { duration?: number } = {}
+  const shapes = new Map<string, TextureShape>()
+  let fillName: string | undefined
   for (const section of Document.read(await read(pathOf(file)))) {
     const kind = section.name.toLowerCase()
+    if (kind === 'texturepanels')
+      for (const [key, value] of await loadShapes(read, strings(section, 'file')))
+        shapes.set(key, value)
     for (const { name, numbers, strings } of linesOf(section)) {
+      if (kind === 'exterior' && name === 'fill_shape') fillName = strings[0]!.toLowerCase()
       if (kind === 'fog') {
         if (name === 'near') fog = { ...fog, near: numbers[0]! }
         if (name === 'distance') fog = { ...fog, distance: numbers[0]! }
@@ -669,12 +680,15 @@ const loadNebula = async (
       },
     }
   })
+  // A name the shapes don't hold finds nothing, as `FShapeDB::Find` warns and gives null.
+  const fill = fillName === undefined ? undefined : shapes.get(fillName)
   return {
     zone,
     fog,
     ...(ambient ? { ambient } : {}),
     exclusions,
     lightning: new NebulaLightning({ background, dynamic }),
+    ...(fill ? { fill } : {}),
   }
 }
 

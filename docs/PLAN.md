@@ -487,7 +487,28 @@ renderer. Random streams need not match retail; each appearance's sizes, colours
       in retail; the reference loader takes white.
 - [x] **You:** `asteroid_hole` and `asteroid_hole_edge` (`src/reference/systems.ts`): deep in the
       nebula's hole, and in its edge.
-- [ ] A nebula's fill sheets in its edge (`DrawFogShell`, `FUN_005074e0`), which need a `fill_shape`.
+- [x] A nebula's fill sheets: `fillSheetsDraw`, from `FNebulaEffect::DrawFogShell` (`0x508cf0`) and
+      `FUN_005074e0`. Two quads through the zone's centre in `[Exterior] fill_shape` and the fog's
+      colour: sheet A along the longer of its x and z, sheet B along its y, each `size` × 1.15 out,
+      turned about that axis to face the camera and across to its surface × 1.15; A fades only within
+      a cosine of 0.0049 of its axis, B by `(1 − |cos| − 0.2) · 5` on its y and again on the other
+      axis, unclamped above. Unlit, both sides, alpha-blended, no depth test or writes, the far plane
+      250000; none once the camera's depth reaches 1. Drawn where `DrawFogShell` is called: the
+      field's from outside before its list (`0x51f9bc`), in its edge after the main lists and before
+      the overlay (`0x51fa8a`), and every other nebula from the far list, keyed by the squared
+      distance to its surface however far (`ZItemNebula`, `listNebulae`; none in a core). `Zone` gains
+      `size`, as written with a missing value 0, and `axes`; `zoneOf` takes the written ones. Retail
+      normalises by one Newton step (checked in `Freelancer-original.exe`, `0x507663`), so a sheet
+      looked at along its axis keeps a little alpha, its corners 0/0, and an ellipsoid reaches 0.17%
+      further. Every one of retail's 59 nebula files has a fill shape. Pinned by reading and by pixels.
+      **Matched in `nebula_sheets` and `nebula_sheets_edge`** (`src/reference/sheets.test.ts`): both
+      frames draw for draw, every corner to two float steps of the zone's centre, colour, alpha and
+      UV, and the frame's state as taken: no fog, `ALPHAREF` 0. Pictures 99.99% and 99.94% within 2.
+      They found the decomp's look the wrong way round, so each sheet's corners mirrored
+      ([ADAPTING.md](ADAPTING.md#nebulaupdateboltcamera)). Not captured: an exactly aligned look.
+- [x] **You:** `nebula_sheets` and `nebula_sheets_edge` (`src/reference/systems.ts`): from outside a
+      pitched ellipsoid with both sheets, B at about half, a far sphere's on the far list; then in the
+      ellipsoid's edge. A system with no `[Object]` crashes the game, so it has a station.
 - [ ] A nebula's exterior from outside (`[Exterior]` puffs and slices), and its `[Clouds]` inside.
 - [ ] An asteroid field's billboards and dynamic asteroids, which `rand()` drives.
 - [ ] Suns: a solar's `star` from `solar\StarArch.ini`, drawn by `FStarSphere` (`star_sphere.cpp`;

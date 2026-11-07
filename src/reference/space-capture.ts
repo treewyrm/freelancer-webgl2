@@ -127,6 +127,24 @@ export const RUNS = {
     effectRate: 96,
     animationSeconds: 0,
   },
+  // The sheets are drawn in world space under the camera's view: the far sphere's, first, places the
+  // origin.
+  nebula_sheets: {
+    far: [0, 0, 0],
+    farDraw: 10,
+    hullDraw: 49,
+    effectSeconds: 20,
+    effectRate: 96,
+    animationSeconds: 0,
+  },
+  nebula_sheets_edge: {
+    far: [0, 0, 0],
+    farDraw: 10,
+    hullDraw: 15,
+    effectSeconds: 20,
+    effectRate: 96,
+    animationSeconds: 0,
+  },
   ring_outside: {
     far: 'Lab_ringed_planet',
     farDraw: 32,

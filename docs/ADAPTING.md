@@ -113,6 +113,16 @@ needs its own frame's `dt` to compare against.
 Places where the decomp disagrees with the retail binary. Keep these, and report them upstream if you
 want them fixed there.
 
+### `NebulaUpdateBoltCamera`
+
+`src/freelancer/Client/cli_nebula.cpp`, retail `FUN_005074e0`, at `0x507644`. Found 2026-11-07.
+
+The decomp takes the fill sheets' look as the camera less the zone's position. `FUN_00423b60(out, a, b)`
+is `a - b`, and its `a` is `[esp+0x68]` after the first push, the zone's position stored at `[esp+0x6c]`
+by `0x507510`: the look runs from the camera to the zone. The facings take its absolute value, so only
+each sheet's edge, the look across its axis, turns over. `nebula_sheets` and `nebula_sheets_edge`
+capture every corner where the zone-to-camera look puts its mirror image about the centre.
+
 ### `BandBakeLighting`
 
 `src/freelancer/Client/cli_asteroid.cpp`, retail `0x54cfb0`. Found 2026-11-06.

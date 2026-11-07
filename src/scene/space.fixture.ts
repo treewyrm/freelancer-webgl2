@@ -35,6 +35,8 @@ export interface SpaceReport {
   ring: { plain: number[]; detailed: number[] }
   /** A field's band across the middle, its face toward the camera: drawn, then culled by mode 2. */
   band: { drawn: number[]; culled: number[] }
+  /** The middle, 100 into a nebula's edge, over a nearer green square: without a fill, then with. */
+  sheets: { unfilled: number[]; filled: number[] }
 }
 
 // A square of half-size 1 facing +Z: FVF 0x112.
@@ -370,8 +372,39 @@ export default (async (gl) => {
   }
   const band = { drawn: bandShot(0), culled: bandShot(2) }
 
+  // A red nebula of 2100 about a point 2000 ahead, the camera 100 into its fog of 1000, and a green
+  // square 300 ahead that holds no nebula and isn't near, so on the main list. A sphere of one value:
+  // sheet A alone.
+  const sheetsShot = (filled: boolean) => {
+    renderer.render(
+      collectSpaceFrame({
+        camera: {
+          position: { x: 0, y: 0, z: 0 },
+          orientation: Matrix3.identity,
+          fovh: 45,
+          near: 1,
+          far: 1,
+        },
+        aspect: width / height,
+        ambient: { x: 255, y: 255, z: 255 },
+        lights: [],
+        objects: [square(GREEN, 300, 300, 300, { nebula: null })],
+        nebulae: [
+          {
+            zone: zoneOf({ type: 'sphere', center: { x: 0, y: 0, z: -2000 }, radius: 2100 }),
+            fog: { distance: 1000, color: { x: 1, y: 0, z: 0 } },
+            ...(filled ? { fill: white } : {}),
+          },
+        ],
+      }),
+    )
+    return read(width >> 1, height >> 1)
+  }
+  const sheets = { unfilled: sheetsShot(false), filled: sheetsShot(true) }
+
   renderer.dispose()
   return {
+    sheets,
     band,
     ring,
     coplanar,

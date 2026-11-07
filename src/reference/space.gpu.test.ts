@@ -46,6 +46,8 @@ interface Run {
 const RUNS_COMPARED: Run[] = [
   { name: 'space_order', draws: 123, effects: 7, particles: [FLAME, [195, 228, 235, 275]] },
   { name: 'ring_outside', draws: 70, effects: 4, particles: [FLAME] },
+  { name: 'nebula_sheets', draws: 71, effects: 4, particles: [FLAME] },
+  { name: 'nebula_sheets_edge', draws: 37, effects: 4, particles: [FLAME] },
 ]
 
 const screenshot = (folder: string): Buffer | undefined => {

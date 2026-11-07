@@ -6,14 +6,22 @@
 import { Quat, type Matrix4, type Shape, type Vector3 } from '@treewyrm/freelancer/math'
 import type { SceneModel } from './frame.js'
 import type { NebulaLightning } from './lightning.js'
+import type { TextureShape } from './ring.js'
 
-/** What a nebula asks of its zone: `IZone`'s position, `GetRadius` and `GetRadiusAlong`. */
+/**
+ * What a nebula asks of its zone: `IZone`'s position, `GetRadius`, `GetRadiusAlong`, `GetSize` and
+ * `GetOrientation`.
+ */
 export interface Zone {
   position: Vector3
   /** The sphere around it. */
   radius: number
   /** From its centre to its surface along a unit direction in world space. */
   radiusAlong: (direction: Vector3) => number
+  /** `GetSize`: its `size` as written, a missing value 0 (`Universe` zone loading). */
+  size: Vector3
+  /** `GetOrientation`'s columns: its own x, y and z in world space. */
+  axes: readonly [Vector3, Vector3, Vector3]
 }
 
 /** A system's `[Nebula]`: its zone, and what its file's `[Fog]` and `[NebulaLight]` say. */
@@ -33,6 +41,8 @@ export interface SpaceNebula {
   exclusions?: readonly NebulaExclusion[]
   /** Its flashes, of its fog and of a light, which retail gives every nebula. None when absent. */
   lightning?: NebulaLightning
+  /** `[Exterior] fill_shape`: the two sheets drawn across it from outside and in its edge. */
+  fill?: TextureShape
 }
 
 /** An `exclusion` of a nebula's file, and its zone, which retail requires to be a sphere. */
@@ -104,12 +114,50 @@ const scaled = ({ x, y, z }: Vector3, by: number): Vector3 => ({
   z: f(z * by),
 })
 
-/** `ZONE::GetRadius` and `GetRadiusAlong` for each shape the game knows. */
-export const zoneOf = (shape: Shape): Zone => {
+/** The `size` a zone of `shape` is written with: a sphere's one value, a cylinder's two. */
+const writtenSize = (shape: Shape): Vector3 => {
+  switch (shape.type) {
+    case 'sphere':
+      return { x: shape.radius, y: 0, z: 0 }
+    case 'ellipsoid':
+      return shape.radii
+    case 'box':
+      return shape.size
+    case 'cylinder':
+      return { x: shape.radius, y: shape.height, z: 0 }
+    case 'ring':
+      return { x: shape.radius, y: shape.innerRadius, z: shape.height }
+  }
+}
+
+/** A zone as written: what `shape` can't hold. A sphere's `rotate` turns its axes alone. */
+export interface WrittenZone {
+  /** Its `size`, a missing value 0. From `shape` when absent, as the game's files write it. */
+  size?: Vector3
+  /** Its `rotate`. From `shape` when absent, none for a sphere. */
+  orientation?: Quat
+}
+
+/** `ZONE::GetRadius`, `GetRadiusAlong`, `GetSize` and `GetOrientation` for each shape the game knows. */
+export const zoneOf = (shape: Shape, written: WrittenZone = {}): Zone => {
   const position = shape.center
+  const turn = written.orientation ?? (shape.type === 'sphere' ? Quat.identity : shape.orientation)
+  const axis = (direction: Vector3): Vector3 => {
+    const { x, y, z } = Quat.transform(direction, turn)
+    return { x: f(x), y: f(y), z: f(z) }
+  }
+  const size = written.size ?? writtenSize(shape)
+  const own = {
+    size: { x: f(size.x), y: f(size.y), z: f(size.z) },
+    axes: [
+      axis({ x: 1, y: 0, z: 0 }),
+      axis({ x: 0, y: 1, z: 0 }),
+      axis({ x: 0, y: 0, z: 1 }),
+    ] as const,
+  }
   if (shape.type === 'sphere') {
     const radius = f(shape.radius)
-    return { position, radius, radiusAlong: () => radius }
+    return { position, radius, radiusAlong: () => radius, ...own }
   }
   // `EngineTransposeTransform`: the direction in the zone's own frame.
   const inverse = Quat.conjugate(shape.orientation)
@@ -121,6 +169,7 @@ export const zoneOf = (shape: Shape): Zone => {
     const b = y * y
     const c = z * z
     return {
+      ...own,
       position,
       radius: f(Math.max(x, y, z)),
       // `EllipsoidRadiusAlong` (`0x633dc90`).
@@ -140,6 +189,7 @@ export const zoneOf = (shape: Shape): Zone => {
       return magnitude > f(1e-4) ? size / magnitude : f(1e10)
     }
     return {
+      ...own,
       position,
       radius: f(Math.sqrt(x * x + y * y + z * z) * 0.5),
       radiusAlong: (direction) => {
@@ -154,6 +204,7 @@ export const zoneOf = (shape: Shape): Zone => {
   const half = shape.height * 0.5
   const cutoff = half / Math.sqrt(radius * radius + half * half)
   return {
+    ...own,
     position,
     radius: f(Math.sqrt(radius * radius + half * half)),
     radiusAlong: (direction) => {
@@ -348,19 +399,33 @@ const roughLength = (squared: number): number => {
   return f((1.5 - estimate * estimate * squared * 0.5) * estimate * squared)
 }
 
+/** A nebula `SelectFieldControllers` leaves to the far list (`ZItemNebula`), keyed by its score. */
+export interface DeferredNebula {
+  state: NebulaState
+  key: number
+}
+
+/** The camera's field, and every other nebula, drawn from the far list. */
+export interface NebulaList {
+  field?: SpaceField
+  deferred: DeferredNebula[]
+}
+
 /**
  * `SelectFieldControllers` (`0x51b730`): the first nebula the camera is in, taking a core over an
- * edge, or else the one whose surface is nearest within `range`.
+ * edge, or else the one whose surface is nearest within `range`. Each other nebula is deferred with
+ * the squared distance to its surface, however far, and a field it replaces with the best score.
+ * In a core, none is (`ClearBuckets`, `0x51b9c7`).
  */
-export const pickField = (
+export const listNebulae = (
   nebulae: readonly NebulaState[],
   eye: Vector3,
   range: number,
-): SpaceField | undefined => {
+): NebulaList => {
   let best = f(range * range)
   let field: SpaceField | undefined
+  const deferred: DeferredNebula[] = []
   for (const state of nebulae) {
-    if (field && field.enclosure !== 0) continue
     const { zone } = state.nebula
     const dx = zone.position.x - eye.x
     const dy = zone.position.y - eye.y
@@ -370,14 +435,28 @@ export const pickField = (
     const inverse = f(1 / distance)
     const hit = f(zone.radiusAlong({ x: f(inverse * dx), y: f(inverse * dy), z: f(inverse * dz) }))
     const score = distance <= hit ? 0 : f((distance - hit) * (distance - hit))
+    if (field && field.enclosure !== 0) {
+      deferred.push({ state, key: score })
+      continue
+    }
 
     const enclosed = exteriorFactor(zone, state.fogDistance, eye)
-    if (enclosed >= 1) return { state, enclosure: 2 }
-    if (enclosed > 0) field = { state, enclosure: 1 }
-    else if (score < best) {
+    if (enclosed >= 1) return { field: { state, enclosure: 2 }, deferred: [] }
+    if (enclosed > 0) {
+      if (field) deferred.push({ state: field.state, key: best })
+      field = { state, enclosure: 1 }
+    } else if (score < best) {
+      if (field) deferred.push({ state: field.state, key: best })
       best = score
       field = { state, enclosure: 0 }
-    }
+    } else deferred.push({ state, key: score })
   }
-  return field
+  return { ...(field && { field }), deferred }
 }
+
+/** `listNebulae`'s field alone. */
+export const pickField = (
+  nebulae: readonly NebulaState[],
+  eye: Vector3,
+  range: number,
+): SpaceField | undefined => listNebulae(nebulae, eye, range).field

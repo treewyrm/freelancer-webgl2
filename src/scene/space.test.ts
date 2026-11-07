@@ -533,6 +533,47 @@ test('in a field its edge drains main lists first, then its own and its nomads',
   ])
 })
 
+test("a nebula's sheets: outside before its field's list, in its edge after the main lists", () => {
+  const filled = (nebula: SpaceNebula, name: string): SpaceNebula => ({
+    ...nebula,
+    fill: textureShape({ name, width: 64, height: 64 } as Texture, {}),
+  })
+  // The one the camera answers to, from outside: before its own list, on the far plane, unfogged.
+  const ahead = filled(AHEAD, 'ahead')
+  const objects = [objectOf('main', 900), objectOf('in field', 300), objectOf('near in field', 100)]
+  const outside = collectSpaceFrame(sceneOf(objects, { nebulae: [ahead] }))
+  assert.deepEqual(names(outside), ['fill sheets', 'in field', 'main', 'near in field'])
+  const sheets = outside.draws[0]!
+  const camera = sceneOf([]).camera
+  assert.deepEqual(sheets.projection, projectionMatrix({ ...camera, far: 250000 }, 1))
+  assert.deepEqual([sheets.depthFunc, sheets.depthWrite, sheets.fog], ['always', false, undefined])
+
+  // Every other is a far node, keyed by the squared distance to its surface: behind's after a solar
+  // 30000 off. Ahead's surface is nearer, so the camera still answers to it.
+  const solar = objectOf('solar', 30000, { solar: { large: true } })
+  const both = collectSpaceFrame(
+    sceneOf([solar, ...objects], { nebulae: [ahead, filled(BEHIND, 'behind')] }),
+  )
+  assert.deepEqual(
+    both.draws.map(({ materialName, texture }) =>
+      materialName === 'fill sheets' ? texture!.name : materialName,
+    ),
+    ['solar', 'behind', 'ahead', 'in field', 'main', 'near in field'],
+  )
+
+  // In its edge, after the main lists and before the overlay; in its core, none.
+  const edge = [objectOf('main', 900), objectOf('in field', 300)]
+  const slab = { ...slabOf(50, -350, 100), fill: ahead.fill! }
+  assert.deepEqual(collected(edge, { nebulae: [slab] }), [
+    'main',
+    'fill sheets',
+    'fog overlay',
+    'in field',
+  ])
+  const core = { ...slabOf(350, -650, 100), fill: ahead.fill! }
+  assert.ok(!collected(edge, { nebulae: [core, ahead] }).includes('fill sheets'))
+})
+
 test('at its edge, what it fully holds shows only within the fog', () => {
   // The camera is 600 in, short of the fog's 700, which ends 700 away.
   const nebulae = [nebulaAt(-700, 1300, 700)]

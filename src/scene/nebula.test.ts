@@ -7,6 +7,7 @@ import {
   fogEnd,
   fogFar,
   immersion,
+  listNebulae,
   nebulaState,
   pickField,
   zoneOf,
@@ -142,6 +143,67 @@ test('the camera answers to the first nebula it is in, or the nearest within ran
   })
   assert.equal(pickField([far!], ORIGIN, 700), undefined)
   assert.deepEqual(pickField([far!], ORIGIN, 900), { state: far, enclosure: 0 })
+})
+
+test('every nebula the camera does not answer to is left to the far list, by its score', () => {
+  const states = (...nebulae: SpaceNebula[]) => nebulae.map((n) => nebulaState(n, ORIGIN))
+  const keys = (list: ReturnType<typeof listNebulae>) => list.deferred.map(({ key }) => key)
+  // Outside them all: each that isn't the nearest, however far, and one the nearest replaces, with
+  // the best score it had.
+  const [a, b, c] = states(
+    sphereAt({ x: 0, y: 0, z: 500 }, 100, 50),
+    sphereAt({ x: 0, y: 0, z: 300 }, 100, 50),
+    sphereAt({ x: 0, y: 0, z: 90000 }, 100, 50),
+  )
+  const outside = listNebulae([a!, b!, c!], ORIGIN, 10000)
+  assert.equal(outside.field?.state, b)
+  assert.deepEqual(
+    outside.deferred.map(({ state }) => state),
+    [a, c],
+  )
+  // Squared distances past each surface, by a length one Newton step leaves up to 0.17% short.
+  keys(outside).forEach((key, at) => {
+    const expected = [400, 89900][at]! ** 2
+    assert.ok(Math.abs(key / expected - 1) < 0.005, `${key} is not ${expected}`)
+  })
+  // An edge defers the field it replaces, and everything after it.
+  const edge = sphereAt({ x: 0, y: 0, z: 90 }, 100, 50)
+  const [d, e, f] = states(b!.nebula, edge, a!.nebula)
+  const inEdge = listNebulae([d!, e!, f!], ORIGIN, 10000)
+  assert.deepEqual(inEdge.field, { state: e, enclosure: 1 })
+  assert.deepEqual(
+    inEdge.deferred.map(({ state }) => state),
+    [d, f],
+  )
+  // A core clears them.
+  const [g, h] = states(b!.nebula, sphereAt(ORIGIN, 1000, 50))
+  assert.deepEqual(listNebulae([g!, h!], ORIGIN, 10000).deferred, [])
+})
+
+test("a zone's size is as written, and its axes its own", () => {
+  const box = zoneOf({
+    type: 'box',
+    center: ORIGIN,
+    orientation: TURNED,
+    size: { x: 1, y: 2, z: 3 },
+  })
+  assert.deepEqual(box.size, { x: 1, y: 2, z: 3 })
+  // Its own z along world x, and x along -z.
+  close(box.axes[2].x, 1)
+  close(box.axes[0].z, -1)
+  close(box.axes[1].y, 1)
+  const ring = zoneOf({
+    type: 'ring',
+    center: ORIGIN,
+    orientation: IDENTITY,
+    radius: 5,
+    innerRadius: 2,
+    height: 1,
+  })
+  assert.deepEqual(ring.size, { x: 5, y: 2, z: 1 })
+  // A sphere has no orientation, but its `rotate` turns its axes.
+  const sphere = zoneOf({ type: 'sphere', center: ORIGIN, radius: 4 }, { orientation: TURNED })
+  close(sphere.axes[2].x, 1)
 })
 
 test("an exclusion zone's immersion rises from its surface over its edge fraction", () => {

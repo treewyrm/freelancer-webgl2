@@ -59,22 +59,27 @@ export {
   fogEnd,
   fogFar,
   immersion,
+  listNebulae,
   nebulaState,
   pickField,
   RETAIL_NEBULA_LIMITS,
   zoneOf,
   type Fog,
+  type DeferredNebula,
   type InExclusion,
   type ExclusionShell,
   type NebulaExclusion,
   type NebulaLimits,
+  type NebulaList,
   type NebulaState,
   type SpaceField,
   type SpaceNebula,
   type Within,
+  type WrittenZone,
   type Zone,
 } from '#/scene/nebula.js'
 export { fogOverlayDraw } from '#/scene/overlay.js'
+export { fillSheetsDraw } from '#/scene/sheets.js'
 export {
   NebulaLightning,
   RETAIL_BACKGROUND_LIGHTNING,

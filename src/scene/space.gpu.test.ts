@@ -99,3 +99,13 @@ test("a field's band draws in its texture and vertex colour, and cull mode 2 hid
   // Then only the far side shows through, from behind: its unbaked back colour, 0.2.
   assert.deepEqual(report.band.culled, [51, 0, 0])
 })
+
+test("in a nebula's edge its sheets draw after the main lists, over what's nearer, then the overlay", () => {
+  // The overlay alone: a tenth deep, 25 of 255 of red over the green square.
+  const tenth = 25 / 255
+  const overlay = [255 * tenth, 255 * (1 - tenth), 0]
+  for (const [index, value] of report.sheets.unfilled.entries())
+    assert.ok(Math.abs(value - overlay[index]!) <= 1, `${report.sheets.unfilled}`)
+  // With no depth test, the sheet covers the square in the fog's red, which the overlay keeps.
+  assert.deepEqual(report.sheets.filled, RED)
+})

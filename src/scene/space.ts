@@ -17,6 +17,7 @@ import { fieldCubes, nearFieldFraction, type SpaceAsteroidField } from './astero
 import { flareQuads, type FrameRect, type ScreenQuad, type SpaceFlare } from './flare.js'
 import type { AsteroidBand } from './band.js'
 import { fogOverlayDraw } from './overlay.js'
+import { fillSheetsDraw } from './sheets.js'
 import {
   directionalLightsAt,
   lightObject,
@@ -29,8 +30,8 @@ import {
   fogEnd,
   fogFar,
   fogOf,
+  listNebulae,
   nebulaState,
-  pickField,
   RETAIL_NEBULA_LIMITS,
   type NebulaLimits,
   type SpaceField,
@@ -298,6 +299,12 @@ interface ListedBand {
   key: number
 }
 
+/** A nebula the camera doesn't answer to, a far node of its own kind (`ZItemNebula`). */
+interface ListedNebula {
+  nebula: NebulaState
+  key: number
+}
+
 const BLACK: Vector3 = { x: 0, y: 0, z: 0 }
 
 /**
@@ -379,7 +386,7 @@ export const collectSpaceFrame = ({
   const range = systemFar - rangeMargin
   const { position: eye } = given
   const states = nebulae.map((nebula) => nebulaState(nebula, eye, resolved))
-  const field = pickField(states, eye, range)
+  const { field, deferred } = listNebulae(states, eye, range)
   // `FNebulaEffect::Update`, every nebula's, before the frame. A flashing light joins the system's.
   const flashes: SpaceLight[] = []
   for (const { nebula, depth } of states) {
@@ -393,9 +400,10 @@ export const collectSpaceFrame = ({
   const farCamera: Camera = { ...given, far: farListPlane }
   const view = viewMatrix(camera)
 
-  const lists: (Listed | ListedPiece | ListedBand)[][] = Array.from(
+  // `SelectFieldControllers` lists the other nebulae first, however far they are.
+  const lists: (Listed | ListedPiece | ListedBand | ListedNebula)[][] = Array.from(
     { length: LIST_COUNT },
-    () => [],
+    (_, at) => (at === FAR ? deferred.map(({ state, key }) => ({ nebula: state, key })) : []),
   )
   for (const object of objects) {
     const dx = object.position.x - eye.x
@@ -655,8 +663,20 @@ export const collectSpaceFrame = ({
   for (const at of !field || field.enclosure === 0 ? OUTSIDE_ORDER : INSIDE_ORDER) {
     const onFarList = at === FAR
     const passCamera = onFarList ? farCamera : camera
+    // `DrainMeshAndAsteroids` outside a field: the field's sheets, under the far list's plane, then
+    // its own list (`0x51f9bc`).
+    if (at === FIELD && field?.enclosure === 0) {
+      const sheets = fillSheetsDraw(field.state, eye, farProjection)
+      if (sheets) draws.push(sheets)
+    }
     for (const listed of lists[at]!) {
       const first = draws.length
+      // `ZItemNebula`: its sheets, then its exterior, which isn't built.
+      if ('nebula' in listed) {
+        const sheets = fillSheetsDraw(listed.nebula, eye, farProjection)
+        if (sheets) draws.push(sheets)
+        continue
+      }
       if ('band' in listed) {
         const draw = listed.band.pieceDraw(listed.piece)
         if (draw) draws.push({ ...draw, projection: farProjection })
@@ -745,7 +765,12 @@ export const collectSpaceFrame = ({
             projection: farProjection,
           }
     }
-    // `DrainMeshAndAsteroids` in a field: the main lists, then the fog overlay, then the field's own.
+    // `DrainMeshAndAsteroids` in a field: the main lists, in its edge its sheets (`0x51fa8a`), then the
+    // fog overlay, then the field's own.
+    if (at === NOMAD_OFFSET + MAIN && field?.enclosure === 1) {
+      const sheets = fillSheetsDraw(field.state, eye, farProjection)
+      if (sheets) draws.push(sheets)
+    }
     if (at === NOMAD_OFFSET + MAIN && field && field.enclosure !== 0) {
       const overlay = fogOverlayDraw(field.state, view, viewport)
       if (overlay) draws.push(overlay)
