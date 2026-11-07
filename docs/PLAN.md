@@ -529,8 +529,13 @@ renderer. Random streams need not match retail; each appearance's sizes, colours
       its span. Drawn by `DrawBoltsPass`: after each far node's sheets, from outside after the field's
       list, in its edge after the overlay. The `Nebula` option scales count, size and opacity
       (`ExteriorLimits`). The decomp's constructor lacks six defaults
-      ([ADAPTING.md](ADAPTING.md#fnebulaeffectfnebulaeffect)). Pinned by reading. **Uncaptured.**
-- [ ] **You:** `nebula_exterior` and `nebula_exterior_edge` (`src/reference/systems.ts`): a pitched
+      ([ADAPTING.md](ADAPTING.md#fnebulaeffectfnebulaeffect)). Pinned by reading. **Matched in
+      `nebula_exterior` and `nebula_exterior_edge`** (`src/reference/exterior.test.ts`): both frames
+      draw for draw, and every bit's place to a hundredth, size, colour, alpha and UVs in retail's
+      order, the fog's start and end, and the far side left out. A bit's spin is `rand()`'s: with
+      retail's spins, the pictures are 99.99% and 99.92% within 2. `move_bit_percent`'s default and
+      a bit's size variation are uncaptured.
+- [x] **You:** `nebula_exterior` and `nebula_exterior_edge` (`src/reference/systems.ts`): a pitched
       ellipsoid's three rings and caps from outside, a far sphere's from the far list, then from the
       ellipsoid's edge. Only each bit's spin is random.
 - [ ] A nebula's `[Clouds]` inside (`DrawCloudsPanels`), and its lightning bolts.

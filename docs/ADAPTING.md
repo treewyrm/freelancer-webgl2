@@ -122,7 +122,8 @@ The decomp's constructor leaves out six of retail's stores, the `[Exterior]` def
 (`+0xc0`), `max_bits` 8 (`+0xc4`), both radius bounds 1.0 (`+0xc8`, `+0xcc`, from `ebp`, set to
 `0x3f800000` at `0x504a4b`), `move_bit_percent` 0.75 (`+0xd4`), and 1 at `+0xd8`. Nothing else writes
 `+0xd8`, so `NebulaDrawBolts` always takes its second facing branch: a bit on the far side is skipped,
-and the edge fade beside it never runs. Read in the binary, **uncaptured** until `nebula_exterior`.
+and the edge fade beside it never runs. `nebula_exterior` and `nebula_exterior_edge` capture it: only
+the near half draws, and with no `bit_radius_random_variation` every bit is `bit_radius` exactly.
 
 ### `NebulaUpdateBoltCamera`
 

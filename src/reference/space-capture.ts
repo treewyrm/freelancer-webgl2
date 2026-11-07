@@ -153,6 +153,22 @@ export const RUNS = {
     effectRate: 96,
     animationSeconds: 0,
   },
+  nebula_exterior: {
+    far: [0, 0, 0],
+    farDraw: 10,
+    hullDraw: 51,
+    effectSeconds: 20,
+    effectRate: 96,
+    animationSeconds: 0,
+  },
+  nebula_exterior_edge: {
+    far: [0, 0, 0],
+    farDraw: 10,
+    hullDraw: 17,
+    effectSeconds: 20,
+    effectRate: 96,
+    animationSeconds: 0,
+  },
   ring_outside: {
     far: 'Lab_ringed_planet',
     farDraw: 32,

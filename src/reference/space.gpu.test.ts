@@ -6,6 +6,7 @@ import { join } from 'node:path'
 import { after, test } from 'node:test'
 import type { Browser } from 'playwright'
 import { launch, runFixture, saveArtifact } from '#/harness.js'
+import type { CaptureDraw } from '#/capture/capture.js'
 import { readSpaceRun, RUNS } from './space-capture.js'
 import type { SpaceReport } from './space.fixture.js'
 import { systems } from './systems.js'
@@ -41,6 +42,8 @@ interface Run {
    * `space_order`, the flame's mean 7.9 and the smoke's 6.3), but not to be held pixel for pixel.
    */
   particles: Box[]
+  /** Draws of nebula bits, whose spins are taken from retail's. */
+  bits?: number[]
 }
 
 const RUNS_COMPARED: Run[] = [
@@ -49,6 +52,8 @@ const RUNS_COMPARED: Run[] = [
   { name: 'nebula_sheets', draws: 71, effects: 4, particles: [FLAME] },
   { name: 'nebula_sheets_edge', draws: 37, effects: 4, particles: [FLAME] },
   { name: 'nebula_sheets_axis', draws: 71, effects: 4, particles: [FLAME] },
+  { name: 'nebula_exterior', draws: 73, effects: 4, particles: [FLAME], bits: [11, 13] },
+  { name: 'nebula_exterior_edge', draws: 39, effects: 4, particles: [FLAME], bits: [11, 14] },
 ]
 
 const screenshot = (folder: string): Buffer | undefined => {
@@ -72,7 +77,23 @@ const read = async (path: string) => {
 const inside = (x: number, y: number, [left, top, right, bottom]: Box) =>
   x >= left && x < right && y >= top && y < bottom
 
-for (const { name, draws, effects, particles } of RUNS_COMPARED) {
+/** Each captured bit's centre and up: its first corner less its second, `H` twice. */
+const spinsOf = (captured: readonly CaptureDraw[], bits: readonly number[]) =>
+  bits.flatMap((n) => {
+    const vertices = captured[n]!.vertexData!
+    return Array.from({ length: vertices.length / 4 }, (_, bit) => {
+      const [a, b] = [0, 1].map((at) => vertices[bit * 4 + at]!.p)
+      const c = vertices[bit * 4 + 2]!.p
+      const up = [0, 1, 2].map((axis) => a![axis]! - b![axis]!)
+      const length = Math.hypot(...up)
+      return {
+        centre: { x: (a![0]! + c[0]!) / 2, y: (a![1]! + c[1]!) / 2, z: (a![2]! + c[2]!) / 2 },
+        up: { x: up[0]! / length, y: up[1]! / length, z: up[2]! / length },
+      }
+    })
+  })
+
+for (const { name, draws, effects, particles, bits = [] } of RUNS_COMPARED) {
   const folder = join(references, name)
   test(
     `${name} matches retail's screenshot, outside its HUD and its random particles`,
@@ -80,7 +101,7 @@ for (const { name, draws, effects, particles } of RUNS_COMPARED) {
     async () => {
       browser ??= await launch()
       const system = systems.get(name)!
-      const { options } = readSpaceRun(folder, system, RUNS[name])
+      const { options, draws: captured } = readSpaceRun(folder, system, RUNS[name])
       const { value, png } = await runFixture<SpaceReport>(
         browser,
         new URL('./space.fixture.ts', import.meta.url),
@@ -88,7 +109,7 @@ for (const { name, draws, effects, particles } of RUNS_COMPARED) {
           width: WIDTH,
           height: HEIGHT,
           context: { antialias: false, alpha: false },
-          args: { system: name, options },
+          args: { system: name, options, spins: spinsOf(captured, bits) },
           read,
         },
       )

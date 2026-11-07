@@ -1,3 +1,4 @@
+import type { Vector3 } from '@treewyrm/freelancer/math'
 import type { Fixture } from '#/harness.js'
 import { createRenderer } from '#/scene/render.js'
 import { collectSpaceFrame } from '#/scene/space.js'
@@ -7,6 +8,11 @@ import { systems } from './systems.js'
 export interface SpaceArgs {
   system: string
   options: SystemOptions
+  /**
+   * Retail's spin for each nebula bit it drew: the quad's centre and its up. A bit's spin is the
+   * game's `rand()`, so the picture is compared with retail's own.
+   */
+  spins?: { centre: Vector3; up: Vector3 }[]
 }
 
 export interface SpaceReport {
@@ -19,8 +25,23 @@ export interface SpaceReport {
 }
 
 export default (async (gl, { args, read }) => {
-  const { system, options } = args as SpaceArgs
-  const frame = collectSpaceFrame(await loadSystem(systems.get(system)!, read, options))
+  const { system, options, spins = [] } = args as SpaceArgs
+  const scene = await loadSystem(systems.get(system)!, read, options)
+  // Each bit standing where retail drew one takes its up. Square to the camera already, the bits'
+  // turn leaves it.
+  for (const { exterior, zone } of scene.nebulae ?? [])
+    for (const bit of exterior?.bits ?? []) {
+      const at = {
+        x: zone.position.x + bit.position.x,
+        y: zone.position.y + bit.position.y,
+        z: zone.position.z + bit.position.z,
+      }
+      const spin = spins.find(
+        ({ centre }) => Math.hypot(centre.x - at.x, centre.y - at.y, centre.z - at.z) < 1,
+      )
+      if (spin) (bit as { axis: Vector3 }).axis = spin.up
+    }
+  const frame = collectSpaceFrame(scene)
 
   const { width, height } = gl.canvas
   gl.viewport(0, 0, width, height)
