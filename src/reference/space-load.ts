@@ -56,6 +56,7 @@ import {
 } from '#/scene/ring.js'
 import { placeSphere } from '#/scene/sphere.js'
 import { skyLayers, type SpaceEffect, type SpaceObject, type SpaceScene } from '#/scene/space.js'
+import { starRadius, type Star, type StarGlow } from '#/scene/star.js'
 import {
   effectLodRow,
   effectLodType,
@@ -459,6 +460,54 @@ const loadShapes = async (
   return shapes
 }
 
+/**
+ * A `[star]` of `solar\StarArch.ini`, as `FStarSphere::Load` (`0x511020`) reads it: the first
+ * `star_glow` that names a `[star_glow]`, the last `star_center`, and `radius`.
+ */
+const loadStar = async (read: ReadAsset, nickname: string): Promise<Star> => {
+  const path = 'solar\\stararch.ini'
+  const shapes = await loadShapes(read, [path])
+  const sections = [...Document.read(await read(pathOf(path)))]
+  const named = (kind: string, name: string) =>
+    sections.find(
+      (section) =>
+        section.name.toLowerCase() === kind &&
+        section.getNickname()?.toLowerCase() === name.toLowerCase(),
+    )
+  // `StarGlowLoadFromIni` (`0x50c950`): the shape by name, the colours as written.
+  const glowOf = (name: string): StarGlow | undefined => {
+    const section = named('star_glow', name)
+    if (!section) return undefined
+    const glow: StarGlow = {}
+    for (const { name: key, numbers, strings } of linesOf(section)) {
+      if (key === 'shape') {
+        const shape = shapes.get(strings[0]!.toLowerCase())
+        if (shape) glow.shape = shape
+      }
+      if (key === 'scale') glow.scale = numbers[0]!
+      if (key === 'inner_color') glow.innerColor = vector(numbers)
+      if (key === 'outer_color') glow.outerColor = vector(numbers)
+    }
+    return glow
+  }
+  const section = named('star', nickname)
+  if (!section) throw new Error(`no star ${nickname}`)
+  const star: Star = {}
+  for (const { name: key, numbers, strings } of linesOf(section)) {
+    if (key === 'radius') star.radius = numbers[0]!
+    if (key === 'star_glow' && !star.glow) {
+      const glow = glowOf(strings[0]!)
+      if (glow) star.glow = glow
+    }
+    if (key === 'star_center') {
+      const center = glowOf(strings[0]!)
+      if (center) star.center = center
+      else delete star.center
+    }
+  }
+  return star
+}
+
 /** A ring file: its `[TexturePanels]` shapes, its `[Exterior]` and its `[Clouds]`. */
 const loadRing = async (
   read: ReadAsset,
@@ -656,6 +705,7 @@ const loadNebula = async (
   let shell: { scalar?: number; maxAlpha?: number; tint?: Vector3 } | undefined
   let fog: SpaceNebula['fog'] = { color: { x: 0, y: 0, z: 0 } }
   let ambient: Vector3 | undefined
+  let burnthrough: SpaceNebula['burnthrough']
   const exclusions: NebulaExclusion[] = []
   const background: { duration?: number } = {}
   const dynamic: { duration?: number } = {}
@@ -690,6 +740,10 @@ const loadNebula = async (
         const [r, g, b] = numbers
         ambient = { x: r!, y: g!, z: b! }
       }
+      if (kind === 'nebulalight' && name === 'sun_burnthrough_intensity')
+        burnthrough = { ...burnthrough, intensity: numbers[0]! }
+      if (kind === 'nebulalight' && name === 'sun_burnthrough_scaler')
+        burnthrough = { ...burnthrough, scaler: numbers[0]! }
       if (kind === 'exclusion zones') {
         if (name === 'exclusion') {
           const found = zoneFor(system, strings[0]!)
@@ -770,6 +824,7 @@ const loadNebula = async (
     zone,
     fog,
     ...(ambient ? { ambient } : {}),
+    ...(burnthrough && { burnthrough }),
     exclusions,
     lightning: new NebulaLightning({ background, dynamic }),
     ...(fill ? { fill } : {}),
@@ -1256,14 +1311,18 @@ export const loadSystem = async (
   }
 
   const objects: SpaceObject[] = []
-  for (const { archetype: nickname, position } of system.objects) {
+  for (const { archetype: nickname, position, star: starName } of system.objects) {
     const { section, model, lists, place } = await archetype(nickname)
     const at = vector(position)
     const type = String(section.getValue('type')!.value).toUpperCase()
-    const planet = SPHERE_TYPES.has(type)
-    // A planet's is its instance's extent (`FClientSolarGameobj::Slot178`), the sphere's own.
-    const sphere =
-      planet && model.type === 'sphere'
+    const star = starName === undefined ? undefined : await loadStar(read, starName)
+    // A sun has no surface to sort by: `planet` is a sphere with no star (`TypeBits & 7`).
+    const planet = SPHERE_TYPES.has(type) && !star
+    // A sun's is its glow's (`StarSphereMaxGlowScale`), a planet's its instance's extent
+    // (`FClientSolarGameobj::Slot178`), the sphere's own.
+    const sphere = star
+      ? { center: at, radius: starRadius(star) }
+      : planet && model.type === 'sphere'
         ? { center: at, radius: model.radius }
         : await bodySphere(section, at, read)
     const { radius } = sphere
@@ -1284,6 +1343,7 @@ export const loadSystem = async (
       position: at,
       sphere,
       solar: { large: extent > 200, extent, planet },
+      ...(star && { star }),
       // `systemIni` writes every `[Object]` before any `[Nebula]`: no solar finds one.
       ...(system.nebulae?.length ? { nebula: null } : {}),
       ...(range > 0 ? { lodRange: range } : {}),

@@ -79,6 +79,7 @@ export {
   type Zone,
 } from '#/scene/nebula.js'
 export { fogOverlayDraw } from '#/scene/overlay.js'
+export { starGlowDraws, starRadius, type Star, type StarGlow } from '#/scene/star.js'
 export { fillSheetsDraw } from '#/scene/sheets.js'
 export {
   AsteroidBillboards,

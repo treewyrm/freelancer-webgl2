@@ -192,8 +192,11 @@ export interface DrawAtmosphere {
   v: number
 }
 
-/** Source and destination: `SRCALPHA / INVSRCALPHA`, `ONE / ONE`, `SRCALPHA / ONE`, `DESTCOLOR / ZERO`. */
-export type BlendMode = 'alpha' | 'add' | 'alphaAdd' | 'multiply'
+/**
+ * Source and destination: `SRCALPHA / INVSRCALPHA`, `ONE / ONE`, `SRCALPHA / ONE`, `DESTCOLOR / ZERO`,
+ * `ONE / INVSRCCOLOR`.
+ */
+export type BlendMode = 'alpha' | 'add' | 'alphaAdd' | 'multiply' | 'screen'
 
 export interface Draw {
   mesh: VMeshData

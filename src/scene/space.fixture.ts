@@ -16,6 +16,7 @@ import { zoneOf } from './nebula.js'
 import { buildRing, textureShape, type RingExterior } from './ring.js'
 import { createRenderer } from './render.js'
 import { collectSpaceFrame, type SpaceObject, type SpaceScene } from './space.js'
+import { starRadius, type Star } from './star.js'
 
 export interface SpaceReport {
   error: number
@@ -37,6 +38,11 @@ export interface SpaceReport {
   band: { drawn: number[]; culled: number[] }
   /** The middle, 100 into a nebula's edge, over a nearer green square: without a fill, then with. */
   sheets: { unfilled: number[]; filled: number[] }
+  /**
+   * Red suns filling the view: one on the far list behind a green square (middle, corner); one on
+   * the main list over a square in front of it; and a grey one without alpha over dim green.
+   */
+  suns: { behind: number[][]; over: number[]; screen: number[] }
 }
 
 // A square of half-size 1 facing +Z: FVF 0x112.
@@ -402,8 +408,33 @@ export default (async (gl) => {
   }
   const sheets = { unfilled: sheetsShot(false), filled: sheetsShot(true) }
 
+  // A sun `distance` straight ahead, its glow a square of one texel twice `radius` across.
+  const sunAt = (distance: number, texture: Texture, radius = 1000): SpaceObject => {
+    const star: Star = { radius, glow: { shape: textureShape(texture, {}) } }
+    const position = { x: 0, y: 0, z: -distance }
+    return {
+      ...square([0, 0, 0], distance, distance, 1, SOLAR),
+      star,
+      sphere: { center: position, radius: starRadius(star) },
+    }
+  }
+  const redGlow = solid('red', [255, 0, 0])
+  // 128 grey in a 24-bit Targa, which uploads as R5G6B5: 16 / 31 and 32 / 63.
+  const greyGlow = {
+    ...solid('grey', [128, 128, 128]),
+    format: 'rgb24_888',
+    levels: [new Uint8Array([128, 128, 128])],
+  } as Texture
+  const suns = {
+    behind: shot([sunAt(50000, redGlow, 100000), square(GREEN, 500, 500, 100)]),
+    // Listed nearer than the square, which stands in front of it: drawn after it, and over it.
+    over: shot([sunAt(900, redGlow), square(GREEN, 950, 50, 100)])[0]!,
+    screen: shot([sunAt(400, greyGlow), square([0, 0.5, 0], 500, 500, 1000)])[0]!,
+  }
+
   renderer.dispose()
   return {
+    suns,
     sheets,
     band,
     ring,

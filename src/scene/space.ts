@@ -17,6 +17,7 @@ import { fieldCubes, nearFieldFraction, type SpaceAsteroidField } from './astero
 import { flareQuads, type FrameRect, type ScreenQuad, type SpaceFlare } from './flare.js'
 import type { AsteroidBand } from './band.js'
 import { fogOverlayDraw } from './overlay.js'
+import { starGlowDraws, type Star } from './star.js'
 import { fillSheetsDraw } from './sheets.js'
 import {
   directionalLightsAt,
@@ -58,6 +59,7 @@ import {
 } from './frame.js'
 
 export interface SpaceObject {
+  /** Not drawn for a sun: its `star` is. */
   model: SceneModel
   /** `get_position`, which its sort distance is from. */
   position: Vector3
@@ -97,6 +99,12 @@ export interface SpaceObject {
    * draws at the first tier (`GameobjSweepEffectList`), and only then do they blink.
    */
   flares?: readonly SpaceFlare[]
+  /**
+   * A solar's `star`: a sun. Its draw is its glow and nothing else, neither its model nor what's
+   * attached (`Slot188`, `0x548220`); `sphere` is `starRadius` about its position (`Slot178`). The
+   * game's sun option (0x24) turns it off, so the host decides.
+   */
+  star?: Star
   /** The archetype's `nomad`: goes three lists up, after everything of its kind (`0x51f5b7`). */
   nomad?: boolean
   /** The archetype's `distance_render`. Past it, it stops reflecting, and `lodRange` may apply. */
@@ -805,38 +813,44 @@ export const collectSpaceFrame = ({
         continue
       }
       const { object, picked, within } = listed
-      if (object.pilot && picked.tier === 0)
-        collectModel(
-          object.pilot,
-          passCamera,
-          aspect,
-          view,
-          time,
-          draws,
-          queued,
-          unsupported,
-          unregistered,
-          resolved,
-        )
-      // `GameobjSweepEffectList` links its lights at the first tier, each to the bucket's front.
-      if (picked.tier === 0 && object.flares) linked.unshift(...[...object.flares].reverse())
-      // `GameobjSubmitDrawRetail`: only the first tier arms the reflection. What's attached is drawn
-      // in the same `RenderInstance`, under the same flags and the object's reflection.
-      for (const model of [object.model, ...(object.attached ?? []).map(underOwn(object.model))])
-        collectModel(
-          picked.tier === 0 ? model : withoutEnvironment(model),
-          passCamera,
-          aspect,
-          view,
-          time,
-          draws,
-          queued,
-          unsupported,
-          unregistered,
-          resolved,
-          picked.rank === 4 && picked.tier === 0,
-        )
-      flushQueued(queued, draws)
+      // A sun's draw (`Slot188`, `0x548220`) is its glow, under the far list's plane wherever it's
+      // listed, and returns before `GameobjSubmitDrawRetail` links lights or draws anything else.
+      if (object.star)
+        draws.push(...starGlowDraws(object.star, object.position, given, farProjection))
+      else {
+        if (object.pilot && picked.tier === 0)
+          collectModel(
+            object.pilot,
+            passCamera,
+            aspect,
+            view,
+            time,
+            draws,
+            queued,
+            unsupported,
+            unregistered,
+            resolved,
+          )
+        // `GameobjSweepEffectList` links its lights at the first tier, each to the bucket's front.
+        if (picked.tier === 0 && object.flares) linked.unshift(...[...object.flares].reverse())
+        // `GameobjSubmitDrawRetail`: only the first tier arms the reflection. What's attached is
+        // drawn in the same `RenderInstance`, under the same flags and the object's reflection.
+        for (const model of [object.model, ...(object.attached ?? []).map(underOwn(object.model))])
+          collectModel(
+            picked.tier === 0 ? model : withoutEnvironment(model),
+            passCamera,
+            aspect,
+            view,
+            time,
+            draws,
+            queued,
+            unsupported,
+            unregistered,
+            resolved,
+            picked.rank === 4 && picked.tier === 0,
+          )
+        flushQueued(queued, draws)
+      }
       // `GameobjUpdateDrawLighting`, from where it stands and its sphere's radius. A draw with an
       // ambient of its own, an exclusion zone's, keeps it.
       const nebula = within?.state.nebula
@@ -886,9 +900,17 @@ export const collectSpaceFrame = ({
     if (at === NOMAD_OFFSET + MAIN && field && field.enclosure !== 0) {
       const overlay = fogOverlayDraw(field.state, view, viewport)
       if (overlay) draws.push(overlay)
+      // Then every sun of the system, listed or not, in the order its solars were read, burning
+      // through the fog: its glow at the field's depth times its `sun_burnthrough_intensity`, larger
+      // by its `sun_burnthrough_scaler` (`0x51fad9`). Its fog is what the overlay left: **uncaptured**.
+      const { burnthrough } = field.state.nebula
+      const alpha = f(field.state.depth * f(burnthrough?.intensity ?? 0.5))
+      const size = f(burnthrough?.scaler ?? 1.75)
+      for (const { star, position } of objects)
+        if (star) draws.push(...starGlowDraws(star, position, given, farProjection, alpha, size))
     }
-    // `DrawBoltsPass`: outside a field after its list (`0x51fa10`), in its edge after the overlay
-    // (`0x51fb3b`). The suns' billboards between, in its edge, aren't built.
+    // `DrawBoltsPass`: outside a field after its list (`0x51fa10`), in its edge after the suns'
+    // glows (`0x51fb3b`).
     if (
       (at === FIELD && field?.enclosure === 0) ||
       (at === NOMAD_OFFSET + MAIN && field?.enclosure === 1)

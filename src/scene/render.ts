@@ -254,6 +254,7 @@ export const createRenderer = (gl: WebGL2RenderingContext): Renderer => {
           add: [gl.ONE, gl.ONE],
           alphaAdd: [gl.SRC_ALPHA, gl.ONE],
           multiply: [gl.DST_COLOR, gl.ZERO],
+          screen: [gl.ONE, gl.ONE_MINUS_SRC_COLOR],
         }[draw.blendMode]
         gl.blendFuncSeparate(source!, destination!, gl.ZERO, gl.ONE)
       } else gl.disable(gl.BLEND)

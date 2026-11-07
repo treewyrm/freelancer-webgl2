@@ -623,16 +623,41 @@ renderer. Random streams need not match retail; each appearance's sizes, colours
 - [x] **You:** `asteroid_badlands` (`src/reference/systems.ts`): the lab field with the Badlands'
       `[DynamicAsteroids]`, ten rocks of 200 about a point 140 ahead, each trailing
       `gf_blsmallasteroid`.
-- [ ] Suns: a solar's `star` from `solar\StarArch.ini`, drawn by `FStarSphere` (`star_sphere.cpp`;
-      the name is the decomp's, not a sky). Its `star_center` and `star_glow` fans turned to the camera
-      (`FUN_0050cd50`), sized by `radius`. Drawn outside `SpaceObjDrawPass`, around the cockpit pass
-      (`SpaceEnvFxBeginCockpitPass`, `0x51c970`; fully inside a field it only sets its occlusion), so
-      read first where it falls among the lists and the depth clear. A sun's sphere for the frame's
-      lists is `StarSphereMaxGlowScale` (`0x512620`).
+- [x] Suns: a solar's `star` from `solar\StarArch.ini`, `FStarSphere` (`star_sphere.cpp`; the name
+      is the decomp's, not a sky): `starGlowDraws`, `starRadius` and `SpaceObject.star`. Reading
+      settled where it falls: the fans aren't the cockpit pass's but **the solar's own draw in the
+      lists** (`FClientSolarGameobj::Slot188`, `0x548220`, `DrawSimple`), which returns before
+      `GameobjSubmitDrawRetail`, so neither `sun.sph`, what's attached nor a flare draws; its sphere is
+      `StarSphereMaxGlowScale` (`0x512620`). `DrawBillboard` (`0x5118d0`) turns a square to the camera
+      about its up, `radius × scale` from the centre, and `FUN_0050cd50` draws it as a fan of eight
+      with `inner_color` at the centre and `outer_color` on the rim: `star_glow`, then `star_center` at
+      alpha squared. Unlit, unculled, no depth, under the 250000 plane wherever it's listed. A texture
+      with alpha blends by it, one without as `ONE, INVSRCCOLOR` (the `screen` blend mode). In a
+      field, after the fog overlay, every sun draws again at the nebula's depth times
+      `sun_burnthrough_intensity` and `sun_burnthrough_scaler` times its size (`0x51fad9`), which the
+      host reads into `SpaceNebula.burnthrough`. A `star_glow`'s `alpha` is never read. The corner
+      order was checked in `Freelancer-original.exe`: the decomp names `FUN_0050cd50`'s vectors the
+      other way round from its caller (`0x5119d9`), but both come to `(P − R) + U` first, top left.
+      Pinned by reading and by pixels. **Uncaptured**: the alpha test and fog the frame leaves it,
+      taken as `GREATER 0` and the object's own.
 - [ ] A sun's `lens_glow` corona (`FUN_0050da20`, `FUN_0050e6f0`): its alpha by rays from the camera
       that objects big enough on screen (`FUN_0050c750`) or a nebula (`FUN_00511b90`) block, eased
       each frame (`FUN_00512460`). Then its `lens_flare` beads and `spines` (`FUN_0050f850`,
       `FUN_00510160`), drawn at the cockpit pass's end (`SpaceEnvFxEndCockpitPass`, `0x51c9e0`).
+      **Occlusion is by hitbox, not by what's drawn.** Each corona sample casts a ray from the camera
+      through its screen point, as far as the sun, through `PhySys::FindRayCollisions`: the physics
+      engine's test against every object's collision shapes, its `.sur`, at most 6 hits a ray. A hit
+      blocks unless it's a shield part, the sun's own solar, or the player's ship from the cockpit,
+      and only if the object's `CObject::Radius` covers more on screen than 0.65 of the sun's pixel
+      scale. The samples' alphas then drive everything but the glow fans: the corona per sample, the
+      spines from the corona's slots, and the flare and spines through `Intensity` (`Field38`, eased
+      by `intensity_fade_in` and `_out`). The fans never test anything. A nebula's or asteroid
+      field's zone across the line, or the player in a trade lane, hides all of it at once
+      (`ZoneOcclusion`). `@treewyrm/freelancer/surface` already reads a `.sur` into a tree of
+      convex hulls with bounding spheres, but casts no ray, so the test is geometry to build here: down
+      the tree by sphere, then the segment clipped against each leaf hull's faces, in each part's
+      world, a part's hull marked shield or not. The host gives each object its surface and parts,
+      as it gives its model. IVP's order of hits matters only past six. `sun_occluded` checks it.
 - [ ] **You:** `sun_ahead`, `sun_occluded` and `sun_nebula`: a sun in view, behind a station's edge,
       and seen from a nebula, with screenshots and captures.
 - [ ] Space dust.

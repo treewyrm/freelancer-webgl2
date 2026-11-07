@@ -109,3 +109,19 @@ test("in a nebula's edge its sheets draw after the main lists, over what's neare
   // With no depth test, the sheet covers the square in the fog's red, which the overlay keeps.
   assert.deepEqual(report.sheets.filled, RED)
 })
+
+test("a far sun's glow draws first, under what's nearer, and fills the view past it", () => {
+  assert.deepEqual(report.suns.behind, [GREEN, RED])
+})
+
+test("a sun's glow neither tests depth nor is hidden by what stands in front of it", () => {
+  assert.deepEqual(report.suns.over, RED)
+})
+
+test('a glow whose texture has no alpha adds itself less what it covers: ONE, INVSRCCOLOR', () => {
+  const grey = [(16 / 31) * 255, (32 / 63) * 255, (16 / 31) * 255]
+  const dst = [0, 128, 0]
+  const expected = grey.map((src, at) => src + dst[at]! * (1 - src / 255))
+  for (const [index, value] of report.suns.screen.entries())
+    assert.ok(Math.abs(value - expected[index]!) <= 2, `${report.suns.screen} against ${expected}`)
+})

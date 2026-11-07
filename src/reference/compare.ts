@@ -79,13 +79,14 @@ export const assertFrameMatches = (
     else if (retail.stages[0]!.states['COLOROP'] !== 5)
       assert.equal(retail.stages[0]!.texture, undefined, what)
 
-    // D3DBLEND: ZERO 1, ONE 2, SRCALPHA 5, INVSRCALPHA 6, DESTCOLOR 9.
+    // D3DBLEND: ZERO 1, ONE 2, INVSRCCOLOR 4, SRCALPHA 5, INVSRCALPHA 6, DESTCOLOR 9.
     if (ours.blend) {
       const [source, destination] = {
         alpha: [5, 6],
         add: [2, 2],
         alphaAdd: [5, 2],
         multiply: [9, 1],
+        screen: [2, 4],
       }[ours.blendMode]
       assert.deepEqual(
         [retail.states['SRCBLEND'], retail.states['DESTBLEND']],

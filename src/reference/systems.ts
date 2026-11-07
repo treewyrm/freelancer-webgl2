@@ -33,6 +33,8 @@ export interface ReferenceSystem {
     position: Vector
     /** `ring =`: its `RING` zone and ring file, under `DATA`. */
     ring?: { zone: string; file: string }
+    /** `star =`: a `[star]` of `solar\StarArch.ini`, which makes it a sun. */
+    star?: string
   }[]
   /** `[zone]`s, turned about X alone so `EulerMatrix`'s order can't matter. */
   zones?: {
@@ -109,7 +111,7 @@ export const systemIni = ({
       ...(attenuation ? [`attenuation = ${list(attenuation)}`] : []),
       ...(curve ? [`atten_curve = ${curve}`] : []),
     ]),
-    ...objects.flatMap(({ nickname, archetype, position, ring }) => [
+    ...objects.flatMap(({ nickname, archetype, position, ring, star }) => [
       '[Object]',
       `nickname = ${nickname}`,
       'ids_name = 1',
@@ -117,6 +119,7 @@ export const systemIni = ({
       `archetype = ${archetype}`,
       'ids_info = 1',
       ...(ring ? [`ring = ${ring.zone}, ${ring.file}`] : []),
+      ...(star ? [`star = ${star}`] : []),
     ]),
     ...asteroids.flatMap(({ file, zone }) => ['[Asteroids]', `file = ${file}`, `zone = ${zone}`]),
     ...nebulae.flatMap(({ file, zone }) => ['[Nebula]', `file = ${file}`, `zone = ${zone}`]),

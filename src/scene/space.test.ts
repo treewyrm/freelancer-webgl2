@@ -1021,3 +1021,66 @@ test("in a nebula's exclusion zone its shell draws, tinted, as clear as the came
   assert.equal(shellAt(590)!.diffuse[3], 0)
   assert.equal(shellAt(700), undefined)
 })
+
+const sunOf = (name: string, distance: number): SpaceObject => {
+  const glow2 = { name, width: 64, height: 64, format: 'rgba32_8888' } as Texture
+  const star = { radius: 1000, glow: { shape: textureShape(glow2, {}), scale: 2 } }
+  return objectOf(name, distance, {
+    star,
+    sphere: { center: { x: 0, y: 0, z: -distance }, radius: 2000 },
+    solar: { large: true },
+    attached: [modelOf('attached', -distance)],
+    flares: [
+      {
+        light: { ...RETAIL_FLARE_LIGHT, color: { x: 1, y: 1, z: 1 } },
+        world: Matrix4.translation({ x: 0, y: 0, z: -distance }),
+      },
+    ],
+  })
+}
+const alphaOf = (draw: Frame['draws'][number]) => draw.mesh.vertices[15]!
+const halfWidthOf = (draw: Frame['draws'][number]) =>
+  new Float32Array(draw.mesh.vertices.buffer)[(3 * 24) / 4]!
+
+test("a sun draws its glow in its list's place and nothing else, on the far list's plane", () => {
+  const shine = { texture: { name: 'shine', width: 1, height: 1 } as Texture }
+  const viewport = { width: 100, height: 100 }
+  const frame = collectSpaceFrame(
+    sceneOf([objectOf('near', 500), sunOf('far sun', 50000), sunOf('near sun', 900)], {
+      viewport,
+      shine,
+    }),
+  )
+  // The far one first, the near one in the main list by its centre; no model, attachment or flare.
+  assert.deepEqual(names(frame), ['star glow', 'star glow', 'near'])
+  assert.deepEqual(
+    frame.draws.slice(0, 2).map(({ texture }) => texture?.name),
+    ['far sun', 'near sun'],
+  )
+  assert.equal(frame.screenQuads, undefined)
+  const farProjection = projectionMatrix({ ...sceneOf([]).camera, far: 250000 }, 1)
+  for (const draw of frame.draws.slice(0, 2)) {
+    assert.deepEqual(draw.projection, farProjection)
+    assert.equal(draw.depthFunc, 'always')
+    assert.equal(alphaOf(draw), 255)
+    assert.equal(halfWidthOf(draw), 2000)
+  }
+})
+
+test('in a field every sun burns through after the overlay: its depth times the intensity, scaled', () => {
+  // 50 into a fog of 100: a depth of a half.
+  const slab = { ...slabOf(50, -350, 100), burnthrough: { intensity: 0.8, scaler: 3 } }
+  const objects = [objectOf('main', 900), objectOf('in field', 300), sunOf('sun', 50000)]
+  const frame = collectSpaceFrame(sceneOf(objects, { nebulae: [slab] }))
+  assert.deepEqual(names(frame), ['star glow', 'main', 'fog overlay', 'star glow', 'in field'])
+  const [listed, burning] = frame.draws.filter(({ materialName }) => materialName === 'star glow')
+  assert.equal(alphaOf(listed!), 255)
+  // 0.5 · 0.8 · 255 is 102; 1000 · 3 · 2 across.
+  assert.equal(alphaOf(burning!), 102)
+  assert.equal(halfWidthOf(burning!), 6000)
+  // Retail's defaults: 0.5 and 1.75.
+  const plain = collectSpaceFrame(sceneOf(objects, { nebulae: [slabOf(50, -350, 100)] }))
+  const glow = plain.draws.filter(({ materialName }) => materialName === 'star glow')[1]!
+  assert.equal(alphaOf(glow), 63)
+  assert.equal(halfWidthOf(glow), 3500)
+})

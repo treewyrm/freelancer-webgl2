@@ -41,6 +41,12 @@ export interface SpaceNebula {
   }
   /** `[NebulaLight] ambient`, as written, 0 to 255. */
   ambient?: Vector3
+  /**
+   * `[NebulaLight]`'s suns seen from in it: their glows drawn again at `sun_burnthrough_intensity`
+   * times its depth, 0.5 when absent, and `sun_burnthrough_scaler` times their size, 1.75 when absent
+   * (`FNebulaEffect`'s constructor; `DrainMeshAndAsteroids`, `0x51fad9`).
+   */
+  burnthrough?: { intensity?: number; scaler?: number }
   /** `[Exclusion Zones]`, in file order: holes in its fog. */
   exclusions?: readonly NebulaExclusion[]
   /** Its flashes, of its fog and of a light, which retail gives every nebula. None when absent. */
