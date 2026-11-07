@@ -747,6 +747,105 @@ const ASTEROIDS_EXBAND: Omit<ReferenceSystem, 'name' | 'player'> = {
   ],
 }
 
+/** Where the suns stand: 40000 ahead, up and to the right, so the flare's beads are off the middle. */
+const SUN_POSITION: Vector = [6000, 2500, -40000]
+
+/**
+ * M7: a retail sun, `med_yellow_sun` on `sun_2000`, with its own light. Its glow on the far list, its
+ * spines and corona after the effects, then its flare.
+ */
+const SUN: Omit<ReferenceSystem, 'name' | 'player'> = {
+  ambient: [40, 40, 50],
+  background: LI01_SKY,
+  lights: [
+    {
+      nickname: 'Lab_sun_light',
+      position: SUN_POSITION,
+      color: [255, 240, 200],
+      range: 120000,
+      type: 'DIRECTIONAL',
+      curve: 'DYNAMIC_DIRECTION',
+    },
+  ],
+  objects: [
+    {
+      nickname: 'Lab_sun',
+      archetype: 'sun_2000',
+      position: SUN_POSITION,
+      star: 'med_yellow_sun',
+    },
+  ],
+}
+
+/**
+ * The station 3000 along the line to the sun, 300 to its left: its hull's right edge, about 400 from
+ * its centre, crosses the sun's, so the corona's samples on the left are blocked and the right's
+ * aren't. Its hitbox covers far more than 0.65 of the sun's pixel scale, so it blocks.
+ */
+const SUN_OCCLUDED: Omit<ReferenceSystem, 'name' | 'player'> = {
+  ...SUN,
+  objects: [
+    ...SUN.objects,
+    {
+      nickname: 'Lab_sun_station',
+      archetype: 'smallstation1_old_nodock',
+      position: [
+        (SUN_POSITION[0] * 3000) / Math.hypot(...SUN_POSITION) - 300,
+        (SUN_POSITION[1] * 3000) / Math.hypot(...SUN_POSITION),
+        (SUN_POSITION[2] * 3000) / Math.hypot(...SUN_POSITION),
+      ],
+    },
+  ],
+}
+
+const SUN_NEBULA_FILE = 'solar\\nebula\\lab\\lab_sun.ini'
+
+/**
+ * A plain fog, lightning off, its suns burning through at 0.8 of its depth, 1.5 times their size.
+ * An `[Exterior]` with no slices, as a nebula file needs one.
+ */
+const LAB_SUN_NEBULA = [
+  '[TexturePanels]',
+  'file = solar\\nebula\\generic_shapes.ini',
+  '[Exterior]',
+  'plane_slices = 0',
+  'color = 40, 30, 90',
+  '[NebulaLight]',
+  'ambient = 15, 10, 45',
+  'sun_burnthrough_intensity = 0.8',
+  'sun_burnthrough_scaler = 1.5',
+  '[Fog]',
+  'fog_enabled = 1',
+  'near = 0',
+  'distance = 1000',
+  'color = 10, 7, 30',
+  '[BackgroundLightning]',
+  'duration = 0',
+  '[DynamicLightning]',
+  'duration = 0',
+].join('\r\n')
+
+/**
+ * The ship 500 into a sphere of 2000 whose near side is ahead: about half deep in its fog, so in its
+ * edge. The line to the sun crosses its zone, so the corona and flare fade out over 2 s; the glow
+ * draws twice, on the far list and burning through after the fog overlay.
+ */
+const SUN_NEBULA: Omit<ReferenceSystem, 'name' | 'player'> = {
+  ...SUN,
+  zones: [
+    {
+      nickname: 'Lab_sun_nebula',
+      position: [0, 0, 1500],
+      pitch: 0,
+      shape: 'SPHERE',
+      size: [2000],
+      propertyFlags: 32768,
+    },
+  ],
+  nebulae: [{ file: SUN_NEBULA_FILE, zone: 'Lab_sun_nebula' }],
+  files: [{ path: SUN_NEBULA_FILE, text: LAB_SUN_NEBULA }],
+}
+
 export const systems: ReadonlyMap<string, ReferenceSystem> = new Map(
   [
     {
@@ -854,6 +953,24 @@ export const systems: ReadonlyMap<string, ReferenceSystem> = new Map(
       // As asteroid_dynamic, with the Badlands' ten rocks, each trailing its effect.
       name: 'asteroid_badlands',
       ...ASTEROIDS_BADLANDS,
+      player: { ...RING_PLAYER, position: [0, 0, 0] },
+    } satisfies ReferenceSystem,
+    {
+      // The sun ahead, nothing in the way.
+      name: 'sun_ahead',
+      ...SUN,
+      player: { ...RING_PLAYER, position: [0, 0, 0] },
+    } satisfies ReferenceSystem,
+    {
+      // Behind the station's edge: half its corona blocked.
+      name: 'sun_occluded',
+      ...SUN_OCCLUDED,
+      player: { ...RING_PLAYER, position: [0, 0, 0] },
+    } satisfies ReferenceSystem,
+    {
+      // In a nebula's edge, the sun beyond it.
+      name: 'sun_nebula',
+      ...SUN_NEBULA,
       player: { ...RING_PLAYER, position: [0, 0, 0] },
     } satisfies ReferenceSystem,
     {

@@ -683,8 +683,13 @@ renderer. Random streams need not match retail; each appearance's sizes, colours
       held pixel scale and `1 - (1 - Intensity)²`, faded as the sun nears the middle, from where
       the last draw left it. Both add by alpha. Retail sorts beads by heap address; they add, so
       file order draws the same. Pinned by reading. **Uncaptured.**
-- [ ] **You:** `sun_ahead`, `sun_occluded` and `sun_nebula`: a sun in view, behind a station's edge,
-      and seen from a nebula, with screenshots and captures.
+- [ ] **You:** `sun_ahead`, `sun_occluded` and `sun_nebula` (`src/reference/systems.ts`), with
+      screenshots and captures: `med_yellow_sun` 40000 ahead, up and to the right; then
+      `smallstation1_old_nodock` 3000 along the line to it, its edge across the sun; then the ship
+      500 into a nebula's edge, `sun_burnthrough_intensity` 0.8 and `_scaler` 1.5, lightning off.
+      Leave each a few seconds before capturing, so the corona's and the zone's fades settle.
+      Captures will settle what the alpha test and fog the glow, corona, spines and flare inherit
+      are, and whether `SunEffect` in the run's `PerfOptions.ini` reaches them as read.
 - [ ] Space dust.
 - [ ] Gate tunnels.
 - [ ] Projectiles and beams; the cockpit pass with its depth clear.
