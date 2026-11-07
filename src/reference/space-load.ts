@@ -58,7 +58,7 @@ import { placeSphere } from '#/scene/sphere.js'
 import { skyLayers, type SpaceEffect, type SpaceObject, type SpaceScene } from '#/scene/space.js'
 import { starRadius, type Star, type StarGlow } from '#/scene/star.js'
 import type { Hitbox, HitboxSurface } from '#/scene/hitbox.js'
-import type { LensGlow } from '#/scene/corona.js'
+import type { FlareBead, LensGlow, StarLensFlare, StarSpine, StarSpines } from '#/scene/corona.js'
 import {
   effectLodRow,
   effectLodType,
@@ -500,7 +500,7 @@ const loadShapes = async (
 
 /**
  * A `[star]` of `solar\StarArch.ini`, as `FStarSphere::Load` (`0x511020`) reads it: the first
- * `star_glow` and `lens_glow` that name a section, the last `star_center`, `radius` and the fades.
+ * `star_glow`, `lens_glow`, `spines` and `lens_flare` that name a section, the last `star_center`, `radius` and the fades.
  */
 const loadStar = async (read: ReadAsset, nickname: string): Promise<Star> => {
   const path = 'solar\\stararch.ini'
@@ -549,6 +549,53 @@ const loadStar = async (read: ReadAsset, nickname: string): Promise<Star> => {
     }
     return glow
   }
+  // `SpinesLoadFromIni` (`0x50fba0`): each `spine` its length, width, colours and alpha.
+  const spinesOf = (name: string): StarSpines | undefined => {
+    const section = named('spines', name)
+    if (!section) return undefined
+    const spines: StarSpines = { spines: [] }
+    const list: StarSpine[] = []
+    for (const { name: key, numbers, strings } of linesOf(section)) {
+      if (key === 'shape') {
+        const shape = shapes.get(strings[0]!.toLowerCase())
+        if (shape) spines.shape = shape
+      }
+      if (key === 'radius_scale') spines.radiusScale = numbers[0]!
+      if (key === 'min_radius') spines.minRadius = numbers[0]!
+      if (key === 'max_radius') spines.maxRadius = numbers[0]!
+      if (key === 'spine') {
+        const [length, width, r0, g0, b0, r1, g1, b1, alpha] = numbers
+        list.push({
+          length: length!,
+          width: width!,
+          innerColor: { x: r0!, y: g0!, z: b0! },
+          outerColor: { x: r1!, y: g1!, z: b1! },
+          alpha: alpha!,
+        })
+      }
+    }
+    return { ...spines, spines: list }
+  }
+  // `LensFlareLoadFromIni` (`0x50f3a0`): each `bead` how far along, how big, its colour and alpha.
+  const lensFlareOf = (name: string): StarLensFlare | undefined => {
+    const section = named('lens_flare', name)
+    if (!section) return undefined
+    const flare: StarLensFlare = { beads: [] }
+    const beads: FlareBead[] = []
+    for (const { name: key, numbers, strings } of linesOf(section)) {
+      if (key === 'shape') {
+        const shape = shapes.get(strings[0]!.toLowerCase())
+        if (shape) flare.shape = shape
+      }
+      if (key === 'min_radius') flare.minRadius = numbers[0]!
+      if (key === 'max_radius') flare.maxRadius = numbers[0]!
+      if (key === 'bead') {
+        const [along, size, r, g, b, alpha] = numbers
+        beads.push({ along: along!, size: size!, color: { x: r!, y: g!, z: b! }, alpha: alpha! })
+      }
+    }
+    return { ...flare, beads }
+  }
   const section = named('star', nickname)
   if (!section) throw new Error(`no star ${nickname}`)
   const star: Star = {}
@@ -566,6 +613,14 @@ const loadStar = async (read: ReadAsset, nickname: string): Promise<Star> => {
         ...star.intensityFade,
         fadeOut: key === 'intensity_fade_out' && value === 0 ? tiny : value,
       }
+    if (key === 'spines' && !star.spines) {
+      const spines = spinesOf(strings[0]!)
+      if (spines) star.spines = spines
+    }
+    if (key === 'lens_flare' && !star.lensFlare) {
+      const flare = lensFlareOf(strings[0]!)
+      if (flare) star.lensFlare = flare
+    }
     if (key === 'lens_glow' && !star.lensGlow) {
       const glow = lensGlowOf(strings[0]!)
       if (glow) star.lensGlow = glow

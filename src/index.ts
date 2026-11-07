@@ -83,13 +83,18 @@ export { starGlowDraws, starRadius, type Star, type StarGlow } from '#/scene/sta
 export { castRay, type Hitbox, type HitboxObject, type HitboxSurface } from '#/scene/hitbox.js'
 export {
   starCorona,
+  starFlare,
   starIntensity,
   sunEffectQuality,
   sunLeastLod,
   updateStar,
   type CoronaView,
+  type FlareBead,
   type LensGlow,
   type RayHit,
+  type StarLensFlare,
+  type StarSpine,
+  type StarSpines,
 } from '#/scene/corona.js'
 export { fillSheetsDraw } from '#/scene/sheets.js'
 export {

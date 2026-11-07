@@ -22,6 +22,7 @@ import { castRay, type Hitbox } from './hitbox.js'
 import {
   hideStar,
   starCorona,
+  starFlare,
   sunEffectQuality,
   sunLeastLod,
   updateStar,
@@ -999,8 +1000,9 @@ export const collectSpaceFrame = ({
     )
   }
 
-  // `ScaleEnvironmentEffects` once the effects are done: each sun's corona, in the order its solars
-  // were read (`SpaceEnvFxBeginCockpitPass`, `0x51c970`). Fully in a field, only its occlusion.
+  // `ScaleEnvironmentEffects` once the effects are done: each sun's spines and corona, in the order
+  // its solars were read (`SpaceEnvFxBeginCockpitPass`, `0x51c970`). Fully in a field, only its
+  // occlusion.
   const afterEffects: Draw[] = []
   const quality = sunEffect === undefined ? 0 : sunEffectQuality(sunEffect)
   // Each object hit is itself, so a sun's own solar is told apart.
@@ -1041,6 +1043,12 @@ export const collectSpaceFrame = ({
           leastLod: sunLeastLod(quality),
         }),
       )
+    }
+  // `SpaceEnvFxEndCockpitPass` (`0x51c9e0`): then every sun's flare, from where the last draw left it.
+  if (quality > 0 && viewport)
+    for (const { star } of objects) {
+      const flare = star && starFlare(star, { view, ...viewport })
+      if (flare) afterEffects.push(flare)
     }
 
   const effectDraws: EffectDraw[] = []

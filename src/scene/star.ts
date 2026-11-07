@@ -15,7 +15,7 @@ import {
 } from '@treewyrm/freelancer/vmesh'
 import { DEFAULT_SAMPLER } from '#/texture/texture.js'
 import type { Camera } from './camera.js'
-import type { LensGlow } from './corona.js'
+import type { LensGlow, StarLensFlare, StarSpines } from './corona.js'
 import { textureHasAlpha } from './exterior.js'
 import type { Draw } from './frame.js'
 import type { TextureShape } from './ring.js'
@@ -50,6 +50,10 @@ export interface Star {
   center?: StarGlow
   /** `lens_glow`: the first that names a `[lens_glow]`. Its defaults when none does. */
   lensGlow?: LensGlow
+  /** `spines`: the first that names a `[spines]`. None when none does. */
+  spines?: StarSpines
+  /** `lens_flare`: the first that names a `[lens_flare]`. None when none does. */
+  lensFlare?: StarLensFlare
   /**
    * `+0x20` and `+0x24`, 1 s each when absent: how fast the flare follows what the corona shows.
    * `intensity_fade_in` and `_out` write them, a 0 as 1e-7, but so do `zone_occlusion_fade_in` and

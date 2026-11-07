@@ -671,10 +671,18 @@ renderer. Random streams need not match retail; each appearance's sizes, colours
       centre of `li_elite`, `space_solar_plant` and `station_small_b_lod` hits, none beside them,
       and culling by the tree changes nothing over 2000 rays at `station_large_a_lod`. Attached
       equipment, shield bubbles and asteroids aren't given shapes yet. **Uncaptured.**
-- [ ] A sun's `spines` and `lens_flare` (`FUN_00510160`, `FUN_0050f850`): the spines before the
-      corona, their reach deciding whether the sun's on screen (`0x511fe5`); the flare's beads at
-      the cockpit pass's end (`SpaceEnvFxEndCockpitPass`, `0x51c9e0`), by `Intensity` and the zone
-      occlusion.
+- [x] A sun's `spines` and `lens_flare`: `Star.spines`, `Star.lensFlare` and `starFlare`.
+      `FUN_00510160`: each spine three quads out from the sun on screen, spread `2π / count`
+      apart from the right, anticlockwise, through the inner ring's radius and the rim's to its
+      tip, fading in from nothing at its base; its alpha 0.2 of `Intensity` and 0.8 of the corona's
+      samples about it (`FUN_00510990`, only for 2, 4, 6 or 12 spines, as retail indexes them),
+      the pixel scale held to `min_radius` and `max_radius`. They draw before the corona, and
+      their longest reach decides whether the sun's on screen for them (`0x511fe5`).
+      `FUN_0050f850`, at the pass's end, after every sun's corona: each bead a square of the
+      whole texture along three times the line from the sun to the screen's middle, sized by the
+      held pixel scale and `1 - (1 - Intensity)²`, faded as the sun nears the middle, from where
+      the last draw left it. Both add by alpha. Retail sorts beads by heap address; they add, so
+      file order draws the same. Pinned by reading. **Uncaptured.**
 - [ ] **You:** `sun_ahead`, `sun_occluded` and `sun_nebula`: a sun in view, behind a station's edge,
       and seen from a nebula, with screenshots and captures.
 - [ ] Space dust.

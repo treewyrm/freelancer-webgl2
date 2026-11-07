@@ -116,6 +116,12 @@ interface StarState {
   diagonals: number[]
   /** `+0x2b0`. */
   lod: number
+  /** `+0x70`: the sun's depth in view at the last draw, which the flare needs below 0. */
+  viewZ: number
+  /** `+0x7c`, `+0x80`, `+0x88`: where it was on screen, and its pixel scale, when last projected. */
+  x: number
+  y: number
+  pixelScale: number
 }
 
 const states = new WeakMap<Star, StarState>()
@@ -150,6 +156,10 @@ const stateOf = (star: Star): StarState => {
     inner,
     diagonals: Array.from({ length: 12 }, () => 1),
     lod: 0,
+    viewZ: 0,
+    x: 0,
+    y: 0,
+    pixelScale: 0,
   }
   states.set(star, state)
   return state
@@ -391,57 +401,106 @@ const STRIDE = 24
 const BLACK: Vector3 = { x: 0, y: 0, z: 0 }
 const WHITE: Vector3 = { x: 1, y: 1, z: 1 }
 
-/** `CoronaEmitVertex` (`FUN_0050f230`): in pixels about the sun, at half its sample's alpha. */
-interface Emitted {
-  slot: Slot
+/** A Win3D vertex in screen pixels: position, `Win3DColor4f`'s colour and alpha, and UV. */
+interface ScreenVertex {
+  x: number
+  y: number
+  u: number
+  v: number
   color: Vector3
+  alpha: number
 }
 
 /**
- * The corona in screen pixels, under `Win3DSetProjection(0, W - 1, H - 1, 0)` with an identity
- * modelview (`0x511f25`). Its depth is ignored, so it stands at clip z 0 where retail's ortho puts
- * it on its far edge: the same pixels, never clipped.
+ * Screen-pixel vertices under `Win3DSetProjection(0, W - 1, H - 1, 0)` with an identity modelview
+ * (`0x511f25`, `0x51256b`). Depth is off, so they stand at clip z 0 where retail's ortho puts them
+ * on its far edge: the same pixels, never clipped. `Win3DEnd` makes quads (0, 1, 2) and (0, 2, 3).
  */
-const coronaMesh = (
+const screenDraw = (
   name: string,
-  primitive: Primitive,
-  vertices: Emitted[],
-  at: { x: number; y: number; scale: number; visibility: number },
-): { mesh: VMeshData; reference: VMeshRef } => {
+  primitive: Primitive | 'quads',
+  vertices: readonly ScreenVertex[],
+  shape: TextureShape,
+  blendMode: BlendMode,
+  view: { view: Matrix4; width: number; height: number },
+): Draw => {
   const bytes = new Uint8Array(vertices.length * STRIDE)
   const floats = new Float32Array(bytes.buffer)
-  vertices.forEach(({ slot, color }, index) => {
-    const x = f(at.scale * slot.x + at.x)
-    const y = f(at.scale * slot.y + at.y)
+  vertices.forEach(({ x, y, u, v, color, alpha }, index) => {
     floats.set([x, y, 0], (index * STRIDE) / 4)
-    const alpha = byte(f(0.5 * slot.alpha * at.visibility))
-    bytes.set([byte(color.z), byte(color.y), byte(color.x), alpha], index * STRIDE + 12)
-    floats.set([slot.u, slot.v], (index * STRIDE + 16) / 4)
+    bytes.set([byte(color.z), byte(color.y), byte(color.x), byte(alpha)], index * STRIDE + 12)
+    floats.set([u, v], (index * STRIDE + 16) / 4)
   })
-  const count = vertices.length
+  const indices =
+    primitive === 'quads'
+      ? Uint16Array.from({ length: (vertices.length / 4) * 6 }, (_, at) => {
+          const quad = Math.trunc(at / 6) * 4
+          return quad + [0, 1, 2, 0, 2, 3][at % 6]!
+        })
+      : Uint16Array.from({ length: vertices.length }, (_, index) => index)
+  const count = indices.length
+  const mesh: VMeshData = {
+    name,
+    version: 1,
+    primitive: primitive === 'quads' ? Primitive.TriangleList : primitive,
+    format: FORMAT,
+    groups: [
+      {
+        materialId: 0,
+        vertexStart: 0,
+        vertexEnd: vertices.length - 1,
+        elementCount: count,
+        padding: 0,
+      },
+    ],
+    indices,
+    vertices: bytes,
+  }
+  const reference: VMeshRef = {
+    meshId: 0,
+    vertexStart: 0,
+    vertexCount: vertices.length,
+    indexStart: 0,
+    indexCount: count,
+    groupStart: 0,
+    groupCount: 1,
+    boundingBox: { min: BLACK, max: BLACK },
+    boundingSphere: { center: BLACK, radius: 0 },
+  }
+  const { width, height } = view
+  const projection: Matrix4 = {
+    x: { x: 2 / (width - 1), y: 0, z: 0, w: 0 },
+    y: { x: 0, y: -2 / (height - 1), z: 0, w: 0 },
+    z: { x: 0, y: 0, z: 0, w: 0 },
+    w: { x: -1, y: 1, z: 0, w: 1 },
+  }
   return {
-    mesh: {
-      name,
-      version: 1,
-      primitive,
-      format: FORMAT,
-      groups: [
-        { materialId: 0, vertexStart: 0, vertexEnd: count - 1, elementCount: count, padding: 0 },
-      ],
-      indices: Uint16Array.from({ length: count }, (_, index) => index),
-      vertices: bytes,
-    },
-    reference: {
-      meshId: 0,
-      vertexStart: 0,
-      vertexCount: count,
-      indexStart: 0,
-      indexCount: count,
-      groupStart: 0,
-      groupCount: 1,
-      boundingBox: { min: BLACK, max: BLACK },
-      boundingSphere: { center: BLACK, radius: 0 },
-    },
+    mesh,
+    reference,
+    byteOffset: 0,
+    count,
+    world: Matrix4.invert(view.view),
+    projection,
+    materialName: name,
+    diffuse: [1, 1, 1, 1],
+    ambient: BLACK,
+    emissive: BLACK,
+    colorVertex: true,
+    nomad: false,
+    // Frame 0 of the shape's texture (`TexShapeGetGpuHandle`).
+    texture: { name: shape.texture.name, entry: shape.texture, sampler: DEFAULT_SAMPLER, uvSet: 0 },
+    cull: 'none',
+    depthWrite: false,
+    depthFunc: 'always',
+    lightless: true,
+    negateNormals: false,
+    normalizeNormals: false,
+    blend: true,
+    blendMode,
+    unlit: true,
+    // What the screen quads or the last sun left. Taken as `GREATER 0`. **Uncaptured.**
+    alphaReference: 0,
+    alphaFunction: 'greater',
   }
 }
 
@@ -451,7 +510,8 @@ const band = (value: number): number => (value > f(0.999) ? 1 : value < f(0.001)
 /**
  * `FUN_0050e6f0`: under the third LOD, a fan from the centre round the rim; from it, the band
  * between the inner ring and the rim, each quad split along the diagonal its alphas favour, then a
- * fan from the centre round the inner ring.
+ * fan from the centre round the inner ring. Each vertex at half its sample's alpha
+ * (`CoronaEmitVertex`, `FUN_0050f230`).
  */
 const coronaDraws = (
   state: StarState,
@@ -471,91 +531,254 @@ const coronaDraws = (
     y: f(keep * inner.y + tween * outer.y),
     z: f(keep * inner.z + tween * outer.z),
   }
-  const place = {
-    x: at.x,
-    y: at.y,
-    scale: f(f(glow.radiusScale ?? 2) * at.pixelScale),
-    visibility: view.visibility,
-  }
-  const { rim, inner: ring, diagonals } = state
-  const centre: Emitted = { slot: rim[0]!, color: inner }
-  const meshes: ReturnType<typeof coronaMesh>[] = []
-  if (state.lod < 3) {
-    const fan = [centre, ...rim.slice(1).map((slot) => ({ slot, color: outer }))]
-    fan.push({ slot: rim[1]!, color: outer })
-    meshes.push(coronaMesh('corona', Primitive.TriangleFan, fan, place))
-  } else {
-    const triangles: Emitted[] = []
-    for (let index = 0; index < 12; index++) {
-      const local = index + 1
-      const mid = ring[index]!
-      const midA = ring[local <= 11 ? local : local - 12]!
-      const rimB = rim[local]!
-      const rimC = rim[local + 1 <= 12 ? local + 1 : local + 1 - 12]!
-      let first = band(mid.alpha)
-      let second = band(midA.alpha)
-      if (first === second) {
-        first = band(rimB.alpha)
-        second = band(rimC.alpha)
-      }
-      if (first !== second)
-        diagonals[index] = first === 1 ? 0 : first === -1 ? 1 : second === 1 ? 1 : 0
-      const m = (slot: Slot) => ({ slot, color: middle })
-      const o = (slot: Slot) => ({ slot, color: outer })
-      triangles.push(
-        ...(diagonals[index] === 0
-          ? [m(midA), m(mid), o(rimB), m(midA), o(rimB), o(rimC)]
-          : [m(midA), m(mid), o(rimC), m(mid), o(rimB), o(rimC)]),
-      )
-    }
-    meshes.push(coronaMesh('corona', Primitive.TriangleList, triangles, place))
-    const fan = [centre, ...ring.map((slot) => ({ slot, color: middle }))]
-    fan.push({ slot: ring[0]!, color: middle })
-    meshes.push(coronaMesh('corona', Primitive.TriangleFan, fan, place))
-  }
+  const scale = f(f(glow.radiusScale ?? 2) * at.pixelScale)
+  const emit = (slot: Slot, color: Vector3): ScreenVertex => ({
+    x: f(scale * slot.x + at.x),
+    y: f(scale * slot.y + at.y),
+    u: slot.u,
+    v: slot.v,
+    color,
+    alpha: f(0.5 * slot.alpha * view.visibility),
+  })
   // A texture with alpha adds by it, one without adds whole (`0x50e81a`).
   const blendMode: BlendMode = textureHasAlpha(shape.texture) ? 'alphaAdd' : 'add'
-  const { width, height } = view
-  const projection: Matrix4 = {
-    x: { x: 2 / (width - 1), y: 0, z: 0, w: 0 },
-    y: { x: 0, y: -2 / (height - 1), z: 0, w: 0 },
-    z: { x: 0, y: 0, z: 0, w: 0 },
-    w: { x: -1, y: 1, z: 0, w: 1 },
+  const draw = (primitive: Primitive, vertices: ScreenVertex[]) =>
+    screenDraw('corona', primitive, vertices, shape, blendMode, view)
+  const { rim, inner: ring, diagonals } = state
+  const centre = emit(rim[0]!, inner)
+  if (state.lod < 3)
+    return [
+      draw(Primitive.TriangleFan, [
+        centre,
+        ...rim.slice(1).map((slot) => emit(slot, outer)),
+        emit(rim[1]!, outer),
+      ]),
+    ]
+  const triangles: ScreenVertex[] = []
+  for (let index = 0; index < 12; index++) {
+    const local = index + 1
+    const mid = ring[index]!
+    const midA = ring[local <= 11 ? local : local - 12]!
+    const rimB = rim[local]!
+    const rimC = rim[local + 1 <= 12 ? local + 1 : local + 1 - 12]!
+    let first = band(mid.alpha)
+    let second = band(midA.alpha)
+    if (first === second) {
+      first = band(rimB.alpha)
+      second = band(rimC.alpha)
+    }
+    if (first !== second)
+      diagonals[index] = first === 1 ? 0 : first === -1 ? 1 : second === 1 ? 1 : 0
+    const m = (slot: Slot) => emit(slot, middle)
+    const o = (slot: Slot) => emit(slot, outer)
+    triangles.push(
+      ...(diagonals[index] === 0
+        ? [m(midA), m(mid), o(rimB), m(midA), o(rimB), o(rimC)]
+        : [m(midA), m(mid), o(rimC), m(mid), o(rimB), o(rimC)]),
+    )
   }
-  return meshes.map(({ mesh, reference }) => ({
-    mesh,
-    reference,
-    byteOffset: 0,
-    count: reference.indexCount,
-    world: Matrix4.invert(view.view),
-    projection,
-    materialName: 'corona',
-    diffuse: [1, 1, 1, 1],
-    ambient: BLACK,
-    emissive: BLACK,
-    colorVertex: true,
-    nomad: false,
-    texture: { name: shape.texture.name, entry: shape.texture, sampler: DEFAULT_SAMPLER, uvSet: 0 },
-    cull: 'none',
-    depthWrite: false,
-    depthFunc: 'always',
-    lightless: true,
-    negateNormals: false,
-    normalizeNormals: false,
-    blend: true,
-    blendMode,
-    unlit: true,
-    // What the screen quads left. Taken as `GREATER 0`. **Uncaptured.**
-    alphaReference: 0,
-    alphaFunction: 'greater',
-  }))
+  return [
+    draw(Primitive.TriangleList, triangles),
+    draw(Primitive.TriangleFan, [
+      centre,
+      ...ring.map((slot) => emit(slot, middle)),
+      emit(ring[0]!, middle),
+    ]),
+  ]
+}
+
+/** One `spine`: its length and width in the star's pixel scale, its colours base to tip, alpha. */
+export interface StarSpine {
+  length: number
+  width: number
+  innerColor: Vector3
+  outerColor: Vector3
+  alpha: number
+}
+
+/** A `[spines]` (`FUN_0050fba0`), over `FStarSphere`'s defaults. */
+export interface StarSpines {
+  /** `shape`. Nothing draws without one. */
+  shape?: TextureShape
+  /** `radius_scale`, 1 when absent: every spine's length and width times it. */
+  radiusScale?: number
+  /** `min_radius` and `max_radius`, 1 and 1000 when absent: the pixel scale held between. */
+  minRadius?: number
+  maxRadius?: number
+  /** In file order, spread evenly round from the right, anticlockwise on screen. */
+  spines: readonly StarSpine[]
+}
+
+/** A `bead` of a `[lens_flare]`: how far along, how big, its colour and alpha. */
+export interface FlareBead {
+  along: number
+  size: number
+  color: Vector3
+  alpha: number
+}
+
+/** A `[lens_flare]` (`FUN_0050f3a0`), over `FStarSphere`'s defaults. */
+export interface StarLensFlare {
+  /** `shape`: its texture, whole. Nothing draws without one. */
+  shape?: TextureShape
+  /** `min_radius` and `max_radius`, 5 and 800 when absent: the pixel scale held between. */
+  minRadius?: number
+  maxRadius?: number
+  /**
+   * Its beads. Retail sorts them by where the heap put them, but they add, so any order gives the
+   * same pixels.
+   */
+  beads: readonly FlareBead[]
+}
+
+/** `FUN_00510990`: how much of the corona shows about a spine, by the samples near it. */
+const spineShown = ({ rim, inner, lod }: StarState, index: number, count: number): number => {
+  const outer = (at: number) => rim[at]!.alpha
+  const ring = (at: number) => inner[at]!.alpha
+  const wrapOuter = (at: number) => (at > 12 ? at - 12 : at)
+  const wrapLow = (at: number) => (at < 0 ? at + 12 : at)
+  const wrapHigh = (at: number) => (at > 11 ? at - 12 : at)
+  switch (count) {
+    case 12: {
+      const sum = outer(wrapOuter(index + 1))
+      return lod <= 2 ? sum : (sum + ring(index)) / 2
+    }
+    case 4:
+    case 6: {
+      // The first spine's base is the centre's sample, as retail indexes it.
+      const base = count === 6 ? index * 2 : Math.trunc(index * 3)
+      let sum = outer(wrapOuter(base + 1))
+      sum = sum + sum + outer(base) + outer(wrapOuter(base + 2))
+      if (lod <= 2) return sum / 4
+      sum = sum + ring(wrapLow(base - 1)) + ring(base) * 3 + ring(wrapHigh(base + 1))
+      return sum / 9
+    }
+    case 2: {
+      const base = Math.trunc(index * 6)
+      const minus = base - 1 < 1 ? base - 1 + 12 : base - 1
+      const twice = outer(base) + outer(base)
+      let sum = outer(minus) + twice
+      sum = sum + outer(wrapOuter(base + 1)) * 4
+      sum = sum + (outer(wrapOuter(base + 2)) + outer(wrapOuter(base + 2)))
+      sum = sum + outer(wrapOuter(base + 2))
+      if (lod <= 2) return sum / 10
+      sum =
+        sum +
+        ring(wrapLow(base - 2)) +
+        ring(wrapLow(base - 1)) * 3 +
+        ring(base) * 6 +
+        ring(wrapHigh(base + 1)) * 3 +
+        ring(wrapHigh(base + 2))
+      return sum / 24
+    }
+    default:
+      return 0
+  }
+}
+
+// `DAT_0061346c`: how much of a spine's alpha its own corona samples give, against the intensity.
+const SPINE_BLEND = f(0.8)
+
+/** A spine's angles: `2π / count` apart from 0, summed as floats (`0x50fe1c`). */
+const spineAngles = (count: number): number[] => {
+  const step = f(f(f(Math.PI) * 2) / count)
+  let angle = 0
+  return Array.from({ length: count }, () => {
+    const at = angle
+    angle = f(angle + step)
+    return at
+  })
+}
+
+/**
+ * `FUN_00510160`: each spine three quads out from the sun, base to the inner ring's radius, to the
+ * rim's, to its tip, fading in from nothing at the base, added by alpha (`SRCALPHA, ONE`).
+ */
+const spinesDraw = (
+  state: StarState,
+  star: Star,
+  at: { x: number; y: number; pixelScale: number },
+  visibility: number,
+  view: CoronaView,
+): Draw | undefined => {
+  const settings = star.spines
+  const shape = settings?.shape
+  if (!settings || !shape) return undefined
+  const { minRadius = 1, maxRadius = 1000, radiusScale = 1 } = settings
+  let scale = at.pixelScale
+  if (scale > f(maxRadius)) scale = f(maxRadius)
+  else if (scale < f(minRadius)) scale = f(minRadius)
+  const glow = star.lensGlow ?? {}
+  const tween = f(glow.interiorTween ?? 0.5)
+  const bodyScale = f(glow.radiusScale ?? 2)
+  const innerR = f(tween * bodyScale * scale)
+  const outerR = f(scale * bodyScale * (tween + 1) * 0.5)
+  const centreAlpha = state.rim[0]!.alpha
+  const { x: sx, y: sy } = at
+  const { u0, v0, u1, v1 } = shape
+  const count = settings.spines.length
+  const angles = spineAngles(count)
+  const vertices: ScreenVertex[] = []
+  settings.spines.forEach((spine, index) => {
+    const cos = f(Math.cos(angles[index]!))
+    const sin = f(Math.sin(angles[index]!))
+    const length = scale * f(spine.length * f(radiusScale))
+    const halfWidth = scale * f(spine.width * f(radiusScale)) * 0.5
+    const t0 = f(innerR * (1 / length))
+    const t1 = f((1 / length) * outerR)
+    // Out along (cos, -sin), across by (sin, cos) · ±half width.
+    const point = (across: number, out: number) => ({
+      x: f(across * sin + sx + f(cos * out)),
+      y: f(across * cos - f(sin * out) + sy),
+    })
+    const alpha = f(
+      ((1 - SPINE_BLEND) * state.intensity + spineShown(state, index, count) * SPINE_BLEND) *
+        spine.alpha *
+        visibility,
+    )
+    const uInner = f(t0 * u1 + u0 * (1 - t0))
+    const uOuter = f(t1 * u1 + u0 * (1 - t1))
+    const lerp = (t: number): Vector3 => ({
+      x: f((1 - t) * spine.innerColor.x + t * spine.outerColor.x),
+      y: f((1 - t) * spine.innerColor.y + t * spine.outerColor.y),
+      z: f((1 - t) * spine.innerColor.z + t * spine.outerColor.z),
+    })
+    const innerColor = lerp(t0)
+    const outerColor = lerp(t1)
+    const innerAlpha = f(alpha * centreAlpha)
+    const rows = [
+      { out: 0, u: u0, color: spine.innerColor, alpha: 0 },
+      { out: innerR, u: uInner, color: innerColor, alpha: innerAlpha },
+      { out: outerR, u: uOuter, color: outerColor, alpha },
+      { out: length, u: u1, color: spine.outerColor, alpha },
+    ]
+    for (let quad = 0; quad < 3; quad++) {
+      const near = rows[quad]!
+      const far = rows[quad + 1]!
+      const corner = (row: typeof near, across: number, v: number): ScreenVertex => ({
+        ...point(across, row.out),
+        u: row.u,
+        v,
+        color: row.color,
+        alpha: row.alpha,
+      })
+      vertices.push(
+        corner(near, -halfWidth, v0),
+        corner(far, -halfWidth, v0),
+        corner(far, halfWidth, v1),
+        corner(near, halfWidth, v1),
+      )
+    }
+  })
+  if (!vertices.length) return undefined
+  return screenDraw('spines', 'quads', vertices, shape, 'alphaAdd', view)
 }
 
 /**
  * `FStarSphere::Draw` (`LAB_00511ca0`) after the effects: the zone's occlusion eased toward
  * `zoneBlocked`, what showed of the corona noted for the flare, the sun projected, its samples
- * cast, and its corona drawn. Nothing past a zone's full occlusion, nor with the sun behind.
- * The spines that draw before the corona aren't built.
+ * cast, then its spines and its corona drawn. Nothing past a zone's full occlusion, nor with the sun
+ * behind.
  */
 export const starCorona = (
   star: Star,
@@ -579,6 +802,7 @@ export const starCorona = (
 
   const { camera, width, height } = view
   const inView = Matrix4.transformPoint(position, view.view)
+  state.viewZ = f(inView.z)
   state.hidden = f(1 - shown(state))
 
   const all = [...state.rim, ...state.inner]
@@ -592,18 +816,24 @@ export const starCorona = (
   }
   const screen = screenOf(camera, width, height)
   const invZ = -1 / local.z
-  const x = f(local.x * screen.scaleX * invZ + screen.centreX)
-  const y = f(local.y * screen.scaleY * invZ + screen.centreY)
+  state.x = f(local.x * screen.scaleX * invZ + screen.centreX)
+  state.y = f(local.y * screen.scaleY * invZ + screen.centreY)
   const depth = Math.max(f(-local.z), f(0.1))
-  const pixelScale = f(
+  state.pixelScale = f(
     camera.near * f(screen.scaleX / camera.near) * ((star.radius ?? 1000) / depth),
   )
+  const { x, y, pixelScale } = state
   if (local.z >= 0) return []
 
   const reach = Math.max(f(f(glow.radiusScale ?? 2) * pixelScale * 2), 50)
   const bodyOnScreen = x > -reach && width + reach > x && y > -reach && height + reach > y
-  // The spines' reach is their longest times the pixel scale; with none built it's 0.
-  const spineReach = 0
+  // The longest spine, after `radius_scale`, times the pixel scale (`0x511fe5`).
+  const radiusScale = f(star.spines?.radiusScale ?? 1)
+  const longest = (star.spines?.spines ?? []).reduce(
+    (most, { length }) => (most > f(length * radiusScale) ? most : f(length * radiusScale)),
+    0,
+  )
+  const spineReach = f(longest * pixelScale)
   const spinesOnScreen =
     x > -spineReach && width + spineReach > x && y > -spineReach && height + spineReach > y
   const at = { x, y, pixelScale }
@@ -617,6 +847,69 @@ export const starCorona = (
     return []
   } else if (state.hidden < 1) for (const slot of all) fadeToZero(slot, up, down)
 
-  if (!bodyOnScreen) return []
-  return coronaDraws(state, glow, at, { ...view, visibility: f(1 - state.zoneOcclusion) })
+  const visibility = f(1 - state.zoneOcclusion)
+  const draws: Draw[] = []
+  if (spinesOnScreen) {
+    const spines = spinesDraw(state, star, at, visibility, { ...view, visibility })
+    if (spines) draws.push(spines)
+  }
+  if (bodyOnScreen) draws.push(...coronaDraws(state, glow, at, { ...view, visibility }))
+  return draws
+}
+
+/**
+ * `FStarSphere::DrawFlare` (`LAB_005124f0`), at the cockpit pass's end: the beads along the line
+ * from the sun through the screen's middle, at the screen place and pixel scale the last draw left,
+ * each a square of the whole texture, added by alpha (`SRCALPHA, ONE`). They fade as the sun nears
+ * the middle, brighten with `Intensity`, and go with the zone's occlusion and the sun behind.
+ */
+export const starFlare = (
+  star: Star,
+  view: { view: Matrix4; width: number; height: number },
+): Draw | undefined => {
+  const state = stateOf(star)
+  // The pass gives 1 for its step, so this is the zone's visibility (`0x51250a`).
+  const visibility = f(1 - state.zoneOcclusion)
+  if (!(visibility * state.intensity > 0)) return undefined
+  if (!(state.viewZ < 0)) return undefined
+  const flare = star.lensFlare
+  const shape = flare?.shape
+  if (!flare || !shape) return undefined
+  const { width, height } = view
+  // The viewport's rectangle ends on its last pixel.
+  const midX = (width - 1) * 0.5
+  const midY = f((height - 1) * 0.5)
+  const fadeBy = 1 - state.intensity
+  const brightness = 1 - fadeBy * fadeBy
+  let scale = state.pixelScale
+  if (scale > f(flare.maxRadius ?? 800)) scale = f(flare.maxRadius ?? 800)
+  else if (scale < f(flare.minRadius ?? 5)) scale = f(flare.minRadius ?? 5)
+  const half = f(scale * brightness * visibility)
+  const dx = midX - state.x
+  const dy = midY - state.y
+  const tenth = (width - 1) * 0.1
+  const limit = f(tenth * tenth)
+  const squared = dy * dy + dx * dx
+  const fade = squared < limit ? f(squared / limit) : 1
+  const axisX = f(dx * 3)
+  const axisY = f(dy * 3)
+  const vertices: ScreenVertex[] = []
+  for (const { along, size, color, alpha } of flare.beads) {
+    const cx = f(axisX * along + state.x)
+    const cy = f(f(axisY * along) + state.y)
+    const h = f(half * size)
+    const x0 = f(cx - h)
+    const x1 = f(cx + h)
+    const y0 = f(cy - h)
+    const y1 = f(cy + h)
+    const a = f(fade * alpha)
+    vertices.push(
+      { x: x0, y: y0, u: 0, v: 0, color, alpha: a },
+      { x: x1, y: y0, u: 1, v: 0, color, alpha: a },
+      { x: x1, y: y1, u: 1, v: 1, color, alpha: a },
+      { x: x0, y: y1, u: 0, v: 1, color, alpha: a },
+    )
+  }
+  if (!vertices.length) return undefined
+  return screenDraw('lens flare', 'quads', vertices, shape, 'alphaAdd', view)
 }

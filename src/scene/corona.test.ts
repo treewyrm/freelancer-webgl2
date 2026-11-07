@@ -5,6 +5,7 @@ import type { Texture } from '@treewyrm/freelancer/texture'
 import { viewMatrix, type Camera } from './camera.js'
 import {
   starCorona,
+  starFlare,
   starIntensity,
   sunEffectQuality,
   sunLeastLod,
@@ -190,4 +191,115 @@ test('without a shape it draws nothing, yet still samples', () => {
   starCorona(star, FAR, false, viewOf({ rayHits }))
   updateStar(star, 0.1)
   assert.ok(starIntensity(star).intensity < 1)
+})
+
+const stripe = { name: 'stripe_flare', width: 64, height: 64, format: 'rgba32_8888' } as Texture
+const hexagon = { name: 'hexagon', width: 64, height: 64, format: 'rgb24_888' } as Texture
+const spineOf = (length: number) => ({
+  length,
+  width: 2,
+  innerColor: { x: 1, y: 1, z: 1 },
+  outerColor: { x: 0.5, y: 0.5, z: 1 },
+  alpha: 0.5,
+})
+const spiny = (lengths: number[]): Star => ({
+  ...starOf(),
+  spines: { shape: textureShape(stripe, {}), spines: lengths.map(spineOf) },
+})
+const xyOf = (draw: Draw, at: number) => {
+  const floats = new Float32Array(draw.mesh.vertices.buffer)
+  return [floats[at * 6]!, floats[at * 6 + 1]!]
+}
+
+test('spines draw before the corona, spread round from the right, anticlockwise on screen', () => {
+  const star = spiny([10, 10, 10, 10])
+  updateStar(star, 0.1)
+  const draws = starCorona(star, FAR, false, viewOf())
+  assert.deepEqual(
+    draws.map(({ materialName }) => materialName),
+    ['spines', 'corona'],
+  )
+  const [spines] = draws
+  // Three quads a spine, two triangles a quad.
+  assert.equal(spines!.count, 4 * 3 * 6)
+  assert.equal(spines!.blendMode, 'alphaAdd')
+  // The first spine's tip, its -w side, is right of the sun by its length times the pixel scale,
+  // 7.31, and half its width up; the second's is above it and half its width left.
+  const pixelScale = Math.fround(731.2 / 100)
+  const [tipX, tipY] = xyOf(spines!, 9)
+  assert.ok(Math.abs(tipX! - 512 - 10 * pixelScale) < 0.05, `${tipX}`)
+  assert.ok(Math.abs(tipY! - (384 - 1 * pixelScale)) < 0.05, `${tipY}`)
+  const [upX, upY] = xyOf(spines!, 12 + 9)
+  assert.ok(Math.abs(upX! - (512 - 1 * pixelScale)) < 0.05, `${upX}`)
+  assert.ok(Math.abs(upY! - (384 - 10 * pixelScale)) < 0.05, `${upY}`)
+})
+
+test("a spine fades in from nothing at its base to its alpha, with what's seen about it", () => {
+  const star = spiny([10, 10, 10, 10])
+  updateStar(star, 0.1)
+  const [spines] = starCorona(star, FAR, false, viewOf())
+  const alphas = alphasOf(spines!)
+  // Base, inner ring, inner ring, base; then the rest at 0.5 of 255, every sample seen.
+  assert.deepEqual(alphas.slice(0, 4), [0, 127, 127, 0])
+  assert.deepEqual(alphas.slice(4, 12), Array(8).fill(127))
+})
+
+test('long spines draw with the sun off screen, past where its corona would', () => {
+  const star = spiny([100, 100, 100, 100])
+  updateStar(star, 0.1)
+  // 100 pixels left of the screen: past the corona's 50, within the spines' 731.
+  const off = { x: -(612 / 731.2) * 100000, y: 0, z: -100000 }
+  assert.deepEqual(
+    starCorona(star, off, false, viewOf()).map(({ materialName }) => materialName),
+    ['spines'],
+  )
+})
+
+const flared = (): Star => ({
+  ...starOf(),
+  lensFlare: {
+    shape: textureShape(hexagon, {}),
+    minRadius: 10,
+    maxRadius: 150,
+    beads: [{ along: 0.5, size: 1, color: { x: 1, y: 0.5, z: 0 }, alpha: 0.5 }],
+  },
+})
+
+test('the flare lies along the line from the sun through the middle, three times its length', () => {
+  const star = flared()
+  updateStar(star, 0.1)
+  // 200 pixels right of the middle: the bead's centre is 1.5 times that the other way.
+  const right = { x: (200 / 731.2) * 100000, y: 0, z: -100000 }
+  starCorona(star, right, false, viewOf())
+  const flare = starFlare(star, { view: viewMatrix(camera), width: 1024, height: 768 })!
+  assert.equal(flare.blendMode, 'alphaAdd')
+  assert.equal(flare.count, 6)
+  const [x0, y0] = xyOf(flare, 0)
+  const [x1] = xyOf(flare, 1)
+  // The pixel scale, 7.3, held to the least 10: a square 20 across about 511.5 - 1.5 · 200.5.
+  const sunX = 512 + 200
+  const centre = (1023 / 2 - sunX) * 3 * 0.5 + sunX
+  assert.ok(Math.abs((x0! + x1!) / 2 - centre) < 0.05, `${x0} ${x1}`)
+  assert.ok(Math.abs(x1! - x0! - 20) < 0.05, `${x1! - x0!}`)
+  // The sun is at 384 against a middle of 383.5.
+  assert.ok(Math.abs(y0! - (383.25 - 10)) < 0.05, `${y0}`)
+  // Far enough from the middle not to fade: half its alpha, in its colour.
+  assert.deepEqual([...flare.mesh.vertices.slice(12, 16)], [0, 127, 255, 127])
+})
+
+test('the flare fades as the sun nears the middle, and goes with the sun behind or a zone', () => {
+  const star = flared()
+  updateStar(star, 0.1)
+  // 51.15 pixels off is a tenth of 1023 in all, so a quarter of the way at 25.6 is a quarter faded.
+  const near = { x: (25.575 / 731.2) * 100000, y: 0, z: -100000 }
+  starCorona(star, near, false, viewOf())
+  const frame = { view: viewMatrix(camera), width: 1024, height: 768 }
+  const alpha = starFlare(star, frame)!.mesh.vertices[15]!
+  assert.ok(alpha < 20, `${alpha}`)
+  starCorona(star, { x: 0, y: 0, z: 100000 }, false, viewOf())
+  assert.equal(starFlare(star, frame), undefined)
+  // A zone closes over its 2 s, then the flare is gone though the sun is ahead.
+  updateStar(star, 1)
+  for (let at = 0; at < 2; at++) starCorona(star, FAR, true, viewOf())
+  assert.equal(starFlare(star, frame), undefined)
 })
