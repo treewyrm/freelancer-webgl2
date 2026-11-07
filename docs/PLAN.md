@@ -161,8 +161,8 @@ closing and losing the context all work. Then revise the API with what was learn
       real delta), and `lair`'s transform matches in state and picture.
 - [x] Joint animation needs nothing here: `sampleChannel` from the library feeds `placeParts`'
       `jointState`. Playing a script is the host's, or M8's.
-- [x] Texture animation moved to M8. Only base interiors and effects have animated textures, so no
-      reference scene reaches it yet. Reported as unsupported until then.
+- [x] Texture animation moved to M8, and built ahead of it there. Only base interiors and effects have
+      animated textures, so no reference scene reaches it yet.
 - [x] Corpus suite: all 1,852 retail models plan a frame at every level, and what's left is pinned by
       type (`src/reference/corpus.test.ts`): `HUDIconMaterial`, `HUDAnimMaterial`,
       `ExclusionZoneMaterial` and `PlanetWaterMaterial` to build, `Nebula` for M4, four animated
@@ -756,7 +756,15 @@ renderer.
 - [ ] Thorn playback: clock, attachments, THN cameras and letterbox.
 - [ ] A `PSYS` steps as `Thorn_Psys` does: `advance(dt)`, then `advance(0)`. It's what makes its fields act once a
       frame with the real step's values, and its dust draw nothing (`effect_fields`, `effect_dust`).
-- [ ] Texture animation, moved here from M3: `TickAllPlayback`, and base interiors to test it on.
+- [x] Texture animation, moved here from M3 and built early: `playbackFrame`, `FUN_06ebe660`'s clock as a
+      function of elapsed time. A material's loops from load on `Scene.time` (`TickAllPlayback`) and binds
+      its frame's atlas alone, as nothing reads the rect `ResolveTextures` writes. An appearance's clamps on
+      its own age (`FFxTextureWrapper::Resolve`), a beam's never moves, and a particle's frame -1 reads it
+      (`GetFrame`). An animated `Dt` neither cuts nor blends (`FMaterial::Setup`). Pinned by reading and in
+      pixels. **Uncaptured.** The format library defaults an absent `FPS` to 15, where retail has 24
+      (`0x6ec134d`); every retail animation has one.
+- [ ] Texture animation against retail: `li_sci_console`'s `boxes.avi` in a room, and an effect drawing one
+      of the FX animations, whose frames all share one atlas.
 
 `freelancer-vscode/docs/renderer/CUTSCENES.md` is a specification to check against the source.
 

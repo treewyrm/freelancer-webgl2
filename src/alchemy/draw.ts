@@ -9,6 +9,7 @@ import {
 } from '@treewyrm/freelancer/alchemy'
 import { Matrix4, type Vector3 } from '@treewyrm/freelancer/math'
 import type { Texture, TextureEntry } from '@treewyrm/freelancer/texture'
+import { frameAtlas, playbackFrame } from '#/texture/playback.js'
 import type { AppearanceNode, EffectInstance, FieldNode, Lane, RunNode } from './effect.js'
 import { AGE, BORN, LIFE, POSITION, RECORD } from './effect.js'
 import type { UVRect } from './curves.js'
@@ -67,6 +68,8 @@ export interface SpriteDraw extends EffectDrawCommon {
   lists: SpriteLists
   /** The atlas frames a particle's own clock picks among. */
   frames: readonly UVRect[]
+  /** Which of them a particle's -1 picks: the playback's. 0 when absent. */
+  currentFrame?: number
   /** The camera, in the appearance's frame. */
   eye: Vector3
   dust?: { previous: Matrix4; step: number; fade: number }
@@ -93,9 +96,10 @@ const rectOf = (rect: UVRect, { flipU, flipV }: Sprite): UVRect => ({
 })
 
 /**
- * A sprite's texture and frames. `UseCommonTexFrame` is the instance's clock, and its frame names the
- * atlas. Otherwise it's each particle's clock over one atlas. **Not built:** that case also advances the
- * texture's own playback, which picks the atlas bound (`0x6244ef0`): M8's `TickAllPlayback`.
+ * A sprite's texture and frames: `FFxTextureWrapper`, whose playback is the appearance's own and
+ * clamps (`Resolve`). `UseCommonTexFrame` picks a frame by the node's clock, and its atlas and rect
+ * come with it. Otherwise each particle picks a rect, all of them on the atlas the playback is at,
+ * advanced by every update but a beam's (`Texture_.Advance`), so by the node's age.
  */
 const spriteTexture = (
   descriptor: Sprite,
@@ -103,7 +107,13 @@ const spriteTexture = (
   sparam: number,
   texture: (name: string) => TextureEntry | undefined,
   unsupported: Set<string>,
-): { texture?: { name: string; entry: Texture }; frames: readonly UVRect[] } => {
+  advanced: boolean,
+): {
+  texture?: { name: string; entry: Texture }
+  frames: readonly UVRect[]
+  /** The frame a particle's `-1` reads. */
+  current?: number
+} => {
   const name = descriptor.texture
   const plain = { frames: [rectOf(FULL, descriptor)] }
   if (!name) return plain
@@ -115,23 +125,31 @@ const spriteTexture = (
   if (entry.type === 'cube') return plain
   if (entry.type !== 'animated') return { ...plain, texture: { name, entry } }
   if (!entry.frames.length) return plain
-  const bound = (atlas: number) => {
-    const found = texture(`${entry.name}_${atlas}`)
-    return found && found.type !== 'cube' && found.type !== 'animated'
-      ? { name: `${entry.name}_${atlas}`, entry: found }
-      : undefined
+  const count = entry.frames.length
+  const current =
+    advanced && !descriptor.useCommonTexFrame ? playbackFrame(entry, node.age, 'clamp') : 0
+  const at = (frame: number) => {
+    const bound = frameAtlas(entry, frame, texture)
+    if (!bound) unsupported.add(`texture ${entry.name}`)
+    return bound
   }
   if (descriptor.useCommonTexFrame) {
     const position = descriptor.commonTexFrame
       ? curveAt(descriptor.commonTexFrame, sparam, node.age)
       : 0
-    const count = entry.frames.length
-    const frame =
-      entry.frames[Math.max(0, Math.min(count - 1, Math.trunc(position * (count - 1))))]!
-    return { texture: bound(frame.index), frames: [rectOf(frame, descriptor)] }
+    const frame = count === 1 ? 0 : pickFrame(Math.trunc(position * (count - 1)), count, current)
+    return { texture: at(frame), frames: [rectOf(entry.frames[frame]!, descriptor)] }
   }
-  return { texture: bound(0), frames: entry.frames.map((frame) => rectOf(frame, descriptor)) }
+  return {
+    texture: at(current),
+    frames: entry.frames.map((frame) => rectOf(frame, descriptor)),
+    current,
+  }
 }
+
+/** `GetFrame`'s choice (`FUN_06ebe7f0`): -1 is the current frame, and anything else outside is the last. */
+export const pickFrame = (frame: number, count: number, current: number): number =>
+  frame === -1 ? current : frame < 0 || frame >= count ? count - 1 : frame
 
 const listsOf = (descriptor: Appearance): SpriteLists | undefined => {
   switch (descriptor.kind) {
@@ -476,7 +494,18 @@ export const collectEffect = (
     }
     const lane = node.lane!
     if (!lane.count) return
-    const { texture: bound, frames } = spriteTexture(descriptor, node, sparam, texture, unsupported)
+    const {
+      texture: bound,
+      frames,
+      current,
+    } = spriteTexture(
+      descriptor,
+      node,
+      sparam,
+      texture,
+      unsupported,
+      descriptor.kind !== 'beam-appearance',
+    )
     const common = { world: node.world, texture: bound, blend: descriptor.blend }
 
     if (descriptor.kind === 'beam-appearance') {
@@ -548,6 +577,8 @@ export const collectEffect = (
       fade: 'viewingAngleFade' in descriptor && descriptor.viewingAngleFade,
       lists,
       frames,
+      // Within the list, whatever a negative rate reached, as its atlas has already gone unbound.
+      ...(current ? { currentFrame: Math.min(Math.max(current, 0), frames.length - 1) } : {}),
       eye,
       dust,
     })

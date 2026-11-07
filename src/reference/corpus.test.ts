@@ -114,16 +114,8 @@ test('every retail model plans a frame, and what is left is known', { skip }, ()
 
   assert.deepEqual(Object.fromEntries(undrawn), {})
 
-  // Animated textures, which M8 has, in four base models.
-  assert.deepEqual(
-    missing.get('texture')!.map((entry) => entry.split(' in ')[0]),
-    [
-      'texture boxes.avi',
-      'texture Pylon.avi',
-      'texture Pylon.avi010829125438',
-      'texture boxes.avi021118171959',
-    ],
-  )
+  // Every texture is found, the four base models' animations included.
+  assert.equal(missing.get('texture'), undefined)
 
   // Materials no retail file defines, on 7 ids, in nomad turrets and ice asteroids. A null material
   // is skipped (`FVMeshPart::Draw`), so retail draws nothing for those groups either.

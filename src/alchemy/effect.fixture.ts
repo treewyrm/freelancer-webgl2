@@ -28,6 +28,8 @@ export interface EffectReport {
   afterRestore: { before: number[]; after: number[] }
   scaleMovesBasic: number
   scaleResizesPerp: number
+  /** A particle's frame -1, -3 and 1, with the playback on frame 2. */
+  frameChoice: { current: number[]; past: number[]; inside: number[] }
 }
 
 const SIZE = 64
@@ -71,12 +73,14 @@ const fixture: Fixture<EffectReport> = (gl) => {
       steps = 1,
       hooks,
       texture,
+      library = () => texture,
     }: {
       camera?: Camera
       lookup?: EffectLookup
       steps?: number
       hooks?: FrameHooks
       texture?: TextureEntry
+      library?: (name: string) => TextureEntry | undefined
     } = {},
   ) => {
     const instance = new EffectInstance(scene, { lookup })
@@ -87,7 +91,7 @@ const fixture: Fixture<EffectReport> = (gl) => {
       ambient: { x: 0, y: 0, z: 0 },
       lights: [],
       models: [],
-      effects: [{ instance, texture: () => texture }],
+      effects: [{ instance, texture: library }],
     })
     renderer.render(frame, hooks)
   }
@@ -216,6 +220,43 @@ const fixture: Fixture<EffectReport> = (gl) => {
     onChain: pixelAt(32, 40),
   }
 
+  // A texel a frame, red, green, blue, white, on the one atlas, as every retail animation keeps to one.
+  // Ten steps at 15 put the playback on frame 2.
+  const strip = (name: string): TextureEntry | undefined =>
+    name === 'anim'
+      ? {
+          name,
+          type: 'animated',
+          rate: 15,
+          frames: [0, 1, 2, 3].map((n) => ({ index: 0, u1: n / 4, v1: 0, u2: (n + 1) / 4, v2: 1 })),
+        }
+      : name === 'anim_0'
+        ? {
+            name,
+            type: 'image',
+            storage: 'targa',
+            format: 'rgba32_8888',
+            width: 4,
+            height: 1,
+            flip: false,
+            levels: [
+              new Uint8Array([255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255, 255, 255, 255, 255]),
+            ],
+          }
+        : undefined
+  const framed = (position: number) => {
+    shot(
+      quad({
+        BasicApp_Color: tint(1, 1, 1),
+        BasicApp_TexName: 'anim',
+        BasicApp_TexFrame: eased(position),
+      }),
+      { steps: 10, library: strip },
+    )
+    return pixelAt(32, 32)
+  }
+  const frameChoice = { current: framed(-1 / 3), past: framed(-1), inside: framed(0.4) }
+
   // Tree order under an order-dependent blend: appearance beside the root first, then the one under it.
   const opaque = (color: ReturnType<typeof tint>, name: string, emit: string) =>
     [
@@ -321,6 +362,7 @@ const fixture: Fixture<EffectReport> = (gl) => {
       afterRestore: { before, after },
       scaleMovesBasic: scale('basic'),
       scaleResizesPerp: scale('perp'),
+      frameChoice,
     }
   })
 }

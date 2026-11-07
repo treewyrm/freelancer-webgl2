@@ -91,6 +91,44 @@ test('a texture with one alpha bit is cut, and one with more is blended', () => 
   assert.deepEqual([opaque!.blend, opaque!.alphaReference], [false, 0])
 })
 
+test("an animated texture loops on the host's clock, binds its frame's atlas, and neither cuts nor blends", () => {
+  // `boxes.avi`'s shape: a frame per atlas, here 4 at 30, so a loop of 4 / 30.
+  const library = (name: string): TextureEntry | undefined =>
+    name === 'skin'
+      ? {
+          name: 'skin',
+          type: 'animated',
+          rate: 30,
+          frames: [0, 1, 2, 3].map((index) => ({ index, u1: 0, v1: 0, u2: 1, v2: 1 })),
+        }
+      : /^skin_[0-3]$/.test(name)
+        ? { ...texture('dxt5'), name }
+        : undefined
+  const at = (time: number) => {
+    const { draws, unsupported } = collectFrame({
+      ...scene(skinned({}), { texture: library }),
+      time,
+    })
+    assert.deepEqual(unsupported, [])
+    return [draws[0]!.texture?.name, draws[0]!.blend, draws[0]!.alphaReference]
+  }
+  assert.deepEqual([0, 0.05, 0.11, 0.15].map(at), [
+    ['skin_0', false, 0],
+    ['skin_1', false, 0],
+    ['skin_3', false, 0],
+    ['skin_0', false, 0],
+  ])
+})
+
+test('an animated texture without its atlas is reported', () => {
+  const library = (name: string): TextureEntry | undefined =>
+    name === 'skin'
+      ? { name, type: 'animated', rate: 15, frames: [{ index: 0, u1: 0, v1: 0, u2: 1, v2: 1 }] }
+      : undefined
+  const frame = collectFrame(scene(skinned({}), { texture: library }))
+  assert.deepEqual([frame.draws[0]!.texture, frame.unsupported], [undefined, ['texture skin']])
+})
+
 test('opacity under 1 blends, whatever the texture', () => {
   const [draw] = collectFrame(scene(skinned({ opacity: 0.5 }))).draws
   assert.equal(draw!.blend, true)

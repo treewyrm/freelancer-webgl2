@@ -96,3 +96,15 @@ test("an appearance's scale resizes a perp, built in its frame, and not a basic,
   assert.ok(Math.abs(report.scaleMovesBasic - 12.8) <= 1, `${report.scaleMovesBasic}`)
   assert.ok(Math.abs(report.scaleResizesPerp - 25.6) <= 2, `${report.scaleResizesPerp}`)
 })
+
+test("a particle's frame -1 is the playback's, and one past either end is the last (GetFrame)", () => {
+  const { current, past, inside } = report.frameChoice
+  assert.deepEqual(
+    [current.slice(0, 3), past.slice(0, 3), inside.slice(0, 3)],
+    [
+      [0, 0, 255],
+      [255, 255, 255],
+      [0, 255, 0],
+    ],
+  )
+})

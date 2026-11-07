@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { Matrix4 } from '@treewyrm/freelancer/math'
-import { collectEffect, type EffectDraw, type SpriteDraw } from './draw.js'
+import type { TextureEntry } from '@treewyrm/freelancer/texture'
+import { collectEffect, pickFrame, type EffectDraw, type SpriteDraw } from './draw.js'
 import {
   AGE,
   AXIS,
@@ -456,4 +457,74 @@ test('eachParticle reads every live age and names the file entry', () => {
   })
   assert.equal(ages.length, appearance(instance, 0).lane!.count)
   assert.ok(Math.max(...ages) <= 0.5 + 1e-6 && Math.min(...ages) >= -1e-6)
+})
+
+// Four frames at 15 over two atlases, as no retail animation has: those all keep to one.
+const animated = (name: string): TextureEntry | undefined => {
+  if (name === 'anim')
+    return {
+      name: 'anim',
+      type: 'animated',
+      rate: 15,
+      frames: [0, 0, 1, 1].map((index, n) => ({ index, u1: n / 4, v1: 0, u2: (n + 1) / 4, v2: 1 })),
+    }
+  return name === 'anim_0' || name === 'anim_1'
+    ? ({ name, type: 'image' } as unknown as TextureEntry)
+    : undefined
+}
+
+const spriteAt = (instance: EffectInstance) => {
+  const draws: EffectDraw[] = []
+  const unsupported = new Set<string>()
+  collectEffect(instance, Matrix4.identity, animated, draws, unsupported)
+  assert.deepEqual([...unsupported], [])
+  return draws[0] as SpriteDraw
+}
+
+test("an appearance's playback clamps on its age, and binds that frame's atlas for every particle", () => {
+  const { scene } = sceneOf([
+    { node: emitter('e'), targets: ['a'] },
+    { node: basic('a', { BasicApp_TexName: 'anim' }) },
+  ])
+  const instance = new EffectInstance(scene)
+  run(instance, 0.1)
+  const early = spriteAt(instance)
+  assert.deepEqual([early.texture?.name, early.currentFrame, early.frames.length], ['anim_0', 1, 4])
+  // Past the last frame's end at 4 / 15: a loop would be back on frame 1 and `anim_0`.
+  run(instance, 0.25)
+  const late = spriteAt(instance)
+  assert.deepEqual([late.texture?.name, late.currentFrame], ['anim_1', 3])
+})
+
+test("a common frame picks its atlas and rect by GetFrame's rule: -1 is the current, below that the last", () => {
+  const at = (position: number) => {
+    const { scene } = sceneOf([
+      { node: emitter('e'), targets: ['a'] },
+      {
+        node: basic('a', {
+          BasicApp_TexName: 'anim',
+          BasicApp_UseCommonTexFrame: true,
+          BasicApp_CommonTexFrame: flat(position),
+        }),
+      },
+    ])
+    const instance = new EffectInstance(scene)
+    run(instance, 0.5)
+    const { texture, frames } = spriteAt(instance)
+    return [texture?.name, frames[0]!.u1]
+  }
+  // Truncated toward 0 over the three steps: 0.9 is frame 2, -0.2 is 0, -1/3 is -1, -1 is -3.
+  assert.deepEqual([0.9, -0.2, -1 / 3, -1].map(at), [
+    ['anim_1', 0.5],
+    ['anim_0', 0],
+    ['anim_0', 0],
+    ['anim_1', 0.75],
+  ])
+})
+
+test("GetFrame's choice: -1 is the current frame, and anything else outside is the last", () => {
+  assert.deepEqual(
+    [-1, -2, 0, 3, 4].map((frame) => pickFrame(frame, 4, 2)),
+    [2, 3, 0, 3, 3],
+  )
 })

@@ -527,7 +527,7 @@ export const createEffectRenderer = (gl: WebGL2RenderingContext): EffectRenderer
     slot(uniforms.u_frame, float(lists.frame, 0))
     gl.uniform1i(
       uniforms.u_frames,
-      draw.frames.length > 1 || draw.texture ? table.frames(draw.frames) : -1,
+      draw.frames.length > 1 || draw.texture ? table.frames(draw.frames, draw.currentFrame) : -1,
     )
     gl.uniform1i(uniforms.u_kind, lists.kind)
     gl.uniform1i(uniforms.u_facing, draw.facing)
@@ -588,7 +588,7 @@ export const createEffectRenderer = (gl: WebGL2RenderingContext): EffectRenderer
           [lists.frame, 0],
         ] as const)
           table.floatSlot(list, sparam, fallback)
-        if (each.frames.length > 1 || each.texture) table.frames(each.frames)
+        if (each.frames.length > 1 || each.texture) table.frames(each.frames, each.currentFrame)
       }
     bindCurves()
 

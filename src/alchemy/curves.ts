@@ -91,12 +91,13 @@ export class CurveTable {
     return offset
   }
 
-  frames(rects: readonly UVRect[]): number {
-    const name = rects.map(({ u1, v1, u2, v2 }) => `${u1},${v1},${u2},${v2}`).join(';')
+  /** The rects, after a header of their count and the frame a `-1` picks. */
+  frames(rects: readonly UVRect[], current = 0): number {
+    const name = `${current}:${rects.map(({ u1, v1, u2, v2 }) => `${u1},${v1},${u2},${v2}`).join(';')}`
     const known = this.#frames.get(name)
     if (known !== undefined) return known
     const offset = this.#reserve(1 + rects.length)
-    this.texels.set([rects.length, 0, 0, 0], offset * 4)
+    this.texels.set([rects.length, current, 0, 0], offset * 4)
     for (const [n, { u1, v1, u2, v2 }] of rects.entries())
       this.texels.set([u1, v1, u2, v2], (offset + 1 + n) * 4)
     this.#frames.set(name, offset)
@@ -218,10 +219,14 @@ vec3 slotColor(vec4 slot, float key) {
   return a * (1.0 - f) + b * f;
 }
 
-// _ftol(position × (count − 1)), clamped.
+// _ftol(position × (count − 1)), then GetFrame's choice (FUN_06ebe7f0): -1 is the playback's
+// current frame, and anything else outside is the last.
 vec4 frameRect(int header, float position) {
-  int count = int(curveTexel(header).x);
-  int index = clamp(int(position * float(count - 1)), 0, count - 1);
+  vec4 head = curveTexel(header);
+  int count = int(head.x);
+  int index = int(position * float(count - 1));
+  if (index == -1) index = int(head.y);
+  else if (index < 0 || index >= count) index = count - 1;
   return curveTexel(header + 1 + index);
 }
 `

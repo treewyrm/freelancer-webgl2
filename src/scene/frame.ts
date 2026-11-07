@@ -27,6 +27,7 @@ import { collectEffect, type EffectDraw } from '#/alchemy/draw.js'
 import type { EffectInstance } from '#/alchemy/effect.js'
 import type { EffectNode } from '#/alchemy/tree.js'
 import { mapMaterialType, REGISTERED_TYPES, type MaterialMapRule } from '#/material/map.js'
+import { frameAtlas, playbackFrame } from '#/texture/playback.js'
 import { DEFAULT_SAMPLER, type SamplerState, type TextureWrap } from '#/texture/texture.js'
 import { projectionMatrix, sphereInFrustum, viewMatrix, type Camera } from './camera.js'
 import { partTransforms } from './hierarchy.js'
@@ -138,7 +139,10 @@ export interface Scene {
   models: SceneModel[]
   /** 0 to 1. Black when absent, which is what the menu clears to. */
   background?: Vector3
-  /** Seconds, the host's clock, for material UV animation. 0 when absent. */
+  /**
+   * Seconds, the host's clock, for material UV and texture animation. 0 when absent. Retail starts a
+   * material's texture playback when it loads (`FMaterial::Setup`), so 0 is when the models loaded.
+   */
   time?: number
   /** After the models, in the order given. `collectSpaceFrame` has the game's order. */
   effects?: readonly SceneEffect[]
@@ -371,10 +375,7 @@ const wrapOf = (address: TextureAddress): TextureWrap => {
   throw new RangeError('WebGL2 has no border address mode, and retail uses none')
 }
 
-const drawTexture = (
-  { name, flags }: TextureReference,
-  entry: Texture | CubeTexture,
-): DrawTexture => ({
+const drawTexture = ({ flags }: TextureReference, { name, entry }: Bound): DrawTexture => ({
   name,
   entry,
   sampler: {
@@ -386,7 +387,10 @@ const drawTexture = (
   uvSet: getMapIndex(flags),
 })
 
-/** One alpha bit is cut, more is blended (`FMaterial` after `PixelFormatAlphaBits`). */
+/**
+ * One alpha bit is cut, more is blended (`FMaterial` after `PixelFormatAlphaBits`). An animated
+ * texture neither: `Setup` reads the format from a handle it resolves only for a single frame.
+ */
 const alphaBits = (entry: TextureEntry | undefined): number => {
   if (!entry || entry.type === 'animated') return 0
   switch (entry.format) {
@@ -724,14 +728,29 @@ export const placeParts = (
   return parts
 }
 
-/** A slot's texture, reporting what the library doesn't hold or M3 has yet to animate. */
+/** A texture as bound: an animated one's is its frame's atlas, under that atlas's name. */
+interface Bound {
+  name: string
+  entry: Texture | CubeTexture
+}
+
+type Resolve = (name: string) => Bound | undefined
+
+/**
+ * A slot's texture, reporting what the library doesn't hold. An animated one loops from load
+ * (`TickAllPlayback`), and only its atlas is bound: `ResolveTextures` writes the frame's rect beside
+ * the handle, and nothing reads it.
+ */
 const entryOf = (
   name: string,
   model: SceneModel,
   unsupported: Set<string>,
-): Texture | CubeTexture | undefined => {
+  time: number,
+): Bound | undefined => {
   const entry = model.texture(name)
-  if (entry && entry.type !== 'animated') return entry
+  if (entry && entry.type !== 'animated') return { name, entry }
+  const atlas = entry && frameAtlas(entry, playbackFrame(entry, time, 'loop'), model.texture)
+  if (atlas) return atlas
   unsupported.add(`texture ${name}`)
   return undefined
 }
@@ -742,11 +761,10 @@ const NOMAD_RAMP: TextureReference = { name: DEFAULT_NOMAD_TEXTURE_NAME, flags: 
 /** A planet mask: an empty slot draws as an empty stage, and one not found drops the stage. */
 const maskStage = (
   { slot, tile }: { slot: TextureReference | undefined; tile: number },
-  model: SceneModel,
-  unsupported: Set<string>,
+  resolve: Resolve,
 ): DrawStage | undefined => {
   if (!slot) return { operation: 'modulate2x', tile }
-  const entry = entryOf(slot.name, model, unsupported)
+  const entry = resolve(slot.name)
   if (!entry) return undefined
   return { operation: 'modulate2x', tile, texture: { ...drawTexture(slot, entry), uvSet: 0 } }
 }
@@ -791,13 +809,12 @@ const secondStage = (
   kind: MaterialClass,
   { emissionTexture, detailTexture, nomadTexture }: Material,
   mesh: VMeshData,
-  model: SceneModel,
-  unsupported: Set<string>,
+  resolve: Resolve,
 ): DrawStage | undefined => {
   if (kind === 'nomad') {
     // No retail material names its own. Stage 1 reads the second set `NomadWriteVert` generates.
     const slot = nomadTexture ?? NOMAD_RAMP
-    const entry = entryOf(slot.name, model, unsupported)
+    const entry = resolve(slot.name)
     if (!entry) return undefined
     return { operation: 'add', texture: { ...drawTexture(slot, entry), uvSet: 1 } }
   }
@@ -808,7 +825,7 @@ const secondStage = (
   const operation = kind === 'emission' ? 'add' : 'modulate2x'
   const slot = kind === 'emission' ? emissionTexture : detailTexture
   if (!slot) return { operation }
-  const entry = entryOf(slot.name, model, unsupported)
+  const entry = resolve(slot.name)
   // Not in the host's libraries: retail always has them, and a white `add` would hide the model.
   if (!entry) return undefined
   return { operation, texture: drawTexture(slot, entry) }
@@ -891,6 +908,7 @@ export const collectModel = (
   /** `kDrawNoCull`: the object was found wholly inside, so its parts aren't tested. */
   noCull = false,
 ): void => {
+  const resolve: Resolve = (name) => entryOf(name, model, unsupported, time)
   for (const part of model.parts) {
     const {
       reference,
@@ -949,8 +967,8 @@ export const collectModel = (
           : kind === 'glow'
             ? undefined
             : material.diffuseTexture
-      const entry = slot && entryOf(slot.name, model, unsupported)
-      const second = secondStage(kind, material, mesh, model, unsupported)
+      const entry = slot && resolve(slot.name)
+      const second = secondStage(kind, material, mesh, resolve)
       // Only the single-pass family asks for an instance (`ApplyVerifyMatAnim`) among those built.
       const anim =
         (kind === 'single' || kind === 'singleTwo' || kind === 'hudAnim' || kind === 'water') &&
@@ -990,8 +1008,8 @@ export const collectModel = (
         mask,
         ...pass
       } of passes) {
-        const cube = pass.environment ? entryOf(pass.environment, model, unsupported) : undefined
-        const stage = mask === undefined ? second : mask && maskStage(mask, model, unsupported)
+        const cube = pass.environment ? resolve(pass.environment)?.entry : undefined
+        const stage = mask === undefined ? second : mask && maskStage(mask, resolve)
         ;(queuedHere ? target : draws).push({
           mesh,
           reference,
