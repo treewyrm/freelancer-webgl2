@@ -17,6 +17,7 @@ import type { SpaceLight } from './light.js'
 import { Clouds, RING_CLOUD_VISIBILITY } from './clouds.js'
 import type { SpaceAsteroidField } from './asteroids.js'
 import { AsteroidBand } from './band.js'
+import { DynamicAsteroids } from './dynamic.js'
 import { buildRing, textureShape, type PlanetRing } from './ring.js'
 import { LightBlink, RETAIL_FLARE_LIGHT, type SpaceFlare } from './flare.js'
 import { NebulaLightning } from './lightning.js'
@@ -920,6 +921,59 @@ test("a field's pieces are numbered through: its own band's, then each exclusion
   // Keyed 500 out from the zone's surface, squared, but no nearer than a quarter of the range: drawn
   // before what's 1000 off.
   assert.deepEqual(names(alone), ['band', 'beyond'])
+})
+
+test("a field's dynamic asteroids draw after its cubes, lit, opaque whole and blended faded", () => {
+  const material = (name: string) => () => ({ name, type: 'DcDt' }) as Material
+  const zone = zoneOf({ type: 'sphere', center: { x: 0, y: 0, z: 0 }, radius: 20000 })
+  const diffuse = { x: 0.5, y: 0.5, z: 0.5 }
+  const rocks = new DynamicAsteroids(
+    { count: 2, maxVelocity: 0 },
+    { zone, diffuse, ambient: { x: 0.25, y: 0.25, z: 0.25 } },
+  )
+  const asteroid: SpaceAsteroidField = {
+    zone,
+    cubeSize: 400,
+    fillDistance: 0,
+    // A field that fades its cubes clears the lights for them, not for the rocks.
+    maxAlpha: 0.5,
+    cube: { mesh, reference, material: material('cube'), texture: () => undefined },
+    diffuse,
+    ambient: diffuse,
+    dynamic: [
+      {
+        rocks,
+        model: { mesh, reference, material: material('rock'), texture: () => undefined },
+      },
+    ],
+  }
+  const light: SpaceLight = {
+    position: { x: 0, y: 0, z: 0 },
+    color: { x: 255, y: 255, z: 255 },
+    range: 100000,
+    type: 'directional',
+    direction: { x: 0, y: 0, z: -1 },
+  }
+  const frameOf = () => collectSpaceFrame(sceneOf([], { asteroids: [asteroid], lights: [light] }))
+  // Placed in the first frame, with no alpha yet: only the camera's own cube.
+  assert.deepEqual(names(frameOf()), ['cube'])
+  const placed = frameOf()
+  assert.deepEqual(names(placed), ['cube', 'rock', 'rock'])
+  const [cube, rock] = [placed.draws[0]!, placed.draws[1]!]
+  assert.equal(cube.lights?.length, 0)
+  assert.equal(rock.lights?.length, 1)
+  assert.deepEqual(rock.ambient, rocks.ambient)
+  // On the sphere's surface, so faded in: blended at 5.
+  assert.ok(rock.diffuse[3] > 0.14 && rock.diffuse[3] < 0.15)
+  assert.equal(rock.blend, true)
+  assert.equal(rock.alphaReference, 5)
+  // Within, whole: opaque at 127.
+  const first = rocks.rocks[0]! as { position: Vector3 }
+  first.position = rocks.centre(sceneOf([]).camera)
+  const whole = frameOf().draws[1]!
+  assert.equal(whole.diffuse[3], 1)
+  assert.equal(whole.blend, false)
+  assert.equal(whole.alphaReference, 127)
 })
 
 test("in a nebula's exclusion zone its shell draws, tinted, as clear as the camera is near its edge", () => {

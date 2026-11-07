@@ -105,7 +105,7 @@ const insideSphere = (random: Random, radius: number): Vector3 => {
 }
 
 /** `random_on_unit_sphere` (`0x631da50`). */
-const onSphere = (random: Random): Vector3 => {
+export const onSphere = (random: Random): Vector3 => {
   const u1 = f(random() * RAND_UNIT)
   const u2 = f(random() * RAND_UNIT)
   const cos = Math.min(Math.max(f(u1 + u1 - 1), -1), 1)

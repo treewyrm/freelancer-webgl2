@@ -19,6 +19,7 @@ import { vertexLayout } from '#/mesh/plan.js'
 import type { AsteroidBand } from './band.js'
 import type { AsteroidBillboards } from './billboards.js'
 import type { Camera } from './camera.js'
+import type { DynamicAsteroids } from './dynamic.js'
 import type { SceneModel } from './frame.js'
 import { immersion, type Zone } from './nebula.js'
 
@@ -228,6 +229,11 @@ export interface CubeExclusion {
   excludeBillboards?: boolean
   /** `billboard_count`, truncated, when above 0: how many billboards stand in it. */
   billboardCount?: number
+  /**
+   * `exclude_dynamic_asteroids` above 0, on a sphere or an ellipsoid (`062a4f81`): no dynamic
+   * asteroid is placed about a point in it.
+   */
+  excludeDynamicAsteroids?: boolean
 }
 
 /** What the cube walk needs of a field, as its file and zone give it. The host reads them. */
@@ -485,4 +491,9 @@ export interface SpaceAsteroidField extends CubeField {
   exclusionBands?: readonly AsteroidBand[]
   /** Its `[AsteroidBillboards]`, when the `Asteroids` option is above 1 and effects are on. */
   billboards?: AsteroidBillboards
+  /**
+   * Its `[DynamicAsteroids]`, in file order, each with its archetype's top level as `mergeCube`
+   * gives it alone: the whole mesh drawn with its first group's material.
+   */
+  dynamic?: readonly { rocks: DynamicAsteroids; model: SpaceAsteroidField['cube'] }[]
 }

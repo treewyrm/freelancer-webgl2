@@ -85,6 +85,15 @@ export const RUNS = {
     effectRate: 96,
     animationSeconds: 0,
   },
+  // As asteroid_inside, its twelve dynamic rocks after the cubes.
+  asteroid_dynamic: {
+    far: [-1000, -600, -1000],
+    farDraw: 87,
+    hullDraw: 65,
+    effectSeconds: 20,
+    effectRate: 96,
+    animationSeconds: 0,
+  },
   asteroid_nebula: {
     far: [-4600, -600, -3400],
     farDraw: 55,

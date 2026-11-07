@@ -43,6 +43,7 @@ import {
 import { AsteroidBand, type BandSettings } from '#/scene/band.js'
 import { NebulaLightning } from '#/scene/lightning.js'
 import { AsteroidBillboards, type BillboardSettings } from '#/scene/billboards.js'
+import { DynamicAsteroids, type DynamicSettings } from '#/scene/dynamic.js'
 import { NebulaExterior, type ExteriorSettings } from '#/scene/exterior.js'
 import { zoneOf, type NebulaExclusion, type SpaceNebula, type Zone } from '#/scene/nebula.js'
 import {
@@ -804,6 +805,10 @@ const loadField = async (
   let band: BandRecord | undefined
   const exclusionBands: BandRecord[] = []
   let billboards: BandRecord | undefined
+  /** Each `[DynamicAsteroids]`: its keys, its `asteroid` and its `zone`, the last named. */
+  const dynamics: { numbers: Record<string, number[]>; asteroid?: string; zone?: string }[] = []
+  /** Each exclusion's zone shape, as `exclude_dynamic_asteroids` reads it. */
+  const exclusionShapes: string[] = []
   for (const section of Document.read(await read(pathOf(file)))) {
     const kind = section.name.toLowerCase()
     if (kind === 'texturepanels')
@@ -814,7 +819,14 @@ const loadField = async (
     if (kind === 'band') band = record
     if (kind === 'exclusionband') exclusionBands.push(record!)
     if (kind === 'asteroidbillboards') billboards = { numbers: {} }
+    if (kind === 'dynamicasteroids') dynamics.push({ numbers: {} })
     for (const line of linesOf(section)) {
+      if (kind === 'dynamicasteroids') {
+        const dynamic = dynamics.at(-1)!
+        dynamic.numbers[line.name] = line.numbers
+        if (line.name === 'asteroid') dynamic.asteroid = line.strings[0]!
+        if (line.name === 'zone') dynamic.zone = line.strings[0]!
+      }
       if (record) {
         record.numbers[line.name] = line.numbers
         if (line.name === 'shape') record.shape = line.strings[0]!
@@ -836,6 +848,11 @@ const loadField = async (
         if (line.name === 'exclusion') {
           const found = zoneFor(system, line.strings[0]!)
           exclusions.push({ zone: found.zone, edgeFraction: found.edgeFraction })
+          exclusionShapes.push(
+            system.zones!.find(
+              ({ nickname }) => nickname.toLowerCase() === line.strings[0]!.toLowerCase(),
+            )!.shape,
+          )
         }
         if (line.name === 'empty_cube_frequency' && exclusions.length)
           exclusions[exclusions.length - 1] = {
@@ -848,6 +865,17 @@ const loadField = async (
           exclusions[exclusions.length - 1] = { ...exclusions.at(-1)!, excludeBillboards: true }
         if (line.name === 'billboard_count' && exclusions.length && whole > 0)
           exclusions[exclusions.length - 1] = { ...exclusions.at(-1)!, billboardCount: whole }
+        // Only a sphere's or an ellipsoid's (`062a4f81`).
+        if (
+          line.name === 'exclude_dynamic_asteroids' &&
+          exclusions.length &&
+          whole > 0 &&
+          ['SPHERE', 'ELLIPSOID'].includes(exclusionShapes.at(-1)!)
+        )
+          exclusions[exclusions.length - 1] = {
+            ...exclusions.at(-1)!,
+            excludeDynamicAsteroids: true,
+          }
       }
     }
   }
@@ -856,7 +884,8 @@ const loadField = async (
   const clamp = (value: number) => Math.min(Math.max(value, -1), 1)
   const libraries: Directory[] = []
   const asteroids: CubeAsteroid[] = []
-  for (const { name, numbers } of lines) {
+  /** An archetype's top level, its libraries kept for the field's lookups. */
+  const topLevel = async (name: string) => {
     const section = asteroidArchetypes.get(name.toLowerCase())!
     const root = Directory.read(await read(pathOf(strings(section, 'DA_archetype')[0]!)))
     libraries.push(root)
@@ -864,13 +893,19 @@ const loadField = async (
       libraries.push(Directory.read(await read(pathOf(path))))
     const model = readRigidModel(root)
     const source = model.type === 'rigid' ? model.part : undefined
-    if (!source) continue
+    if (!source) return undefined
     const level = source.type === 'multilevel' ? source.levels[0]! : source
-    const mesh = getMesh(readVMeshLibrary(root), level.reference.meshId)!
+    return {
+      mesh: getMesh(readVMeshLibrary(root), level.reference.meshId)!,
+      reference: level.reference,
+    }
+  }
+  for (const { name, numbers } of lines) {
+    const found = await topLevel(name)
+    if (!found) continue
     const [, x = 0, y = 0, z = 0, ax = 0, ay = 0, az = 0] = numbers
     asteroids.push({
-      mesh,
-      reference: level.reference,
+      ...found,
       offset: {
         x: Math.fround(half * Math.fround(clamp(x))),
         y: Math.fround(half * Math.fround(clamp(y))),
@@ -880,6 +915,16 @@ const loadField = async (
     })
   }
   const merged = mergeCube(asteroids)!
+  // `CliDynamicAsteroidParseIni`: each section's archetype, its whole top level at its own frame.
+  const rockModels = await Promise.all(
+    dynamics.map(async ({ asteroid }) => {
+      const found = asteroid === undefined ? undefined : await topLevel(asteroid)
+      return (
+        found &&
+        mergeCube([{ ...found, offset: { x: 0, y: 0, z: 0 }, orientation: Matrix4.identity }])
+      )
+    }),
+  )
   const materials = libraries.flatMap((library) => [...readMaterialLibrary(library)])
   const textures = libraries.flatMap((library) => [...readTextureLibrary(library)])
   const color = (key: string) => {
@@ -963,6 +1008,37 @@ const loadField = async (
       { random },
     )
   }
+  const lookups = {
+    material: (id: number) => getMaterial(materials, id),
+    texture: (name: string) =>
+      textures.find((entry) => entry.name.toLowerCase() === name.toLowerCase()),
+  }
+  const dynamic = dynamics.flatMap(({ numbers, zone: own }, at) => {
+    const model = rockModels[at]
+    if (!model) return []
+    const one = (key: string) => numbers[key]?.[0]
+    const shift = numbers['color_shift']
+    const settings: DynamicSettings = {
+      ...(one('count') !== undefined && { count: one('count')! }),
+      ...(one('placement_radius') !== undefined && { placementRadius: one('placement_radius')! }),
+      ...(one('max_velocity') !== undefined && { maxVelocity: one('max_velocity')! }),
+      ...(one('max_angular_velocity') !== undefined && {
+        maxAngularVelocity: one('max_angular_velocity')!,
+      }),
+      ...(shift && { colorShift: { x: shift[0]!, y: shift[1]!, z: shift[2]! } }),
+    }
+    // A `zone` that isn't found is an error, and the field's is used (`0x521130`).
+    const named =
+      own !== undefined &&
+      system.zones!.some(({ nickname }) => nickname.toLowerCase() === own.toLowerCase())
+    const placed = named ? zoneFor(system, own!) : { zone, edgeFraction }
+    const rocks = new DynamicAsteroids(
+      settings,
+      { ...placed, diffuse, ambient, exclusions },
+      { random },
+    )
+    return [{ rocks, model: { ...model, ...lookups } }]
+  })
   return {
     zone,
     edgeFraction,
@@ -972,16 +1048,13 @@ const loadField = async (
     ...(keys['max_alpha'] ? { maxAlpha: keys['max_alpha'][0]! } : {}),
     rotations: cubeRotations(degrees),
     exclusions,
-    cube: {
-      ...merged,
-      material: (id) => getMaterial(materials, id),
-      texture: (name) => textures.find((entry) => entry.name.toLowerCase() === name.toLowerCase()),
-    },
+    cube: { ...merged, ...lookups },
     diffuse,
     ambient,
     ...(ambientIncrease ? { ambientIncrease } : {}),
     ...(band ? { band: bandOf(band) } : {}),
     ...(billboards && { billboards: billboardsOf(billboards) }),
+    ...(dynamic.length && { dynamic }),
     // With no zone found (`FDUMP` at `0x520f7a`) retail builds no ring and still counts its pieces,
     // whose positions it then reads from a table it never made: left out here.
     ...(exclusionBands.length

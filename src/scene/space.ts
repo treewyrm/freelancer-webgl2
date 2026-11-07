@@ -161,6 +161,8 @@ export interface SpaceScene {
   step?: number
   /** The camera cut to this frame, as it does entering a system: clouds are placed afresh. */
   cut?: boolean
+  /** The player's ship is in a trade lane: no dynamic asteroid is placed (`0x525da9`). */
+  lane?: boolean
   /** Its asteroid fields, in the order the system lists them. */
   asteroids?: readonly SpaceAsteroidField[]
   /** Its planets' rings, which the effects option shows (`0x25`). */
@@ -395,6 +397,7 @@ export const collectSpaceFrame = ({
   shine,
   rings = [],
   cut = false,
+  lane = false,
   asteroids = [],
 }: SpaceScene): SpaceFrame => {
   const resolved = { ...RETAIL_SPACE_LIMITS, ...limits }
@@ -527,6 +530,8 @@ export const collectSpaceFrame = ({
     // `CliAsteroidUpdate`: every exclusion band is held under how near the field the camera is.
     const fraction = exclusionBands.length ? nearFieldFraction(asteroid, eye, 1000) : 0
     for (const exclusion of exclusionBands) exclusion.update(eye, fraction)
+    // Then its dynamic asteroids, near the field or not (`0x5223a6`).
+    for (const { rocks } of asteroid.dynamic ?? []) rocks.update(given, step, { blocked: lane })
     // Its pieces numbered through, its own band's first (`FUN_00524740`, `FUN_00522850`).
     const numbered = [...(band ? [band] : []), ...exclusionBands].flatMap((owner) =>
       owner.pieces.map((piece, at) => ({ owner, piece, at })),
@@ -595,7 +600,12 @@ export const collectSpaceFrame = ({
    */
   const drawField = (asteroid: SpaceAsteroidField) => {
     const cubes = fieldCubes(asteroid, given, aspect)
-    if (!cubes.length && !asteroid.billboards) return
+    const dynamic = (asteroid.dynamic ?? []).map(({ rocks, model }) => ({
+      rocks,
+      model,
+      draws: rocks.draws(),
+    }))
+    if (!cubes.length && !asteroid.billboards && !dynamic.some(({ draws }) => draws.length)) return
     const frame = Matrix4.fromRotationTranslation(given.orientation, eye)
     const point = Matrix4.transformPoint({ x: 0, y: 0, z: 100 }, frame)
     // Fogged and lit by the nebula only with `contains_fog_zone`, and the camera in its field.
@@ -634,10 +644,12 @@ export const collectSpaceFrame = ({
       )
     const fading = (asteroid.maxAlpha ?? 1) < 1
     const { diffuse, ambient: tint } = asteroid
-    for (const { position, orientation, alpha } of cubes) {
+    // A mesh drawn whole at a frame, with no part test; returns where its draws begin.
+    const drawWhole = (
+      { mesh, reference, ...lookups }: SpaceAsteroidField['cube'],
+      world: Matrix4,
+    ) => {
       const first = draws.length
-      const world = Matrix4.multiply(Matrix4.translation(position), orientation)
-      const { mesh, reference, ...lookups } = asteroid.cube
       collectModel(
         { ...lookups, mesh: () => mesh, parts: [{ reference, world, mesh }] },
         camera,
@@ -651,6 +663,11 @@ export const collectSpaceFrame = ({
         resolved,
         true,
       )
+      return first
+    }
+    for (const { position, orientation, alpha } of cubes) {
+      const world = Matrix4.multiply(Matrix4.translation(position), orientation)
+      const first = drawWhole(asteroid.cube, world)
       for (let index = first; index < draws.length; index++) {
         const blended = alpha < 1
         draws[index] = {
@@ -672,6 +689,33 @@ export const collectSpaceFrame = ({
         }
       }
     }
+    /**
+     * `CliDynamicAsteroidDraw`, each section's rocks after the cubes. A fading field's cubes undo
+     * the pass, so the rocks run it again (`0x5226b9`): always lit. Each sets its tints and its
+     * alpha; whole, it's opaque at `ALPHAREF` 127, else blended at 5. Depth writes are the
+     * material's: retail leaves them alone.
+     */
+    for (const { rocks, model, draws: placed } of dynamic)
+      for (const { world, alpha } of placed) {
+        const first = drawWhole(model, world)
+        for (let index = first; index < draws.length; index++) {
+          const blended = alpha < 1
+          draws[index] = {
+            ...draws[index]!,
+            diffuse: [rocks.diffuse.x, rocks.diffuse.y, rocks.diffuse.z, alpha],
+            ambient: rocks.ambient,
+            emissive: { x: 0, y: 0, z: 0 },
+            lights: lit.lights,
+            sceneAmbient,
+            depthFunc: 'lequal',
+            blend: blended,
+            blendMode: 'alpha',
+            alphaFunction: 'greater',
+            alphaReference: blended ? 5 : 127,
+            ...(fog ? { fog } : {}),
+          }
+        }
+      }
   }
   /**
    * `FNebulaEffect::DrawExclusionShell` (`0x508f20`): the shell of the exclusion zone the camera is

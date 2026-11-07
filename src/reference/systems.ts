@@ -245,6 +245,7 @@ const ASTEROID_FIELD_FILE = 'solar\\asteroids\\lab\\lab_field.ini'
 const ASTEROID_NEBULA_FILE = 'solar\\nebula\\lab\\lab_nebula.ini'
 const ASTEROID_EXBAND_FILE = 'solar\\asteroids\\lab\\lab_field_exband.ini'
 const ASTEROID_BILLBOARDS_FILE = 'solar\\asteroids\\lab\\lab_field_billboards.ini'
+const ASTEROID_DYNAMIC_FILE = 'solar\\asteroids\\lab\\lab_field_dynamic.ini'
 
 /**
  * Br01's Cornwall field, with no `[DynamicAsteroids]` or `[AsteroidBillboards]`, whose `rand()`
@@ -682,6 +683,30 @@ const ASTEROIDS_BILLBOARDS: Omit<ReferenceSystem, 'name' | 'player'> = {
   ],
 }
 
+/** The lab field with Cornwall's `[DynamicAsteroids]` as written, `placement_offset` and all. */
+const LAB_FIELD_DYNAMIC = LAB_FIELD.concat(
+  [
+    '',
+    '[DynamicAsteroids]',
+    'asteroid = DAsteroid_mineable_small1',
+    'count = 12',
+    'placement_radius = 150',
+    'placement_offset = 90',
+    'max_velocity = 10',
+    'max_angular_velocity = 3',
+    'color_shift = 1, 1, 1',
+  ].join('\r\n'),
+)
+
+const ASTEROIDS_DYNAMIC: Omit<ReferenceSystem, 'name' | 'player'> = {
+  ...ASTEROIDS,
+  asteroids: [{ file: ASTEROID_DYNAMIC_FILE, zone: 'Lab_field' }],
+  files: [
+    { path: ASTEROID_DYNAMIC_FILE, text: LAB_FIELD_DYNAMIC },
+    { path: ASTEROID_NEBULA_FILE, text: LAB_NEBULA },
+  ],
+}
+
 const ASTEROIDS_EXBAND: Omit<ReferenceSystem, 'name' | 'player'> = {
   ...ASTEROIDS,
   asteroids: [{ file: ASTEROID_EXBAND_FILE, zone: 'Lab_field' }],
@@ -785,6 +810,13 @@ export const systems: ReadonlyMap<string, ReferenceSystem> = new Map(
       // In the field, as asteroid_inside: its billboards in a sphere 1000 on, none about the station.
       name: 'asteroid_billboards',
       ...ASTEROIDS_BILLBOARDS,
+      player: { ...RING_PLAYER, position: [0, 0, 0] },
+    } satisfies ReferenceSystem,
+    {
+      // In the field, as asteroid_inside: its twelve rocks on a sphere of 150 about a point 105
+      // ahead, after the cubes.
+      name: 'asteroid_dynamic',
+      ...ASTEROIDS_DYNAMIC,
       player: { ...RING_PLAYER, position: [0, 0, 0] },
     } satisfies ReferenceSystem,
     {

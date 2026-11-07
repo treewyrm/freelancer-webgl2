@@ -578,7 +578,29 @@ renderer. Random streams need not match retail; each appearance's sizes, colours
       sizes and flips are `rand()`'s: we draw 368 rocks to its 376, 374 over 200 seeds.
 - [x] **You:** `asteroid_billboards` (`src/reference/systems.ts`): the lab field with Cornwall's
       billboards, none about the station.
-- [ ] An asteroid field's dynamic asteroids, which `rand()` drives.
+- [x] An asteroid field's `[DynamicAsteroids]`: `DynamicAsteroids` (`src/scene/dynamic.ts`), from
+      `CliDynamicAsteroidUpdate` (`FUN_00525c80`), `Place` (`FUN_00525200`) and
+      `CliDynamicAsteroidDraw` (`FUN_005261b0`). `count` rocks, scaled by `(1 - d) · 0.5 + d`, on a
+      sphere of `placement_radius` about a point 0.7 of it ahead (75 when it's unwritten;
+      `placement_offset` is never read). Each placed with a velocity squared toward `max_velocity`
+      and a spin up to `max_angular_velocity` about its own axes, faded over the outer 0.35 of the
+      radius squared, and placed afresh past 1.05. None placed outside the section's `zone`, in a lane
+      (`SpaceScene.lane`), or in an exclusion zone with `exclude_dynamic_asteroids` within 100 of the
+      camera; then those out are released. Updated every frame, near the field or not; drawn after
+      the cubes, the archetype's top level whole with its first material, lit by the field's pass even
+      when the cubes fade, tinted by `color_shift`, opaque at `ALPHAREF` 127 or blended at 5. A new
+      rock's alpha is the heap's, taken as 0, so it shows from its second frame. Pinned by reading.
+      **Matched in `asteroid_dynamic`** (`src/reference/dynamic.test.ts`), in kind: draw for draw
+      to the cubes' end, then twelve rocks to retail's twelve. Each of retail's is where ours could
+      be, within `sqrt(1.05) · 150` of a point 105 ahead, and its alpha is our fade at its place to
+      1e-4, so its state is ours: four whole at `ALPHAREF` 127, eight blended at 5, depth written.
+      Tints, the field's ambient and its light match; each frame is turned, unscaled. Retail streams
+      the indices for each rock, 120 on each time. Motion is IVP's, taken as constant: damping,
+      precession and collisions are unchecked, as a still can't show them. Not built: the
+      `particle_effect` companion at the rock's alpha, and shooting one (loot, explosion), which are
+      gameplay.
+- [x] **You:** `asteroid_dynamic` (`src/reference/systems.ts`): the lab field with Cornwall's
+      `[DynamicAsteroids]`, from inside it.
 - [ ] Suns: a solar's `star` from `solar\StarArch.ini`, drawn by `FStarSphere` (`star_sphere.cpp`;
       the name is the decomp's, not a sky). Its `star_center` and `star_glow` fans turned to the camera
       (`FUN_0050cd50`), sized by `radius`. Drawn outside `SpaceObjDrawPass`, around the cockpit pass
