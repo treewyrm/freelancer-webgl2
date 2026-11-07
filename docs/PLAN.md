@@ -560,7 +560,20 @@ renderer. Random streams need not match retail; each appearance's sizes, colours
       the load, the disable and `DrawFogOverlay`'s draw (`0x508cdf`). With a positive `gap` it stays
       dark; with none it would draw from a null texture and unfilled segments. No retail file has
       one. `[Clouds] lightning_shape`, `lightning_size` and `llight_*` are parsed and never read.
-- [ ] An asteroid field's billboards and dynamic asteroids, which `rand()` drives.
+- [x] An asteroid field's `[AsteroidBillboards]`: `AsteroidBillboards`, from `BillboardEnsureRocks`
+      (`FUN_0054de10`) and `BillboardDraw` (`FUN_0054e900`), its lighting (`FUN_0054e130`) and
+      emission (`FUN_0054f9f0`). Rocks in a sphere ahead, `start_dist` on and as wide as tan 35°
+      lets it, scattered afresh on a cut and back on its surface as they leave; each a triangle
+      facing the camera, its base along the right or the up and its UVs flipped by `rand()`, faded
+      toward the sphere's edge (narrower past its centre) and in front of the cubes' reach. Hidden
+      outside the field, in a zone with `exclude_billboards`, or past a zone's `billboard_count`
+      share. Lit at the camera's corners by up to four directional lights over the field's ambient
+      pass, tinted by `color_shift`; retail picks each corner by rock 0's U flip. Drawn just before
+      the field's cubes, opaque at `ALPHAREF` 128, then the faded blended at 5. Its options test,
+      `Asteroids` above 1, is the host's. Pinned by reading. **Uncaptured.**
+- [ ] **You:** `asteroid_billboards` (`src/reference/systems.ts`): the lab field with Cornwall's
+      billboards, none about the station.
+- [ ] An asteroid field's dynamic asteroids, which `rand()` drives.
 - [ ] Suns: a solar's `star` from `solar\StarArch.ini`, drawn by `FStarSphere` (`star_sphere.cpp`;
       the name is the decomp's, not a sky). Its `star_center` and `star_glow` fans turned to the camera
       (`FUN_0050cd50`), sized by `radius`. Drawn outside `SpaceObjDrawPass`, around the cockpit pass

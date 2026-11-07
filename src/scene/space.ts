@@ -595,7 +595,7 @@ export const collectSpaceFrame = ({
    */
   const drawField = (asteroid: SpaceAsteroidField) => {
     const cubes = fieldCubes(asteroid, given, aspect)
-    if (!cubes.length) return
+    if (!cubes.length && !asteroid.billboards) return
     const frame = Matrix4.fromRotationTranslation(given.orientation, eye)
     const point = Matrix4.transformPoint({ x: 0, y: 0, z: 100 }, frame)
     // Fogged and lit by the nebula only with `contains_fog_zone`, and the camera in its field.
@@ -618,6 +618,20 @@ export const collectSpaceFrame = ({
       z: byte(lit.ambient.z, raise.z),
     }
     const fog = nebula && fogOf(nebula.start, fogEnd(nebula, point), nebula.nebula.fog.color)
+    // `CliAsteroidTickOne` (`0x5225fd`): its billboards before its cubes, lit at the camera under
+    // the same pass's ambient.
+    if (asteroid.billboards)
+      draws.push(
+        ...asteroid.billboards.draw(
+          given,
+          {
+            ambient: sceneAmbient,
+            lights: directionalLightsAt(lighting, eye, time).lights,
+            ...(fog && { fog }),
+          },
+          cut,
+        ),
+      )
     const fading = (asteroid.maxAlpha ?? 1) < 1
     const { diffuse, ambient: tint } = asteroid
     for (const { position, orientation, alpha } of cubes) {

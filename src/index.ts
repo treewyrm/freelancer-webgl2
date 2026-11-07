@@ -81,6 +81,12 @@ export {
 export { fogOverlayDraw } from '#/scene/overlay.js'
 export { fillSheetsDraw } from '#/scene/sheets.js'
 export {
+  AsteroidBillboards,
+  type BillboardField,
+  type BillboardLighting,
+  type BillboardSettings,
+} from '#/scene/billboards.js'
+export {
   NebulaExterior,
   RETAIL_EXTERIOR_LIMITS,
   textureHasAlpha,

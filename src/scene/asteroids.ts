@@ -17,6 +17,7 @@ import {
 } from '@treewyrm/freelancer/vmesh'
 import { vertexLayout } from '#/mesh/plan.js'
 import type { AsteroidBand } from './band.js'
+import type { AsteroidBillboards } from './billboards.js'
 import type { Camera } from './camera.js'
 import type { SceneModel } from './frame.js'
 import { immersion, type Zone } from './nebula.js'
@@ -223,6 +224,10 @@ export interface CubeExclusion {
   edgeFraction?: number
   /** `empty_cube_frequency` of its own: then it thins the cubes rather than taking them. */
   emptyFrequency?: number
+  /** `exclude_billboards` above 0: no billboard stands in it. */
+  excludeBillboards?: boolean
+  /** `billboard_count`, truncated, when above 0: how many billboards stand in it. */
+  billboardCount?: number
 }
 
 /** What the cube walk needs of a field, as its file and zone give it. The host reads them. */
@@ -307,7 +312,7 @@ export const nearFieldFraction = (
 }
 
 /** `AsteroidExclusionZone::update_dist`: how far outside a zone the camera is, squared. */
-const outsideSquared = ({ zone }: CubeExclusion, eye: Vector3): number => {
+export const outsideSquared = ({ zone }: CubeExclusion, eye: Vector3): number => {
   const d = {
     x: f(eye.x - zone.position.x),
     y: f(eye.y - zone.position.y),
@@ -478,4 +483,6 @@ export interface SpaceAsteroidField extends CubeField {
   band?: AsteroidBand
   /** Its `[ExclusionBand]`s, in file order, each about its own `zone`. */
   exclusionBands?: readonly AsteroidBand[]
+  /** Its `[AsteroidBillboards]`, when the `Asteroids` option is above 1 and effects are on. */
+  billboards?: AsteroidBillboards
 }

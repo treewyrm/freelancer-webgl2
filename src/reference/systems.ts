@@ -244,6 +244,7 @@ const RING_PLAYER: Omit<ReferenceSystem['player'], 'position'> = {
 const ASTEROID_FIELD_FILE = 'solar\\asteroids\\lab\\lab_field.ini'
 const ASTEROID_NEBULA_FILE = 'solar\\nebula\\lab\\lab_nebula.ini'
 const ASTEROID_EXBAND_FILE = 'solar\\asteroids\\lab\\lab_field_exband.ini'
+const ASTEROID_BILLBOARDS_FILE = 'solar\\asteroids\\lab\\lab_field_billboards.ini'
 
 /**
  * Br01's Cornwall field, with no `[DynamicAsteroids]` or `[AsteroidBillboards]`, whose `rand()`
@@ -651,6 +652,36 @@ const CLOUDS: Omit<ReferenceSystem, 'name' | 'player'> = {
   files: [{ path: CLOUDS_NEBULA_FILE, text: LAB_CLOUDS_NEBULA }],
 }
 
+/**
+ * The lab field with Cornwall's own `[AsteroidBillboards]`, which `rand()` scatters, and none about
+ * the station: its exclusion zone has `exclude_billboards`.
+ */
+const LAB_FIELD_BILLBOARDS = LAB_FIELD.replace(
+  'exclusion = Lab_station_exclusion',
+  'exclusion = Lab_station_exclusion\r\nexclude_billboards = 1',
+).concat(
+  [
+    '',
+    '[AsteroidBillboards]',
+    'count = 400',
+    'start_dist = 1000',
+    'fade_dist_percent = 0.35',
+    'shape = mine_rock_tri',
+    'color_shift = 0.8, 0.8, 0.8',
+    'ambient_intensity = 1',
+    'size = 60, 120',
+  ].join('\r\n'),
+)
+
+const ASTEROIDS_BILLBOARDS: Omit<ReferenceSystem, 'name' | 'player'> = {
+  ...ASTEROIDS,
+  asteroids: [{ file: ASTEROID_BILLBOARDS_FILE, zone: 'Lab_field' }],
+  files: [
+    { path: ASTEROID_BILLBOARDS_FILE, text: LAB_FIELD_BILLBOARDS },
+    { path: ASTEROID_NEBULA_FILE, text: LAB_NEBULA },
+  ],
+}
+
 const ASTEROIDS_EXBAND: Omit<ReferenceSystem, 'name' | 'player'> = {
   ...ASTEROIDS,
   asteroids: [{ file: ASTEROID_EXBAND_FILE, zone: 'Lab_field' }],
@@ -749,6 +780,12 @@ export const systems: ReadonlyMap<string, ReferenceSystem> = new Map(
       name: 'nebula_clouds_hole',
       ...CLOUDS,
       player: { ...RING_PLAYER, position: [3000, 0, -150] },
+    } satisfies ReferenceSystem,
+    {
+      // In the field, as asteroid_inside: its billboards in a sphere 1000 on, none about the station.
+      name: 'asteroid_billboards',
+      ...ASTEROIDS_BILLBOARDS,
+      player: { ...RING_PLAYER, position: [0, 0, 0] },
     } satisfies ReferenceSystem,
     {
       name: 'ring_outside',

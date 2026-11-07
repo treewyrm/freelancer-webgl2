@@ -42,6 +42,7 @@ import {
 } from '#/scene/asteroids.js'
 import { AsteroidBand, type BandSettings } from '#/scene/band.js'
 import { NebulaLightning } from '#/scene/lightning.js'
+import { AsteroidBillboards, type BillboardSettings } from '#/scene/billboards.js'
 import { NebulaExterior, type ExteriorSettings } from '#/scene/exterior.js'
 import { zoneOf, type NebulaExclusion, type SpaceNebula, type Zone } from '#/scene/nebula.js'
 import {
@@ -780,6 +781,7 @@ const loadField = async (
   system: ReferenceSystem,
   file: string,
   zoneName: string,
+  random: () => number,
 ): Promise<SpaceAsteroidField> => {
   const asteroidArchetypes = await sectionsOf(read, ['SOLAR/asteroidarch.ini'])
   const { zone, edgeFraction } = zoneFor(system, zoneName)
@@ -801,6 +803,7 @@ const loadField = async (
   }
   let band: BandRecord | undefined
   const exclusionBands: BandRecord[] = []
+  let billboards: BandRecord | undefined
   for (const section of Document.read(await read(pathOf(file)))) {
     const kind = section.name.toLowerCase()
     if (kind === 'texturepanels')
@@ -810,6 +813,7 @@ const loadField = async (
       kind === 'band' || kind === 'exclusionband' ? { numbers: {} } : undefined
     if (kind === 'band') band = record
     if (kind === 'exclusionband') exclusionBands.push(record!)
+    if (kind === 'asteroidbillboards') billboards = { numbers: {} }
     for (const line of linesOf(section)) {
       if (record) {
         record.numbers[line.name] = line.numbers
@@ -817,6 +821,10 @@ const loadField = async (
         if (line.name === 'offset_dist') record.offset = { distance: line.numbers[0]! }
         if (line.name === 'offset_percent') record.offset = { percent: line.numbers[0]! }
         if (line.name === 'zone') record.zone = line.strings[0]!
+      }
+      if (kind === 'asteroidbillboards') {
+        billboards!.numbers[line.name] = line.numbers
+        if (line.name === 'shape') billboards!.shape = line.strings[0]!
       }
       if (kind === 'field') keys[line.name] = line.numbers
       if (kind === 'cube') {
@@ -834,6 +842,12 @@ const loadField = async (
             ...exclusions.at(-1)!,
             emptyFrequency: line.numbers[0]!,
           }
+        // Each truncated, and taken only above 0 (`062a4f0b`, `062a4f40`).
+        const whole = Math.trunc(line.numbers[0] ?? 0)
+        if (line.name === 'exclude_billboards' && exclusions.length && whole > 0)
+          exclusions[exclusions.length - 1] = { ...exclusions.at(-1)!, excludeBillboards: true }
+        if (line.name === 'billboard_count' && exclusions.length && whole > 0)
+          exclusions[exclusions.length - 1] = { ...exclusions.at(-1)!, billboardCount: whole }
       }
     }
   }
@@ -921,11 +935,39 @@ const loadField = async (
       ...(ambientIncrease ? { ambientIncrease } : {}),
     })
   }
+  const fillDistance = Math.trunc(keys['fill_dist']?.[0] ?? 1200)
+  const billboardsOf = ({ numbers, shape }: BandRecord) => {
+    const one = (key: string) => numbers[key]?.[0]
+    const size = numbers['size']
+    const shift = numbers['color_shift']
+    const found = shape === undefined ? undefined : shapes.get(shape.toLowerCase())
+    const settings: BillboardSettings = {
+      ...(found && { shape: found }),
+      ...(one('count') !== undefined && { count: Math.trunc(one('count')!) }),
+      ...(size && {
+        size: (size[1]! < size[0]! ? [size[1]!, size[0]!] : [size[0]!, size[1]!]) as [
+          number,
+          number,
+        ],
+      }),
+      ...(one('start_dist') !== undefined && { startDistance: one('start_dist')! }),
+      ...(one('fade_dist_percent') !== undefined && { fadePercent: one('fade_dist_percent')! }),
+      ...(one('ambient_intensity') !== undefined && {
+        ambientIntensity: one('ambient_intensity')!,
+      }),
+      ...(shift && { colorShift: { x: shift[0]!, y: shift[1]!, z: shift[2]! } }),
+    }
+    return new AsteroidBillboards(
+      settings,
+      { zone, edgeFraction, fillDistance, cubeSize, diffuse, ambient, exclusions },
+      { random },
+    )
+  }
   return {
     zone,
     edgeFraction,
     cubeSize,
-    fillDistance: Math.trunc(keys['fill_dist']?.[0] ?? 1200),
+    fillDistance,
     ...(keys['empty_cube_frequency'] ? { emptyFrequency: keys['empty_cube_frequency'][0]! } : {}),
     ...(keys['max_alpha'] ? { maxAlpha: keys['max_alpha'][0]! } : {}),
     rotations: cubeRotations(degrees),
@@ -939,6 +981,7 @@ const loadField = async (
     ambient,
     ...(ambientIncrease ? { ambientIncrease } : {}),
     ...(band ? { band: bandOf(band) } : {}),
+    ...(billboards && { billboards: billboardsOf(billboards) }),
     // With no zone found (`FDUMP` at `0x520f7a`) retail builds no ring and still counts its pieces,
     // whose positions it then reads from a table it never made: left out here.
     ...(exclusionBands.length
@@ -1282,7 +1325,7 @@ export const loadSystem = async (
     rings,
     shine: { texture: await shapeOf(read, 'shine') },
     asteroids: await Promise.all(
-      (system.asteroids ?? []).map(({ file, zone }) => loadField(read, system, file, zone)),
+      (system.asteroids ?? []).map(({ file, zone }) => loadField(read, system, file, zone, rand)),
     ),
     nebulae: await Promise.all(
       (system.nebulae ?? []).map(({ file, zone }) =>
