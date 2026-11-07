@@ -612,6 +612,29 @@ test("a nebula's bits: after its field's list from outside, after the overlay in
   ])
 })
 
+test("a nebula's clouds draw last in its field, fogged to its range; outside it, never", () => {
+  const shape = textureShape({ name: 'puffs', width: 64, height: 64 } as Texture, {})
+  const withClouds = (nebula: SpaceNebula): SpaceNebula => ({
+    ...nebula,
+    clouds: [
+      new Clouds(
+        { puffCount: 20, puffRadius: 5, maxDistance: 100, nearFade: [1, 2], shapes: [shape] },
+        { random: () => 16384 },
+      ),
+    ],
+  })
+  const objects = [objectOf('main', 900), objectOf('in field', 300)]
+  const core = withClouds(slabOf(350, -650, 100))
+  const frame = collectSpaceFrame(sceneOf(objects, { nebulae: [core], cut: true }))
+  assert.deepEqual(names(frame).slice(-2), ['in field', 'clouds'])
+  const clouds = frame.draws.at(-1)!
+  assert.equal(clouds.cull, 'none')
+  assert.deepEqual(clouds.fog, { color: { x: 0, y: 0, z: 0 }, start: 0, end: 100 })
+  // From outside, none.
+  const outside = withClouds(AHEAD)
+  assert.ok(!collected(objects, { nebulae: [outside], cut: true }).includes('clouds'))
+})
+
 test('at its edge, what it fully holds shows only within the fog', () => {
   // The camera is 600 in, short of the fog's 700, which ends 700 away.
   const nebulae = [nebulaAt(-700, 1300, 700)]

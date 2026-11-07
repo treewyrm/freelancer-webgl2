@@ -130,7 +130,12 @@ export interface CloudDrawOptions {
   cut?: boolean
   /** How far a point is in what holds the clouds, which a fresh puff must be. */
   holds?: (point: Vector3) => number
+  /** How far a point is in an exclusion zone of the owner's: past 0.9, a puff there is hidden. */
+  excluded?: (point: Vector3) => number
 }
+
+// `DAT_005e0e00`: how deep in an exclusion zone hides a puff.
+const EXCLUDED = f(0.9)
 
 export class Clouds {
   readonly settings: CloudSettings
@@ -233,9 +238,9 @@ export class Clouds {
 
   /**
    * `FUN_005513b0`, on a camera cut: as many as the budget allows anywhere in the sphere, the rest
-   * hidden, each kept only where `holds` says the owner is. A nebula's exclusion zones aren't built.
+   * hidden, each kept only where `holds` says the owner is, and hidden deep in an exclusion zone.
    */
-  #regenerate(holds?: (point: Vector3) => number): void {
+  #regenerate(holds?: (point: Vector3) => number, excluded?: (point: Vector3) => number): void {
     const { random, settings } = this
     this.#puffs.forEach((puff, index) => {
       if (index >= this.#budget) {
@@ -252,7 +257,7 @@ export class Clouds {
       puff.velocity = insideSphere(random, f(settings.drift ?? 0))
       const inside = holds !== undefined && holds(puff.position) > 0
       puff.active = inside
-      puff.hidden = !inside
+      puff.hidden = !inside || (excluded !== undefined && excluded(puff.position) > EXCLUDED)
     })
   }
 
@@ -275,13 +280,15 @@ export class Clouds {
 
   /**
    * `FUN_00550d40`: the sphere follows the camera; puffs that left it go, and as many as
-   * `visibility` allows come back on its surface, where `holds` says the owner is, and drift.
+   * `visibility` allows come back on its surface, where `holds` says the owner is, and drift. One
+   * back deep in an exclusion zone counts, hidden.
    */
   update(
     camera: Camera,
     step: number,
     visibility: number,
     holds?: (point: Vector3) => number,
+    excluded?: (point: Vector3) => number,
   ): void {
     const { settings, random } = this
     const count = this.#puffs.length
@@ -335,7 +342,7 @@ export class Clouds {
         if (visibility >= this.visibility.spawn || (holds && holds(position) > 0)) {
           active++
           puff.active = true
-          puff.hidden = false
+          puff.hidden = excluded !== undefined && excluded(position) > EXCLUDED
         }
       }
       if (!puff.active || puff.hidden) continue
@@ -376,9 +383,9 @@ export class Clouds {
    * Unlit, blended, both sides, no depth writes, the alpha test at 5. Nothing with none active.
    * Its depth function is the main list's, `LEQUAL`, and it draws in view space.
    */
-  draw(camera: Camera, { cut = false, holds }: CloudDrawOptions = {}): Draw | undefined {
+  draw(camera: Camera, { cut = false, holds, excluded }: CloudDrawOptions = {}): Draw | undefined {
     const { settings } = this
-    if (cut) this.#regenerate(holds)
+    if (cut) this.#regenerate(holds, excluded)
     const first = settings.shapes[0]
     if (this.#active === 0 || !first) return undefined
     const view = viewMatrix(camera)

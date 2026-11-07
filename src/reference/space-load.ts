@@ -25,7 +25,13 @@ import { attachJoint, partTransforms } from '#/scene/hierarchy.js'
 import { LightBlink, RETAIL_FLARE_LIGHT, type FlareLight, type SpaceFlare } from '#/scene/flare.js'
 import { lodRange, type LodList } from '#/scene/level.js'
 import type { Graph, SpaceLight } from '#/scene/light.js'
-import { Clouds, RING_CLOUD_VISIBILITY, type CloudSettings } from '#/scene/clouds.js'
+import {
+  Clouds,
+  NEBULA_CLOUD_VISIBILITY,
+  RING_CLOUD_VISIBILITY,
+  type CloudSettings,
+  type CloudVisibility,
+} from '#/scene/clouds.js'
 import {
   cubeRotations,
   entryOrientation,
@@ -490,43 +496,72 @@ const loadRing = async (
     ...(numbers('num_segments') ? { segments: numbers('num_segments')![0]! } : {}),
     ...(numbers('transition_dist') ? { transitionDistance: numbers('transition_dist')![0]! } : {}),
   }
-  // `[Clouds]` keys, as `FUN_00550240` reads them: those a ring file uses.
-  const cloudsOf = (section: Section): Clouds => {
-    const value = (key: string, at = 0) => {
-      const found = section.getValue(key, at)
-      return found === undefined ? undefined : Number(found.value)
-    }
-    const colors = section.properties
-      .filter(({ name }) => /^puff_color[ab]$/i.test(name))
-      .slice(0, 2)
-      .map(({ values }) => {
-        const [x, y, z] = values.map(({ value }) => Math.fround(Number(value) / 255))
-        return { x: x!, y: y!, z: z! }
-      })
-    const settings: CloudSettings = {
-      puffCount: Math.trunc(value('puff_count') ?? 0),
-      shapes: strings(section, 'puff_shape')
-        .slice(0, 8)
-        .map((name) => shapes.get(name.toLowerCase())),
-      ...(value('puff_radius') !== undefined ? { puffRadius: value('puff_radius')! } : {}),
-      ...(colors[0] ? { colorA: colors[0] } : {}),
-      ...(colors[1] ? { colorB: colors[1] } : {}),
-      ...(section.getValue('puff_weights')
-        ? { weights: section.getValues('puff_weights')!.map(({ value }) => Number(value)) }
-        : {}),
-      ...(value('puff_max_alpha') !== undefined ? { maxAlpha: value('puff_max_alpha')! } : {}),
-      ...(value('puff_drift') !== undefined ? { drift: value('puff_drift')! } : {}),
-      ...(value('max_distance') !== undefined ? { maxDistance: value('max_distance')! } : {}),
-      ...(value('near_fade_distance') !== undefined
-        ? { nearFade: [value('near_fade_distance')!, value('near_fade_distance', 1)!] as const }
-        : {}),
-    }
-    return new Clouds(settings, { visibility: RING_CLOUD_VISIBILITY, random })
-  }
+  const cloudsOf = (section: Section) => cloudsFrom(section, shapes, RING_CLOUD_VISIBILITY, random)
   return {
     ...buildRing(ring, zone, { highDetailTextures }),
     ...(clouds.length ? { clouds: clouds.map(cloudsOf) } : {}),
   }
+}
+
+/**
+ * `[Clouds]` keys, as `FUN_00550240` reads them, for a ring or a nebula. With no `lightning_duration`
+ * a puff never flashes (`+0xa0`, 0).
+ */
+const cloudsFrom = (
+  section: Section,
+  shapes: ReadonlyMap<string, TextureShape>,
+  visibility: CloudVisibility,
+  random: () => number,
+): Clouds => {
+  const value = (key: string, at = 0) => {
+    const found = section.getValue(key, at)
+    return found === undefined ? undefined : Number(found.value)
+  }
+  const colorOf = (key: string) => {
+    const found = section.getValues(key)
+    if (!found) return undefined
+    const [x, y, z] = found.map(({ value }) => Math.fround(Number(value) / 255))
+    return { x: x!, y: y!, z: z! }
+  }
+  const colors = section.properties
+    .filter(({ name }) => /^puff_color[ab]$/i.test(name))
+    .slice(0, 2)
+    .map(({ values }) => {
+      const [x, y, z] = values.map(({ value }) => Math.fround(Number(value) / 255))
+      return { x: x!, y: y!, z: z! }
+    })
+  const duration = value('lightning_duration')
+  const settings: CloudSettings = {
+    puffCount: Math.trunc(value('puff_count') ?? 0),
+    shapes: strings(section, 'puff_shape')
+      .slice(0, 8)
+      .map((name) => shapes.get(name.toLowerCase())),
+    ...(value('puff_radius') !== undefined ? { puffRadius: value('puff_radius')! } : {}),
+    ...(colors[0] ? { colorA: colors[0] } : {}),
+    ...(colors[1] ? { colorB: colors[1] } : {}),
+    ...(section.getValue('puff_weights')
+      ? { weights: section.getValues('puff_weights')!.map(({ value }) => Number(value)) }
+      : {}),
+    ...(value('puff_max_alpha') !== undefined ? { maxAlpha: value('puff_max_alpha')! } : {}),
+    ...(value('puff_drift') !== undefined ? { drift: value('puff_drift')! } : {}),
+    ...(value('max_distance') !== undefined ? { maxDistance: value('max_distance')! } : {}),
+    ...(value('near_fade_distance') !== undefined
+      ? { nearFade: [value('near_fade_distance')!, value('near_fade_distance', 1)!] as const }
+      : {}),
+    ...(duration
+      ? {
+          lightning: {
+            color: colorOf('lightning_color') ?? { x: 0, y: 0, z: 0 },
+            ...(value('lightning_intensity') !== undefined
+              ? { intensity: value('lightning_intensity')! }
+              : {}),
+            gap: value('lightning_gap') ?? 0,
+            duration,
+          },
+        }
+      : {}),
+  }
+  return new Clouds(settings, { visibility, random })
 }
 
 /** A system's zone as the scene's code reads one, and its `edge_fraction`. */
@@ -600,7 +635,7 @@ const loadNebula = async (
   camera: Camera,
   random: () => number,
 ): Promise<SpaceNebula> => {
-  const { zone } = zoneFor(system, zoneName)
+  const { zone, edgeFraction } = zoneFor(system, zoneName)
   // `zone_shell` and the keys after it, by name, shared by every zone naming it.
   const shells = new Map<
     string,
@@ -615,6 +650,7 @@ const loadNebula = async (
   const background: { duration?: number } = {}
   const dynamic: { duration?: number } = {}
   const shapes = new Map<string, TextureShape>()
+  const clouds: Section[] = []
   let fillName: string | undefined
   // `[Exterior]`'s keys, as `ParseExteriorSection` reads them: at most eight shapes, by name.
   const exterior: { shapes: string[]; numbers: Record<string, number[]> } = {
@@ -626,6 +662,7 @@ const loadNebula = async (
     if (kind === 'texturepanels')
       for (const [key, value] of await loadShapes(read, strings(section, 'file')))
         shapes.set(key, value)
+    if (kind === 'clouds') clouds.push(section)
     for (const { name, numbers, strings } of linesOf(section)) {
       if (kind === 'exterior' && name === 'fill_shape') fillName = strings[0]!.toLowerCase()
       if (kind === 'exterior' && name === 'shape' && exterior.shapes.length < 8)
@@ -727,6 +764,10 @@ const loadNebula = async (
     lightning: new NebulaLightning({ background, dynamic }),
     ...(fill ? { fill } : {}),
     exterior: new NebulaExterior(settings, zone, { random }),
+    ...(clouds.length && {
+      clouds: clouds.map((section) => cloudsFrom(section, shapes, NEBULA_CLOUD_VISIBILITY, random)),
+    }),
+    ...(edgeFraction && { edgeFraction }),
   }
 }
 

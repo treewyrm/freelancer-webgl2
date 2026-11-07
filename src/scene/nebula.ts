@@ -5,6 +5,7 @@
  */
 import { Quat, type Matrix4, type Shape, type Vector3 } from '@treewyrm/freelancer/math'
 import type { SceneModel } from './frame.js'
+import type { Clouds } from './clouds.js'
 import type { NebulaExterior } from './exterior.js'
 import type { NebulaLightning } from './lightning.js'
 import type { TextureShape } from './ring.js'
@@ -48,6 +49,10 @@ export interface SpaceNebula {
   fill?: TextureShape
   /** `[Exterior]`'s bits about it, seen from outside and in its edge. */
   exterior?: NebulaExterior
+  /** Its `[Clouds]`, in file order, drawn about the camera in it. */
+  clouds?: readonly Clouds[]
+  /** Its zone's `edge_fraction`, which a puff spawning in its edge is held to. 0 when absent. */
+  edgeFraction?: number
 }
 
 /** An `exclusion` of a nebula's file, and its zone, which retail requires to be a sphere. */
@@ -360,20 +365,22 @@ const sortKey = ({ zone }: NebulaExclusion, eye: Vector3): number => {
 }
 
 /**
- * `NebulaExclusionZoneMgr::is_in_exclusion_zone` over the zones sorted around the camera. Retail
- * keeps the one it found while its immersion stays at 1e-4 or more, and sorts now and then; this
- * looks afresh each frame, and an equal distance keeps file order, where retail's sort isn't stable.
+ * `NebulaExclusionZoneMgr::is_in_exclusion_zone` for `point`, over the zones sorted around the camera:
+ * only those within √10 of it are asked. Retail keeps the camera's zone while its immersion stays at
+ * 1e-4 or more, and sorts now and then; this looks afresh each time, and an equal distance keeps
+ * file order, where retail's sort isn't stable.
  */
-const exclusionAt = (
+export const exclusionAt = (
   exclusions: readonly NebulaExclusion[],
   eye: Vector3,
+  point: Vector3 = eye,
 ): InExclusion | undefined => {
   const sorted = exclusions
     .map((exclusion) => ({ exclusion, key: sortKey(exclusion, eye) }))
     .sort((a, b) => a.key - b.key)
   for (const { exclusion, key } of sorted) {
     if (key > 10) return undefined
-    const value = immersion(exclusion.zone, exclusion.edgeFraction ?? 0, eye)
+    const value = immersion(exclusion.zone, exclusion.edgeFraction ?? 0, point)
     if (value > f(1e-5)) return { exclusion, immersion: f(value) }
   }
   return undefined
@@ -389,6 +396,8 @@ export interface NebulaState {
   start: number
   /** `+0x2b0`, the fog's end. */
   end: number
+  /** How far the camera is outside its surface, negative inside (`Update`'s `D`). */
+  surface: number
   /** Only while the camera is in the nebula. */
   inExclusion?: InExclusion
 }
@@ -408,7 +417,7 @@ export const nebulaState = (
   const surface = f(length - zone.radiusAlong(scaled(offset, 1 / length)))
   const depth = surface > 0 ? 0 : -surface > span ? 1 : f(-surface / span)
   if (depth > 0) {
-    const state: NebulaState = { nebula, fogDistance, depth, start: near, end: span }
+    const state: NebulaState = { nebula, fogDistance, depth, start: near, end: span, surface }
     const inExclusion = exclusionAt(nebula.exclusions ?? [], eye)
     if (!inExclusion) return state
     // Its `fog_far` pulls the end towards it, as deep as the camera is in it.
@@ -419,7 +428,7 @@ export const nebulaState = (
   }
   // Outside, the fog's range follows the camera's distance from the surface.
   const start = surface + near
-  return { nebula, fogDistance, depth, start: f(start), end: f(start + fogDistance) }
+  return { nebula, fogDistance, depth, start: f(start), end: f(start + fogDistance), surface }
 }
 
 /** `FNebulaEffect::FogFactor`: where the fog ends for what stands at `point`. */

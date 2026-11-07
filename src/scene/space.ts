@@ -30,6 +30,8 @@ import {
   fogEnd,
   fogFar,
   fogOf,
+  exclusionAt,
+  immersion,
   listNebulae,
   nebulaState,
   RETAIL_NEBULA_LIMITS,
@@ -389,8 +391,17 @@ export const collectSpaceFrame = ({
   const { field, deferred } = listNebulae(states, eye, range)
   // `FNebulaEffect::Update`, every nebula's, before the frame. A flashing light joins the system's.
   const flashes: SpaceLight[] = []
-  for (const { nebula, depth } of states) {
+  // A nebula's clouds: held to its zone, and hidden deep in its exclusion zones.
+  const holdsOf = (nebula: SpaceNebula) => (point: Vector3) =>
+    immersion(nebula.zone, nebula.edgeFraction ?? 0, point)
+  const excludedOf = (nebula: SpaceNebula) => (point: Vector3) =>
+    exclusionAt(nebula.exclusions ?? [], eye, point)?.immersion ?? 0
+  for (const { nebula, depth, surface } of states) {
     nebula.exterior?.update(eye, step, depth, cut)
+    // Within 300 of its surface, its clouds follow the camera, as many as its depth allows.
+    if (surface < 300)
+      for (const clouds of nebula.clouds ?? [])
+        clouds.update(given, step, depth, holdsOf(nebula), excludedOf(nebula))
     nebula.lightning?.update(step, depth, eye)
     const light = nebula.lightning?.light
     if (light) flashes.push(light)
@@ -797,6 +808,18 @@ export const collectSpaceFrame = ({
       (at === FIELD && field && field.enclosure !== 0)
     )
       for (const asteroid of asteroids) drawField(asteroid)
+    // `DrawCloudsPanels`, last in a field (`0x51fbb4`): its clouds, fogged to its own range, unculled.
+    if (at === NOMAD_OFFSET + FIELD && field && field.enclosure !== 0) {
+      const { nebula, start, end } = field.state
+      for (const clouds of nebula.clouds ?? []) {
+        const draw = clouds.draw(given, {
+          cut,
+          holds: holdsOf(nebula),
+          excluded: excludedOf(nebula),
+        })
+        if (draw) draws.push({ ...draw, fog: fogOf(start, end, nebula.fog.color), cull: 'none' })
+      }
+    }
     // `DrainMeshAndAsteroids` outside a field: the main list, then every ring's clouds while the
     // camera is in it (`TexturePanelsDrawAll`, `DrawPanels`). In a field, no ring's clouds draw.
     if (at === MAIN && (!field || field.enclosure === 0))

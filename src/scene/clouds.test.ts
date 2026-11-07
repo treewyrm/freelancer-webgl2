@@ -101,6 +101,25 @@ test('a puff respawns on the sphere about a point ahead, kept only where the own
   assert.equal(empty.active, 0)
 })
 
+test('a puff deep in an exclusion zone counts, but is hidden: on respawn and on a cut', () => {
+  const far: Camera = { ...camera, position: { x: 0, y: 0, z: 100000 } }
+  // Every point is 0.95 into a zone: past 0.9, all hidden, though they fill the budget.
+  const deep = make()
+  deep.update(far, 0, 1, inBand, () => 0.95)
+  assert.ok(deep.active > 0)
+  assert.ok(deep.puffs.every(({ active, hidden }) => !active || hidden))
+  assert.equal(deep.draw(far, { holds: inBand, excluded: () => 0.95 }), undefined)
+  // At 0.9 exactly, as a float, the zone's immersion is, none is.
+  const edge = make()
+  edge.update(far, 0, 1, inBand, () => Math.fround(0.9))
+  assert.ok(edge.puffs.some(({ active, hidden }) => active && !hidden))
+  // A cut places them afresh, hiding the same way.
+  const cut = make()
+  cut.update(camera, 0, 1, inBand)
+  cut.draw(camera, { cut: true, holds: inBand, excluded: () => 0.95 })
+  assert.ok(cut.puffs.every(({ hidden }) => hidden))
+})
+
 test('nearer than near_fade_distance nothing draws, and toward its far end it fades in', () => {
   const clouds = make({ maxAlpha: 1 })
   clouds.update(camera, 1 / 60, 1, inBand)

@@ -538,7 +538,17 @@ renderer. Random streams need not match retail; each appearance's sizes, colours
 - [x] **You:** `nebula_exterior` and `nebula_exterior_edge` (`src/reference/systems.ts`): a pitched
       ellipsoid's three rings and caps from outside, a far sphere's from the far list, then from the
       ellipsoid's edge. Only each bit's spin is random.
-- [ ] A nebula's `[Clouds]` inside (`DrawCloudsPanels`), and its lightning bolts.
+- [x] A nebula's `[Clouds]` inside: `SpaceNebula.clouds`, the ring's `Clouds` with a nebula's
+      visibility (0.1, 0.3, 0.3). Within 300 of its surface they follow the camera, as many as its depth
+      allows (`FNebulaEffect::Update`, `0x5072ac`), a respawn held to its zone's immersion
+      (`SpaceNebula.edgeFraction`); drawn last in a field, after its nomads (`DrawCloudsPanels`,
+      `0x51fbb4`), fogged to its own start and end, unculled. A puff more than 0.9 into an exclusion
+      zone the camera is in counts but is hidden, on respawn and on a cut (`FUN_00550d40`,
+      `FUN_005513b0`, `is_in_exclusion_zone`), now `exclusionAt` for any point. Pinned by reading.
+      **Uncaptured.** Their flashes are the clouds' own; the bolts (`lightning_shape`) aren't built.
+- [ ] **You:** `nebula_clouds` and `nebula_clouds_hole` (`src/reference/systems.ts`): deep in a nebula
+      with the Badlands' clouds, lightning off; then in its exclusion zone, where about half hide.
+- [ ] A nebula's lightning bolts (`[Clouds] lightning_shape`), which `rand()` drives.
 - [ ] An asteroid field's billboards and dynamic asteroids, which `rand()` drives.
 - [ ] Suns: a solar's `star` from `solar\StarArch.ini`, drawn by `FStarSphere` (`star_sphere.cpp`;
       the name is the decomp's, not a sky). Its `star_center` and `star_glow` fans turned to the camera

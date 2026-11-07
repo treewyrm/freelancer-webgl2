@@ -96,9 +96,11 @@ test('outside, the fog starts at the surface; inside, at its near, ending its sp
     depth: 0,
     start: 60,
     end: 110,
+    surface: 50,
   })
   const inside = nebulaState(nebula, { x: 0, y: 0, z: 70 })
   close(inside.depth, 30 / 60)
+  assert.equal(inside.surface, -30)
   assert.equal(inside.start, 10)
   assert.equal(inside.end, 60)
   assert.equal(nebulaState(nebula, { x: 0, y: 0, z: 10 }).depth, 1)

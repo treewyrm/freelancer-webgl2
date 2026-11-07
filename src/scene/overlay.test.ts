@@ -16,6 +16,7 @@ const stateOf = (nebula: SpaceNebula, depth: number): NebulaState => ({
   depth,
   start: 0,
   end: 1500,
+  surface: -depth * 1500,
 })
 const viewport = { width: 1024, height: 768 }
 

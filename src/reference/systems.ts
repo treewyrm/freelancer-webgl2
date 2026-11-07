@@ -580,6 +580,77 @@ const EXTERIOR: Omit<ReferenceSystem, 'name' | 'player'> = {
   files: [{ path: EXTERIOR_NEBULA_FILE, text: LAB_EXTERIOR_NEBULA }],
 }
 
+const CLOUDS_NEBULA_FILE = 'solar\\nebula\\lab\\lab_clouds.ini'
+
+/**
+ * The Badlands' fog and `[Clouds]`, its lightning off: no `lightning_duration`, and both background
+ * lightnings off. No bits or sheets. An exclusion zone with no shell.
+ */
+const LAB_CLOUDS_NEBULA = [
+  '[TexturePanels]',
+  'file = solar\\nebula\\generic_shapes.ini',
+  '[Exterior]',
+  'plane_slices = 0',
+  'color = 40, 30, 90',
+  '[NebulaLight]',
+  'ambient = 15, 10, 45',
+  '[Fog]',
+  'fog_enabled = 1',
+  'near = 0',
+  'distance = 1000',
+  'color = 10, 7, 30',
+  '[Exclusion Zones]',
+  'exclusion = Lab_clouds_hole',
+  'fog_far = 2000',
+  '[Clouds]',
+  'max_distance = 300',
+  'puff_count = 10',
+  'puff_radius = 100',
+  'puff_colora = 45, 40, 160',
+  'puff_colorb = 55, 10, 20',
+  'puff_max_alpha = 0.5',
+  'puff_shape = generic_cloud1',
+  'puff_shape = generic_cloud2',
+  'puff_shape = generic_cloud3',
+  'puff_shape = generic_cloud4',
+  'puff_weights = 1, 1, 1, 1',
+  'puff_drift = 1',
+  'near_fade_distance = 125, 200',
+  '[BackgroundLightning]',
+  'duration = 0',
+  '[DynamicLightning]',
+  'duration = 0',
+].join('\r\n')
+
+/**
+ * M7: a nebula's `[Clouds]` from inside (`DrawCloudsPanels`). A sphere of 8000 about the ship, so the
+ * camera is deep in its core, with a hole of 600 well to the side, its last fifth an edge.
+ */
+const CLOUDS: Omit<ReferenceSystem, 'name' | 'player'> = {
+  ...SHEETS,
+  zones: [
+    {
+      nickname: 'Lab_clouds',
+      position: [0, 0, -2000],
+      pitch: 0,
+      shape: 'SPHERE',
+      size: [8000],
+      propertyFlags: 32768,
+    },
+    {
+      nickname: 'Lab_clouds_hole',
+      position: [3000, 0, 0],
+      pitch: 0,
+      shape: 'SPHERE',
+      size: [600],
+      propertyFlags: 65536,
+      edgeFraction: 0.2,
+    },
+  ],
+  nebulae: [{ file: CLOUDS_NEBULA_FILE, zone: 'Lab_clouds' }],
+  files: [{ path: CLOUDS_NEBULA_FILE, text: LAB_CLOUDS_NEBULA }],
+}
+
 const ASTEROIDS_EXBAND: Omit<ReferenceSystem, 'name' | 'player'> = {
   ...ASTEROIDS,
   asteroids: [{ file: ASTEROID_EXBAND_FILE, zone: 'Lab_field' }],
@@ -665,6 +736,18 @@ export const systems: ReadonlyMap<string, ReferenceSystem> = new Map(
       name: 'nebula_exterior_edge',
       ...EXTERIOR,
       player: { ...RING_PLAYER, position: [1500, 0, -13800] },
+    } satisfies ReferenceSystem,
+    {
+      // Deep in the nebula, far from its hole: its clouds ahead, all ten when none fades.
+      name: 'nebula_clouds',
+      ...CLOUDS,
+      player: { ...RING_PLAYER, position: [0, 0, 0] },
+    } satisfies ReferenceSystem,
+    {
+      // In the hole, toward its edge ahead: the puffs deep in it hidden, those past it shown.
+      name: 'nebula_clouds_hole',
+      ...CLOUDS,
+      player: { ...RING_PLAYER, position: [3000, 0, -150] },
     } satisfies ReferenceSystem,
     {
       name: 'ring_outside',
