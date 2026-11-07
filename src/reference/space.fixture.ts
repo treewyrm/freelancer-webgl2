@@ -13,6 +13,8 @@ export interface SpaceArgs {
    * game's `rand()`, so the picture is compared with retail's own.
    */
   spins?: { centre: Vector3; up: Vector3 }[]
+  /** The run's `SunEffect`: with it, its suns' coronas and flares, settled over five seconds. */
+  sunEffect?: number
 }
 
 export interface SpaceReport {
@@ -25,7 +27,7 @@ export interface SpaceReport {
 }
 
 export default (async (gl, { args, read }) => {
-  const { system, options, spins = [] } = args as SpaceArgs
+  const { system, options, spins = [], sunEffect } = args as SpaceArgs
   const scene = await loadSystem(systems.get(system)!, read, options)
   // Each bit standing where retail drew one takes its up. Square to the camera already, the bits'
   // turn leaves it.
@@ -41,9 +43,13 @@ export default (async (gl, { args, read }) => {
       )
       if (spin) (bit as { axis: Vector3 }).axis = spin.up
     }
-  const frame = collectSpaceFrame(scene)
-
   const { width, height } = gl.canvas
+  const suns =
+    sunEffect === undefined ? {} : { sunEffect, viewport: { width, height }, step: 1 / 60 }
+  let frame = collectSpaceFrame({ ...scene, ...suns })
+  if (sunEffect !== undefined)
+    for (let at = 0; at < 300; at++) frame = collectSpaceFrame({ ...scene, ...suns })
+
   gl.viewport(0, 0, width, height)
   createRenderer(gl).render(frame)
 

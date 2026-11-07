@@ -44,6 +44,8 @@ interface Run {
   particles: Box[]
   /** Draws of nebula bits, whose spins are taken from retail's. */
   bits?: number[]
+  /** `SunEffect`, as its `PerfOptions.ini` has it, for a run with a sun. */
+  sunEffect?: number
 }
 
 const RUNS_COMPARED: Run[] = [
@@ -54,6 +56,9 @@ const RUNS_COMPARED: Run[] = [
   { name: 'nebula_sheets_axis', draws: 71, effects: 4, particles: [FLAME] },
   { name: 'nebula_exterior', draws: 73, effects: 4, particles: [FLAME], bits: [11, 13] },
   { name: 'nebula_exterior_edge', draws: 39, effects: 4, particles: [FLAME], bits: [11, 14] },
+  { name: 'sun_ahead', draws: 36, effects: 4, particles: [FLAME], sunEffect: 1 },
+  { name: 'sun_occluded', draws: 82, effects: 4, particles: [FLAME], sunEffect: 1 },
+  { name: 'sun_nebula', draws: 39, effects: 4, particles: [FLAME], sunEffect: 1 },
 ]
 
 const screenshot = (folder: string): Buffer | undefined => {
@@ -93,7 +98,7 @@ const spinsOf = (captured: readonly CaptureDraw[], bits: readonly number[]) =>
     })
   })
 
-for (const { name, draws, effects, particles, bits = [] } of RUNS_COMPARED) {
+for (const { name, draws, effects, particles, bits = [], sunEffect } of RUNS_COMPARED) {
   const folder = join(references, name)
   test(
     `${name} matches retail's screenshot, outside its HUD and its random particles`,
@@ -109,7 +114,12 @@ for (const { name, draws, effects, particles, bits = [] } of RUNS_COMPARED) {
           width: WIDTH,
           height: HEIGHT,
           context: { antialias: false, alpha: false },
-          args: { system: name, options, spins: spinsOf(captured, bits) },
+          args: {
+            system: name,
+            options,
+            spins: spinsOf(captured, bits),
+            ...(sunEffect !== undefined && { sunEffect }),
+          },
           read,
         },
       )

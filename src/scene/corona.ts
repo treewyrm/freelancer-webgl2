@@ -490,7 +490,8 @@ const screenDraw = (
     // Frame 0 of the shape's texture (`TexShapeGetGpuHandle`).
     texture: { name: shape.texture.name, entry: shape.texture, sampler: DEFAULT_SAMPLER, uvSet: 0 },
     cull: 'none',
-    depthWrite: false,
+    // `ZWRITEENABLE` as the frame left it, 1 in `sun_ahead`: with `ZENABLE` 0 nothing is written.
+    depthWrite: true,
     depthFunc: 'always',
     lightless: true,
     negateNormals: false,
@@ -498,7 +499,7 @@ const screenDraw = (
     blend: true,
     blendMode,
     unlit: true,
-    // What the screen quads or the last sun left. Taken as `GREATER 0`. **Uncaptured.**
+    // What the screen quads left: `GREATER 0`, as `sun_ahead` captures it.
     alphaReference: 0,
     alphaFunction: 'greater',
   }

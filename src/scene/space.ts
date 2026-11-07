@@ -898,15 +898,18 @@ export const collectSpaceFrame = ({
       const fog =
         within &&
         fogOf(within.state.start, fogEnd(within.state, object.position), nebula!.fog.color)
-      for (let index = first; index < draws.length; index++) {
-        const draw = draws[index]!
-        draws[index] = {
-          ...draw,
-          lights: lit.lights,
-          sceneAmbient: draw.sceneAmbient ?? lit.ambient,
-          ...(fog && { fog }),
+      // A sun's draw returns before it (`Slot188`): its glow keeps the frame's ambient, the sky's
+      // white, and no fog, as `sun_ahead` and `sun_nebula` capture.
+      if (!object.star)
+        for (let index = first; index < draws.length; index++) {
+          const draw = draws[index]!
+          draws[index] = {
+            ...draw,
+            lights: lit.lights,
+            sceneAmbient: draw.sceneAmbient ?? lit.ambient,
+            ...(fog && { fog }),
+          }
         }
-      }
       // `DrainMeshAndAsteroids` (`0x51f956`) sets `ZFUNC` 4 for the near lists and leaves it, where
       // RP8's default is 2. No material sets 2, so what would have kept the default reads 4.
       if (!onFarList)

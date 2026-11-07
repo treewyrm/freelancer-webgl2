@@ -197,7 +197,7 @@ const glowDraw = (
     blend: true,
     blendMode: textureHasAlpha(shape.texture) ? 'alpha' : 'screen',
     unlit: true,
-    // What the frame left. Taken as `GREATER 0`, as the fill sheets are. **Uncaptured.**
+    // What the frame left: `GREATER 0` in `sun_ahead`, on the far list and in a field alike.
     alphaReference: 0,
     alphaFunction: 'greater',
   }

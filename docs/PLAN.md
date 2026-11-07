@@ -638,8 +638,7 @@ renderer. Random streams need not match retail; each appearance's sizes, colours
       host reads into `SpaceNebula.burnthrough`. A `star_glow`'s `alpha` is never read. The corner
       order was checked in `Freelancer-original.exe`: the decomp names `FUN_0050cd50`'s vectors the
       other way round from its caller (`0x5119d9`), but both come to `(P − R) + U` first, top left.
-      Pinned by reading and by pixels. **Uncaptured**: the alpha test and fog the frame leaves it,
-      taken as `GREATER 0` and the object's own.
+      Pinned by reading and by pixels, and matched in `sun_ahead`, `sun_occluded` and `sun_nebula`.
 - [x] A sun's `lens_glow` corona: `starCorona`, `updateStar` and `Frame.afterEffects`. Not in
       the cockpit pass's place but after the effects and screen quads (`ScaleEnvironmentEffects`,
       `0x51c7d4`, from the chase camera; the cockpit's wraps its mesh and HUD around it, which is
@@ -656,7 +655,7 @@ renderer. Random streams need not match retail; each appearance's sizes, colours
       `zone_occlusion_fade_in` and `_out` over the intensity fades (`0x511381`, checked in
       `Freelancer-original.exe`), so retail's suns ease their flare over 1 s, and their zone
       occlusion keeps 2 s. Fully in a field it only sets its occlusion. Pinned by reading and by
-      pixels. **Uncaptured**: the alpha test the screen quads leave, taken as `GREATER 0`.
+      pixels, and matched in `sun_ahead` and `sun_occluded`.
 - [x] The corona's rays against hitboxes: `castRay` and `SpaceObject.hitbox`, from
       `PhysicalSystem::FindRayCollisions` (`FUN_0628d1a0`): every object's shapes, nearest hit
       first, at most 6, each hull the ray enters a hit of its own. The shapes are what
@@ -670,7 +669,8 @@ renderer. Random streams need not match retail; each appearance's sizes, colours
       as not hitting it: IVP's solver there isn't read. Pinned by reading; every ray toward the
       centre of `li_elite`, `space_solar_plant` and `station_small_b_lod` hits, none beside them,
       and culling by the tree changes nothing over 2000 rays at `station_large_a_lod`. Attached
-      equipment, shield bubbles and asteroids aren't given shapes yet. **Uncaptured.**
+      equipment, shield bubbles and asteroids aren't given shapes yet. Matched for a station in
+      `sun_occluded`.
 - [x] A sun's `spines` and `lens_flare`: `Star.spines`, `Star.lensFlare` and `starFlare`.
       `FUN_00510160`: each spine three quads out from the sun on screen, spread `2π / count`
       apart from the right, anticlockwise, through the inner ring's radius and the rim's to its
@@ -682,14 +682,20 @@ renderer. Random streams need not match retail; each appearance's sizes, colours
       whole texture along three times the line from the sun to the screen's middle, sized by the
       held pixel scale and `1 - (1 - Intensity)²`, faded as the sun nears the middle, from where
       the last draw left it. Both add by alpha. Retail sorts beads by heap address; they add, so
-      file order draws the same. Pinned by reading. **Uncaptured.**
-- [ ] **You:** `sun_ahead`, `sun_occluded` and `sun_nebula` (`src/reference/systems.ts`), with
-      screenshots and captures: `med_yellow_sun` 40000 ahead, up and to the right; then
-      `smallstation1_old_nodock` 3000 along the line to it, its edge across the sun; then the ship
-      500 into a nebula's edge, `sun_burnthrough_intensity` 0.8 and `_scaler` 1.5, lightning off.
-      Leave each a few seconds before capturing, so the corona's and the zone's fades settle.
-      Captures will settle what the alpha test and fog the glow, corona, spines and flare inherit
-      are, and whether `SunEffect` in the run's `PerfOptions.ini` reaches them as read.
+      file order draws the same. Pinned by reading, and matched in `sun_ahead` and `sun_occluded`.
+- [x] **You:** `sun_ahead`, `sun_occluded` and `sun_nebula` (`src/reference/systems.ts`):
+      `med_yellow_sun` 40000 ahead, up and to the right; then `smallstation1_old_nodock` 3000 along
+      the line to it, its edge across the sun; then the ship 500 into a nebula's edge,
+      `sun_burnthrough_intensity` 0.8 and `_scaler` 1.5, lightning off. **Matched**
+      (`src/reference/suns.test.ts`): the scene state for state; every glow, spine and corona
+      vertex's colour to the byte and place within 0.005 in the world or 0.001 on screen, after five
+      seconds of frames; the flare's nine beads as a set, retail's in heap order. In
+      `sun_occluded` that is the station's hitbox blocking exactly retail's samples, partial alphas
+      and all; in `sun_nebula`, both glows burning through after the overlay and no corona or flare.
+      The pictures (`space.gpu.test.ts`): 99.87%, 99.99% and 99.90% within 2, means 0.34, 0.29 and
+      0.14. It found: a sun's draw sets no lighting or fog of its own, so its glow keeps the sky's
+      white ambient (`Slot188` returns before `GameobjUpdateDrawLighting`); the alpha test every sun
+      draw inherits is `GREATER 0`; and the screen draws inherit `ZWRITEENABLE` 1 under `ZENABLE` 0.
 - [ ] Space dust.
 - [ ] Gate tunnels.
 - [ ] Projectiles and beams; the cockpit pass with its depth clear.

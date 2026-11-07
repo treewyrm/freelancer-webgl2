@@ -111,6 +111,31 @@ export const RUNS = {
     effectRate: 96,
     animationSeconds: 0,
   },
+  // A sun's glow is drawn in world space under the view: it places the origin.
+  sun_ahead: {
+    far: [0, 0, 0],
+    farDraw: 10,
+    hullDraw: 14,
+    effectSeconds: 20,
+    effectRate: 96,
+    animationSeconds: 0,
+  },
+  sun_occluded: {
+    far: [0, 0, 0],
+    farDraw: 10,
+    hullDraw: 60,
+    effectSeconds: 20,
+    effectRate: 96,
+    animationSeconds: 0,
+  },
+  sun_nebula: {
+    far: [0, 0, 0],
+    farDraw: 10,
+    hullDraw: 17,
+    effectSeconds: 20,
+    effectRate: 96,
+    animationSeconds: 0,
+  },
   // Outside the field: no cube, so the band's first piece, drawn in world space, places the origin.
   asteroid_outside: {
     far: [0, 0, 0],
