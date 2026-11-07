@@ -554,7 +554,12 @@ renderer. Random streams need not match retail; each appearance's sizes, colours
       is uncaptured. Their flashes are the clouds' own; the bolts (`lightning_shape`) aren't built.
 - [x] **You:** `nebula_clouds` and `nebula_clouds_hole` (`src/reference/systems.ts`): deep in a nebula
       with the Badlands' clouds, lightning off; then in its exclusion zone.
-- [ ] A nebula's lightning bolts (`[Clouds] lightning_shape`), which `rand()` drives.
+- [x] A nebula's lightning bolts: **nothing to draw**. A `[Lightning]` section (`FUN_00552570`) sets
+      its countdown once, to `(-0.8 - rand · 0.7) · gap`, and nothing else in
+      `Freelancer-original.exe` writes it, its eight segments or its texture: the only callers are
+      the load, the disable and `DrawFogOverlay`'s draw (`0x508cdf`). With a positive `gap` it stays
+      dark; with none it would draw from a null texture and unfilled segments. No retail file has
+      one. `[Clouds] lightning_shape`, `lightning_size` and `llight_*` are parsed and never read.
 - [ ] An asteroid field's billboards and dynamic asteroids, which `rand()` drives.
 - [ ] Suns: a solar's `star` from `solar\StarArch.ini`, drawn by `FStarSphere` (`star_sphere.cpp`;
       the name is the decomp's, not a sky). Its `star_center` and `star_glow` fans turned to the camera
