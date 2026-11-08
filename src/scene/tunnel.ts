@@ -247,11 +247,11 @@ const normalize = (v: Vector3, squared: number): Vector3 => {
 
 /**
  * One loaded `[gate_tunnel]`. The game keeps one of each and hands it to the player's jump
- * (`FJumpShipEffect`, `0x503440`), which places it at the gate's `HpJumpOut` and drives its state;
+ * (`FJumpShipEffect`, `0x503440`), which places it at the archetype's `jump_out_hp` and drives its state;
  * the host does both. Loading draws its curves, and so does each jump out.
  */
 export class GateTunnel {
-  /** The gate's jump-out hardpoint in the world: the path runs down its -Z, from 5 out. */
+  /** The gate's `jump_out_hp` in the world: the path runs down its -Z, from 5 out. */
   frame: Matrix4 = Matrix4.identity
   state: TunnelState = 0
   /** Where the ship is along the path, 0 to 1. */
@@ -414,7 +414,7 @@ export class GateTunnel {
    * texture, which wraps; depth written as `write_depth_buffer` says. It switches the light on.
    *
    * Depth is tested `LEQUAL`, Win3D's own state, and the alpha test and fog are what the frame left:
-   * taken as `GREATER 0` and none. **Uncaptured.**
+   * `GREATER 0` and none, as `jump_hole` captured them.
    */
   draws(): Draw[] {
     if (this.state === 0) return []

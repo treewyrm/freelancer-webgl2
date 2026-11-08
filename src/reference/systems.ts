@@ -23,9 +23,10 @@ export interface ReferenceSystem {
     curve?: string
   }[]
   /**
-   * `[Object]`s, with no `rotate` or `spin`, so that nothing moves between frames. Nothing dockable:
-   * one with no `base` logs an error (`CSolar`), and the first try crashed loading three of them. At
-   * least one: a system with none warns that it found no solars (`load_solars`) and crashes.
+   * `[Object]`s, with no `rotate` or `spin`, so that nothing moves between frames. Nothing dockable
+   * but a jump: one with neither `base` nor `goto` logs an error (`CSolar`), and the first try crashed
+   * loading three of them. At least one: a system with none warns that it found no solars
+   * (`load_solars`) and crashes.
    */
   objects: {
     nickname: string
@@ -35,6 +36,8 @@ export interface ReferenceSystem {
     ring?: { zone: string; file: string }
     /** `star =`: a `[star]` of `solar\StarArch.ini`, which makes it a sun. */
     star?: string
+    /** `goto =` and `jump_effect =`: a jump gate's or hole's far end, its tunnel and its effect. */
+    jump?: { system: string; object: string; tunnel: string; effect: string }
   }[]
   /** `[zone]`s, turned about X alone so `EulerMatrix`'s order can't matter. */
   zones?: {
@@ -116,7 +119,7 @@ export const systemIni = ({
       ...(attenuation ? [`attenuation = ${list(attenuation)}`] : []),
       ...(curve ? [`atten_curve = ${curve}`] : []),
     ]),
-    ...objects.flatMap(({ nickname, archetype, position, ring, star }) => [
+    ...objects.flatMap(({ nickname, archetype, position, ring, star, jump }) => [
       '[Object]',
       `nickname = ${nickname}`,
       'ids_name = 1',
@@ -125,6 +128,13 @@ export const systemIni = ({
       'ids_info = 1',
       ...(ring ? [`ring = ${ring.zone}, ${ring.file}`] : []),
       ...(star ? [`star = ${star}`] : []),
+      ...(jump
+        ? [
+            `msg_id_prefix = gcs_refer_system_${jump.system}`,
+            `jump_effect = ${jump.effect}`,
+            `goto = ${jump.system}, ${jump.object}, ${jump.tunnel}`,
+          ]
+        : []),
     ]),
     ...asteroids.flatMap(({ file, zone }) => ['[Asteroids]', `file = ${file}`, `zone = ${zone}`]),
     ...nebulae.flatMap(({ file, zone }) => ['[Nebula]', `file = ${file}`, `zone = ${zone}`]),
@@ -902,6 +912,38 @@ const DUST_QUARTER: Omit<ReferenceSystem, 'name' | 'player'> = {
   ],
 }
 
+/**
+ * M7: a jump hole 1500 ahead, as retail's in Li01 are written, to New York's hole to Li03, for the
+ * tunnel. The dock is the player's to start, and the capture is taken in the tunnel.
+ */
+const JUMP: Omit<ReferenceSystem, 'name' | 'player'> = {
+  ambient: [40, 40, 50],
+  background: LI01_SKY,
+  lights: [
+    {
+      nickname: 'Lab_sun_light',
+      position: [20000, 15000, 30000],
+      color: [255, 255, 255],
+      range: 120000,
+      type: 'DIRECTIONAL',
+      curve: 'DYNAMIC_DIRECTION',
+    },
+  ],
+  objects: [
+    {
+      nickname: 'Lab_jump_hole',
+      archetype: 'jumphole',
+      position: [0, 0, -1500],
+      jump: {
+        system: 'Li01',
+        object: 'Li01_to_Li03_hole',
+        tunnel: 'gate_tunnel_bretonia',
+        effect: 'jump_effect_hole',
+      },
+    },
+  ],
+}
+
 export const systems: ReadonlyMap<string, ReferenceSystem> = new Map(
   [
     {
@@ -1051,6 +1093,12 @@ export const systems: ReadonlyMap<string, ReferenceSystem> = new Map(
       // Bisects the edge: the deep zone at 125 particles, so 0.25 with no immersion.
       name: 'dust_zone_quarter',
       ...DUST_QUARTER,
+      player: { ...RING_PLAYER, position: [0, 0, 0] },
+    } satisfies ReferenceSystem,
+    {
+      // Facing the hole: dock with it, and capture in the tunnel.
+      name: 'jump_hole',
+      ...JUMP,
       player: { ...RING_PLAYER, position: [0, 0, 0] },
     } satisfies ReferenceSystem,
     {

@@ -1165,7 +1165,8 @@ export const collectSpaceFrame = ({
 
 /**
  * `SpaceObjDrawPass`'s jump arm (`0x51c235`), out to the system's far plane: the tunnel
- * (`FUN_00504890`), then the ship at its first tier (`Slot188`), lit by the tunnel's light alone
+ * (`FUN_00504890`), then the ship at its first tier (`Slot188`) with no pilot, as the arm's LOD word's
+ * low half is 0 and the pilot wants 3 (`0x546087`), lit by the tunnel's light alone
  * over the jump's ambient (`Slot184`), then only `EFT_JUMP_EFFECTS`' bucket and `EFT_ENGINE_FIRE`'s
  * (`SpaceEffectsDrawFrame`, `0x51c2bc`), which step only those. No flare, beam or other list draws.
  * The pass sets the jump's colour for the clear after it, so retail's first tunnel frame clears to
@@ -1185,11 +1186,7 @@ const collectJumpFrame = (
   const unsupported = new Set<string>()
   const unregistered = new Set<string>()
   const first = draws.length
-  const models = [
-    ...(ship.pilot ? [ship.pilot] : []),
-    ship.model,
-    ...(ship.attached ?? []).map(underOwn(ship.model)),
-  ]
+  const models = [ship.model, ...(ship.attached ?? []).map(underOwn(ship.model))]
   for (const model of models)
     collectModel(
       model,

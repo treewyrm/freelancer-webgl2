@@ -444,6 +444,56 @@ export const loadGateTunnels = async (read: ReadAsset): Promise<Map<string, Tunn
   return tunnels
 }
 
+/** A `[JumpGateEffect]`'s keys the tunnel's frame reads. */
+export interface JumpDescriptor {
+  /** `jump_tunnel`, folded: a `[gate_tunnel]`. */
+  tunnel?: string
+  /** `jump_ambient` and `jump_background_color`, each value truncated to a byte. */
+  ambient: Vector3
+  background: Vector3
+}
+
+/**
+ * `FX/jumpeffect.ini` as `JumpEffectIniLoad` (`0x5020a0`) reads it, by nickname folded. Its record
+ * outlives each section and only the names are cleared, so a section without `jump_ambient` or
+ * `jump_background_color` keeps the one before's.
+ */
+export const loadJumpEffects = async (read: ReadAsset): Promise<Map<string, JumpDescriptor>> => {
+  const found = new Map<string, JumpDescriptor>()
+  const byte = (value: number) => Math.trunc(value) & 0xff
+  let ambient: Vector3 = { x: 0, y: 0, z: 0 }
+  let background: Vector3 = { x: 0, y: 0, z: 0 }
+  for (const section of Document.read(await read('FX/jumpeffect.ini'))) {
+    if (section.name.toLowerCase() !== 'jumpgateeffect') continue
+    const ambientValues = numbers(section, 'jump_ambient')
+    if (ambientValues.length) ambient = vector(ambientValues.map(byte))
+    const backgroundValues = numbers(section, 'jump_background_color')
+    if (backgroundValues.length) background = vector(backgroundValues.map(byte))
+    const tunnel = strings(section, 'jump_tunnel')[0]?.toLowerCase()
+    const nickname = section.getNickname()?.toLowerCase()
+    if (nickname) found.set(nickname, { ...(tunnel && { tunnel }), ambient, background })
+  }
+  return found
+}
+
+/**
+ * Where a gate's tunnel starts: its archetype's `jump_out_hp` in the world, a lab object standing
+ * unturned at `position` (`FJumpShipEffect`, `0x503635`). Identity when it has none, as retail.
+ */
+export const jumpOutFrame = async (
+  read: ReadAsset,
+  archetype: string,
+  position: Vector3,
+): Promise<Matrix4> => {
+  const section = (await sectionsOf(read, ['SOLAR/solararch.ini'])).get(archetype.toLowerCase())!
+  const name = strings(section, 'jump_out_hp')[0]
+  const model = readRigidModel(
+    Directory.read(await read(pathOf(strings(section, 'DA_archetype')[0]!))),
+  )
+  const point = name === undefined ? undefined : hardpoint(model, name)
+  return point ? Matrix4.multiply(Matrix4.translation(position), point) : Matrix4.identity
+}
+
 // Where the `[VisEffect]`s of what reference systems carry are: `freelancer.ini` lists them all.
 const ALE_TABLES = ['FX/ENGINES/engines_ale.ini', 'FX/MISC/misc_ale.ini', 'FX/SPACE/space_ale.ini']
 const EQUIPMENT = [

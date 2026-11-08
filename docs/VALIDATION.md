@@ -53,7 +53,8 @@ its position, the sky's rotation its orientation, and the projection its field o
 The ship's position comes from its hull's first draw, since the game moves it a little as it loads.
 
 What a system leaves out, on purpose: anything dockable, since one with no `base` logs an error
-(`CSolar`) and the first load with three of them crashed; `[Dust]`, which follows the camera, but in
+(`CSolar`) and the first load with three of them crashed, but `jump_hole`'s hole, whose `goto` is
+its target; `[Dust]`, which follows the camera, but in
 the dust scenes; a sun, but in the sun and dust scenes; `rotate` and `spin`, so nothing moves; and the player's lights, guns and contrails, so the ship
 is the bare hull the menu captures already measured. The engine stays, and its flame is in the frame.
 The HUD and the chase camera are the game's, so the camera comes from the capture's matrices.

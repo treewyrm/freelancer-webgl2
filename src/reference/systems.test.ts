@@ -1,4 +1,7 @@
 import assert from 'node:assert/strict'
+import { existsSync, readFileSync } from 'node:fs'
+import { homedir } from 'node:os'
+import { join } from 'node:path'
 import { test } from 'node:test'
 import { Document } from '@treewyrm/freelancer/ini'
 import { RETAIL_SPACE_LIMITS } from '#/scene/space.js'
@@ -183,3 +186,30 @@ test('a zone nickname two systems share is one zone: the game keeps only the fir
       else seen.set(key, { system: name, zone })
     }
 })
+
+const data = process.env['FREELANCER_DATA'] ?? join(homedir(), 'Downloads/Freelancer/DATA')
+
+test(
+  "jump_hole's goto names a retail hole, in its system, by a tunnel and an effect retail has",
+  { skip: existsSync(data) ? false : 'no retail DATA' },
+  () => {
+    const { objects } = systems.get('jump_hole')!
+    const ini = systemIni(systems.get('jump_hole')!)
+    const [{ jump, archetype }] = objects.filter(({ jump }) => jump) as [(typeof objects)[number]]
+    assert.equal(archetype, 'jumphole')
+    assert.ok(ini.includes(`goto = Li01, Li01_to_Li03_hole, gate_tunnel_bretonia`))
+    // `goto`'s object is looked for in its system's file, as `Universe` loads it.
+    const { system } = jump!
+    const file = join(data, 'UNIVERSE/SYSTEMS', system.toUpperCase(), `${system.toLowerCase()}.ini`)
+    const target = [...Document.read(readFileSync(file))].find(
+      (section) =>
+        section.name === 'Object' &&
+        String(section.getValues('nickname')?.[0]?.value).toLowerCase() ===
+          jump!.object.toLowerCase(),
+    )
+    assert.ok(target, jump!.object)
+    assert.equal(String(target.getValues('archetype')?.[0]?.value), 'jumphole')
+    assert.equal(String(target.getValues('jump_effect')?.[0]?.value), jump!.effect)
+    assert.equal(String(target.getValues('goto')?.[2]?.value), jump!.tunnel)
+  },
+)

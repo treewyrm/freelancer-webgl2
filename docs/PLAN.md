@@ -740,7 +740,7 @@ renderer. Random streams need not match retail; each appearance's sizes, colours
 - [x] Gate tunnels: `GateTunnel` (`src/scene/tunnel.ts`), from `FGateTunnel` (`gate_tunnel.cpp`), and
       `SpaceScene.jump`. Nine natural cubic splines of `num_spline_control_points` (`FUN_005018a0`),
       drawn from `rand()` on load and on each jump out: the path's x and y across their ranges, the
-      first three 0, its z falling `z_range` down the gate's `HpJumpOut` -Z from 5 out; the radius;
+      first three 0, its z falling `z_range` down the gate's `jump_out_hp` -Z from 5 out; the radius;
       a rotation nothing reads (checked in `Freelancer-original.exe`); three colour offsets and a
       brightness of 0.5 to 1. `Update` ramps the speed over `time_to_max_speed`, beams the ship along
       the path (`GateTunnel.ship`), scrolls every curve on one value near the end, flickers the light
@@ -757,11 +757,24 @@ renderer. Random streams need not match retail; each appearance's sizes, colours
       which the exe has no string for, so every layer fades from 1 to 0; `fade_distance` and the
       tunnel's own alphas are unread too. The host reads `FX/gate_tunnel.ini` into `TunnelSettings`
       (`loadGateTunnels`) and `jumpeffect.ini` into `SpaceJump`, and drives the state. Pinned by
-      reading and by pixels. **Uncaptured**: the depth test, alpha test and fog the frame leaves,
-      and the first frame's clear, which retail sets for the next.
-- [ ] **You:** a jump through a gate, captured in the tunnel: state, strip order and count, each
-      ring's alpha and colour against our curves' ranges, the ship's light and ambient. Its curves
-      and the light's flicker are `rand()`'s, so in kind.
+      reading and by pixels. The first frame's clear, which retail sets for the next, is uncaptured.
+- [x] **You:** a jump through a gate, captured in the tunnel. **Matched in `jump_hole`**
+      (`src/reference/tunnels.test.ts`): a `jumphole` 1500 ahead to New York's `Li01_to_Li03_hole`
+      by `gate_tunnel_bretonia`, three frames in the tunnel. The 24 strips and 22 hull draws match in
+      state, the hull lit by the tunnel's one directional light over `jump_ambient`, the clear white.
+      The layers' scroll gives the clock, 1.99 s in, and the phase gained frame to frame is
+      `Update`'s speed at each step's end, to 0.5%. At that phase every strip's UVs and alpha are
+      ours, its rings 0.02 from ours in z down `Hporient` (the archetype's `jump_out_hp`, read by
+      `jumpOutFrame`), the radius in the curve's range and 1.5 times the second layer's. One
+      brightness lights both layers, and blue takes the red curve's offset. The ship faces down the
+      path, 0.13 further on than ours: about 1% of a frame's travel, unexplained. It found:
+      - No pilot in the tunnel: the jump arm's LOD word is `0xffff0000`, and `Slot188` draws the pilot
+        only from a low word of 3 (`0x546087`).
+      - The depth test, alpha test and fog the strips are drawn under: `LEQUAL`, `GREATER 0`, none.
+
+      Not compared: the ten effect draws after the hull, which the reference doesn't start (the jump's
+      `jump_tunnel_interior_player` and its jump-out effect, by `EnterTunnel`, are the likely ones),
+      and the letterbox's viewport, 1024 by 554, which is the host's. The host reads `FX/jumpeffect.ini` with `loadJumpEffects`.
 - [ ] Projectiles and beams; the cockpit pass with its depth clear.
 - [ ] Measure effects' CPU cost in a whole system. A pushed lane steps on the CPU, by choice: bring back
       transform feedback only if this shows the need. The picture doesn't depend on it ([ADAPTING.md](ADAPTING.md#alchemy-m6)).

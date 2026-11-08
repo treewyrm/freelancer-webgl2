@@ -1129,7 +1129,7 @@ test("a sun's corona draws after the effects, with the SunEffect option on and a
   assert.equal(frameOf({ sunEffect: 1, nebulae: core }).afterEffects, undefined)
 })
 
-test('in a jump the frame is the tunnel, the ship by its light, and only jump and engine fire effects', () => {
+test('in a jump the frame is the tunnel, the ship by its light with no pilot, and only jump and engine fire effects', () => {
   const tunnel = new GateTunnel(
     {
       controlPoints: 9,
@@ -1172,7 +1172,7 @@ test('in a jump the frame is the tunnel, the ship by its light, and only jump an
   )
   const strips = names(frame).filter((name) => name === 'gate tunnel').length
   assert.ok(strips > 2)
-  assert.deepEqual(names(frame).slice(strips), ['pilot', 'ship'])
+  assert.deepEqual(names(frame).slice(strips), ['ship'])
   for (const draw of frame.draws.slice(strips)) {
     assert.deepEqual(draw.lights, [tunnel.light])
     assert.deepEqual(draw.sceneAmbient, { x: 25 / 255, y: 25 / 255, z: 50 / 255 })
