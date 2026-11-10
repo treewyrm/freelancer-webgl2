@@ -41,14 +41,19 @@ export interface ReferenceSystem {
     /** `loadout =`, over its archetype's. Only a retail system read for the bench has one. */
     loadout?: string
   }[]
-  /** `[zone]`s, turned about X alone so `EulerMatrix`'s order can't matter. */
+  /** `[zone]`s, turned about X alone so `EulerMatrix`'s order can't matter, unless `rotate` says. */
   zones?: {
     nickname: string
     position: Vector
     /** Degrees about X. */
     pitch: number
-    shape: 'RING' | 'SPHERE' | 'ELLIPSOID'
-    /** `size`: a ring's outer radius, inner radius and height; a sphere's radius; an ellipsoid's. */
+    /** `rotate`, degrees, over `pitch`: only a retail system read for the bench has one. */
+    rotate?: Vector
+    shape: 'RING' | 'SPHERE' | 'ELLIPSOID' | 'BOX' | 'CYLINDER'
+    /**
+     * `size`: a ring's outer radius, inner radius and height; a sphere's radius; an ellipsoid's;
+     * a box's edges; a cylinder's radius and height.
+     */
     size: readonly number[]
     /** `property_flags`, as retail's field and nebula zones carry them. */
     propertyFlags?: number

@@ -866,8 +866,16 @@ renderer. Random streams need not match retail; each appearance's sizes, colours
       was transform feedback only past 2 ms for stepped lanes, and the whole tick is under half that,
       so **it stays out**. The corpus overstated the dust: a zone caps it by `spacedust_maxparticles`,
       259 of retail's 270 dust zones at 250 or less, where the uncapped corpus run held a thousand.
-- [ ] `SOLAR/ASTEROIDS/Li01_Badlands_Asteroids.ini` doesn't load: a cube's asteroids mix vertex formats,
-      which `mergeCube` refuses. Found by the bench, which leaves the field out.
+- [x] A cube whose asteroids mix vertex formats: `Li01_Badlands_Asteroids`, where `badlands_large` is
+      FVF `0x212` and the rest `0x112`. Retail copies each as `0x252` (`CopyVertexData` in
+      `CliAsteroidMergeCubeMesh`), so `mergeCube` now does too: position, normal and the first UV set,
+      diffuse only when every source has one, as what retail writes for one without is unread. Its
+      material is `DcDt`, so the second set it drops was never sampled. Pinned by reading. A reference
+      zone takes a full `rotate` (`EulerMatrix`'s Rz·Ry·Rx) and BOX and CYLINDER shapes, which a
+      retail field's exclusions need: the Badlands' lane is a BOX turned -158° about Y.
+      `npm run view` renders a retail system from any point; from beside that lane towards the sun,
+      the spires are black obsidian (`tint_field = 15,15,15`) and unfogged, as `asteroid_nebula`
+      captured cubes, with the sun burning through. **Uncaptured** there.
 - [x] **You:** a custom system and a save that places the ship, with screenshots and captures.
       `space_order` (`src/reference/systems.ts`, [how](VALIDATION.md#a-reference-system-for-a-space-frame))
       matches retail in `src/reference/space-order.test.ts`: state, place, far plane and lights on all

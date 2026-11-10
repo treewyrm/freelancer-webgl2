@@ -19,9 +19,6 @@ const read = async (path: string) => {
 const LI01 = {
   path: 'UNIVERSE/SYSTEMS/LI01/li01.ini',
   anchor: { object: 'Dock_Ring_Li01_01', distance: 2500 },
-  leaveOut: {
-    'solar\\asteroids\\Li01_Badlands_Asteroids.ini': 'a cube mixes vertex formats (`mergeCube`)',
-  },
 }
 // In `attractdust` capped at 200, the dust the corpus weighs most, and near retail's highest cap
 // (250): a zone's `spacedust_maxparticles` holds what the corpus run, uncapped, put at a thousand.

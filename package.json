@@ -41,6 +41,7 @@
     "capture": "node --import tsx src/capture/report.ts",
     "reference": "node --import tsx src/reference/mount.ts",
     "bench": "node --import tsx src/reference/bench.ts",
+    "view": "node --import tsx src/reference/view.ts",
     "prepublishOnly": "npm run typecheck && npm run test:all && npm run build"
   },
   "publishConfig": {

@@ -141,16 +141,37 @@ export interface CubeAsteroid {
 }
 
 /**
+ * The layout a cube's mesh takes: retail copies every asteroid as FVF `0x252` (`CopyVertexData`), so
+ * position, normal and the first UV set, whatever else a source holds. Its diffuse is never read with
+ * lighting on, and what `CopyVertexData` writes for a source without one is unread here, so it's kept
+ * only when every source has one.
+ */
+const cubeFormat = (asteroids: readonly CubeAsteroid[]): VertexFormat => {
+  for (const { mesh } of asteroids)
+    if (
+      !(mesh.format & VertexFormat.Normal) ||
+      !vertexLayout(mesh.format).attributes.some(({ name }) => name === 'uv0')
+    )
+      throw new Error(
+        `An asteroid's FVF 0x${mesh.format.toString(16)} lacks a normal or UV, unread`,
+      )
+  const diffuse = asteroids.every(({ mesh }) => mesh.format & VertexFormat.Diffuse)
+  return setMapCount(
+    VertexFormat.Position | VertexFormat.Normal | (diffuse ? VertexFormat.Diffuse : 0),
+    1,
+  )
+}
+
+/**
  * `CliAsteroidMergeCubeMesh`: every asteroid's vertices turned and moved into the cube, one mesh in
- * list order, drawn whole with the first's material. Retail copies them as FVF `0x252`; its diffuse
- * is never read with lighting on, so this keeps each source's own layout, which must agree.
+ * list order, drawn whole with the first's material, each copied into `cubeFormat`'s layout.
  */
 export const mergeCube = (
   asteroids: readonly CubeAsteroid[],
 ): { mesh: VMeshData; reference: VMeshRef } | undefined => {
   const first = asteroids[0]
   if (!first) return undefined
-  const format = first.mesh.format
+  const format = cubeFormat(asteroids)
   const stride = vertexByteLength(format)
   const layout = vertexLayout(format)
   const normal = layout.attributes.find(({ name }) => name === 'normal')
@@ -160,11 +181,18 @@ export const mergeCube = (
   const indices: number[] = []
   let base = 0
   for (const { mesh, reference, offset, orientation } of asteroids) {
-    if (mesh.format !== format) throw new Error('A cube mixes vertex formats')
-    const start = reference.vertexStart * stride
-    const span = reference.vertexCount * stride
-    vertices.set(mesh.vertices.subarray(start, start + span), base * stride)
-    const view = new DataView(vertices.buffer, base * stride, span)
+    const source = vertexLayout(mesh.format)
+    const copies = layout.attributes.map((to) => {
+      const from = source.attributes.find(({ name }) => name === to.name)!
+      return { from: from.offset, to: to.offset, bytes: to.normalizedBytes ? to.size : to.size * 4 }
+    })
+    for (let at = 0; at < reference.vertexCount; at++) {
+      const read = (reference.vertexStart + at) * source.stride
+      const write = (base + at) * stride
+      for (const { from, to, bytes } of copies)
+        vertices.set(mesh.vertices.subarray(read + from, read + from + bytes), write + to)
+    }
+    const view = new DataView(vertices.buffer, base * stride, reference.vertexCount * stride)
     for (let at = 0; at < reference.vertexCount; at++) {
       const read = (offsetBytes: number) =>
         [0, 4, 8].map((k) => view.getFloat32(at * stride + offsetBytes + k, true))

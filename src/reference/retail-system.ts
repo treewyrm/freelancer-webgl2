@@ -1,9 +1,7 @@
 /**
  * A retail system's INI as a `ReferenceSystem`, for the bench: what it costs, not how it looks. Test-only.
  *
- * `loadSystem` turns a zone about X alone and knows three shapes, so a zone's yaw and roll are
- * dropped and a BOX or CYLINDER stands as the ellipsoid of its size. Objects lose their `rotate`.
- * Neither moves an effect's cost, which is all the bench reads.
+ * Objects lose their `rotate`, which moves no effect's cost, all the bench reads.
  */
 import { Document, type Section } from '@treewyrm/freelancer/ini'
 import type { ReferenceSystem } from './systems.js'
@@ -28,7 +26,13 @@ const triple = (section: Section, key: string, fallback: Vector = [0, 0, 0]): Ve
   return [x, y, z]
 }
 
-const ZONE_SHAPES = { SPHERE: 'SPHERE', ELLIPSOID: 'ELLIPSOID', RING: 'RING' } as const
+const ZONE_SHAPES = {
+  SPHERE: 'SPHERE',
+  ELLIPSOID: 'ELLIPSOID',
+  RING: 'RING',
+  BOX: 'BOX',
+  CYLINDER: 'CYLINDER',
+} as const
 
 export interface RetailSystem {
   system: ReferenceSystem
@@ -90,7 +94,8 @@ export const readRetailSystem = async (
       nickname: section.getNickname() ?? '?',
       position: triple(section, 'pos'),
       pitch: numbers(section, 'rotate')[0] ?? 0,
-      shape: ZONE_SHAPES[shape as keyof typeof ZONE_SHAPES] ?? 'ELLIPSOID',
+      rotate: triple(section, 'rotate'),
+      shape: ZONE_SHAPES[shape as keyof typeof ZONE_SHAPES] ?? 'SPHERE',
       size: numbers(section, 'size'),
       ...(flags !== undefined && { propertyFlags: flags }),
       ...(edgeFraction !== undefined && { edgeFraction }),

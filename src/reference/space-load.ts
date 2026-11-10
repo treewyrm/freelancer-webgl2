@@ -983,6 +983,22 @@ const cloudsFrom = (
   return new Clouds(settings, { visibility, random })
 }
 
+/**
+ * A zone's `EulerMatrix` (`0x63041a0`): Rz·Ry·Rx, X applied first, from `rotate`'s degrees, or its
+ * pitch alone ([ENGINE.md](../freelancer/docs/refs/ENGINE.md)).
+ */
+const zoneTurn = ({
+  pitch,
+  rotate = [pitch, 0, 0],
+}: NonNullable<ReferenceSystem['zones']>[number]) => {
+  const about = (x: number, y: number, z: number, degrees: number) =>
+    Quat.axisAngle({ axis: { x, y, z }, angle: (degrees * Math.PI) / 180 })
+  return Quat.multiply(
+    Quat.multiply(about(0, 0, 1, rotate[2]), about(0, 1, 0, rotate[1])),
+    about(1, 0, 0, rotate[0]),
+  )
+}
+
 /** A system's zone as the scene's code reads one, and its `edge_fraction`. */
 const zoneFor = (
   system: ReferenceSystem,
@@ -993,11 +1009,7 @@ const zoneFor = (
   )!
   const [x, y, z] = found.position
   const center = { x, y, z }
-  // `EulerMatrix` of a pitch alone: a turn about X.
-  const orientation = Quat.axisAngle({
-    axis: { x: 1, y: 0, z: 0 },
-    angle: (found.pitch * Math.PI) / 180,
-  })
+  const orientation = zoneTurn(found)
   const [a = 0, b = a, c = a] = found.size
   // `GetSize` keeps what's written, a missing value 0, and a sphere's pitch turns its axes.
   const written = {
@@ -1007,7 +1019,11 @@ const zoneFor = (
   const zone =
     found.shape === 'SPHERE'
       ? zoneOf({ type: 'sphere', center, radius: a }, written)
-      : zoneOf({ type: 'ellipsoid', center, orientation, radii: { x: a, y: b, z: c } }, written)
+      : found.shape === 'BOX'
+        ? zoneOf({ type: 'box', center, orientation, size: written.size }, written)
+        : found.shape === 'CYLINDER'
+          ? zoneOf({ type: 'cylinder', center, orientation, radius: a, height: b }, written)
+          : zoneOf({ type: 'ellipsoid', center, orientation, radii: { x: a, y: b, z: c } }, written)
   return { zone, edgeFraction: found.edgeFraction ?? 0 }
 }
 
@@ -1036,14 +1052,13 @@ const loadModelFile = async (read: ReadAsset, path: string, camera: Camera) => {
   })
 }
 
-/** A system zone's `IZone::GetTransform`: its position, and a pitch alone as `EulerMatrix` turns it. */
+/** A system zone's `IZone::GetTransform`: its position, turned as `zoneTurn` turns it. */
 const zoneTransform = (system: ReferenceSystem, nickname: string): Matrix4 => {
   const found = system.zones!.find(
     (entry) => entry.nickname.toLowerCase() === nickname.toLowerCase(),
   )!
   const [x, y, z] = found.position
-  const turn = Quat.axisAngle({ axis: { x: 1, y: 0, z: 0 }, angle: (found.pitch * Math.PI) / 180 })
-  return Matrix4.fromRotationTranslation(Matrix3.fromQuaternion(turn), { x, y, z })
+  return Matrix4.fromRotationTranslation(Matrix3.fromQuaternion(zoneTurn(found)), { x, y, z })
 }
 
 const loadNebula = async (
@@ -1401,11 +1416,7 @@ const loadField = async (
     const [a = 0, b = 0, c = 0] = zoneEntry.size
     return new AsteroidBand(settings, {
       position: { x, y, z },
-      // `EulerMatrix` of a pitch alone: a turn about X.
-      orientation: Quat.axisAngle({
-        axis: { x: 1, y: 0, z: 0 },
-        angle: (zoneEntry.pitch * Math.PI) / 180,
-      }),
+      orientation: zoneTurn(zoneEntry),
       size: { x: a, y: b, z: c },
       diffuse,
       ambient,
@@ -1864,11 +1875,7 @@ export const loadSystem = async (
       const shape: RingShape = {
         type: 'ring',
         center: { x, y, z },
-        // `EulerMatrix` of a pitch alone: a turn about X.
-        orientation: Quat.axisAngle({
-          axis: { x: 1, y: 0, z: 0 },
-          angle: (zone.pitch * Math.PI) / 180,
-        }),
+        orientation: zoneTurn(zone),
         radius: zone.size[0]!,
         innerRadius: zone.size[1]!,
         height: zone.size[2]!,
