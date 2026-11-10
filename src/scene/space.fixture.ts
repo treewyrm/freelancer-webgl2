@@ -13,6 +13,7 @@ import type { Fixture } from '#/harness.js'
 import { AsteroidBand } from './band.js'
 import { equipmentLight } from './light.js'
 import { zoneOf } from './nebula.js'
+import { beamArchetype, BeamEffect } from './beam.js'
 import { buildRing, textureShape, type RingExterior } from './ring.js'
 import { createRenderer } from './render.js'
 import { collectSpaceFrame, type SpaceObject, type SpaceScene } from './space.js'
@@ -51,6 +52,20 @@ export interface SpaceReport {
    * corner on its wall, an opaque blue layer under a green one at 31 / 255 added `ONE, INVSRCALPHA`.
    */
   tunnel: number[][]
+  /**
+   * A white spear 10 ahead of a green square, seen across, added: on its shaft, beyond its reach,
+   * then with the square in front of it, its depth test hiding it, and in a nebula's black fog.
+   */
+  beams: { over: number[]; beside: number[]; hidden: number[]; fogged: number[] }
+  /** Buffers more after 40 frames of a shot than after one: a frame's own mesh is freed. */
+  beamBuffers: number
+  /**
+   * A red tractor 10 ahead of a green square, its line across, added: on it, beyond it, then with
+   * the square in front of it.
+   */
+  tractor: { over: number[]; beside: number[]; hidden: number[] }
+  /** A cockpit's mesh over a nearer scene, then neither, then its glass in place and at the end. */
+  cockpit: { mesh: number[]; bare: number[]; glass: number[]; atEnd: number[] }
 }
 
 // A square of half-size 1 facing +Z: FVF 0x112.
@@ -512,8 +527,147 @@ export default (async (gl) => {
   )
   const tunnelPixels = [read(width >> 1, height >> 1), read(0, 0)]
 
+  // A spear across the view at 10 ahead: -Z along +X, its length 100 each way at its first full size.
+  const arch = beamArchetype({
+    kind: 'spear',
+    tipLength: 100,
+    tailLength: 100,
+    headWidth: 1,
+    coreWidth: 1,
+    coreColor: { x: 255, y: 255, z: 255 },
+    outerColor: { x: 255, y: 255, z: 255 },
+    tipColor: { x: 255, y: 255, z: 255 },
+    tailColor: { x: 255, y: 255, z: 255 },
+    trailTexture: 'wide',
+  })
+  const across = {
+    x: { x: 0, y: 1, z: 0 },
+    y: { x: 0, y: 0, z: 1 },
+    z: { x: -1, y: 0, z: 0 },
+  }
+  const shotScene = (position: { x: number; y: number; z: number }) => {
+    const beam = new BeamEffect(arch, { orientation: across, position, speed: 1e5 })
+    return {
+      camera: {
+        position: { x: 0, y: 0, z: 0 },
+        orientation: Matrix3.identity,
+        fovh: 45,
+        near: 1,
+        far: 1,
+      },
+      aspect: width / height,
+      ambient: { x: 255, y: 255, z: 255 },
+      lights: [],
+      beams: [beam],
+      beamTexture: solid('white', [255, 255, 255]),
+      step: 0.05,
+    }
+  }
+  const shotFrame = (scene: SpaceScene) => {
+    // A shot's first frame is its smallest: this is its second.
+    collectSpaceFrame(scene)
+    return collectSpaceFrame(scene)
+  }
+  const greenBehind = square([0, 1, 0], 20, 20, 100)
+  renderer.render(shotFrame({ ...shotScene({ x: 0, y: 0, z: -10 }), objects: [greenBehind] }))
+  const over = read(width >> 1, height >> 1)
+  const beside = read(width >> 1, 2)
+  renderer.render(shotFrame({ ...shotScene({ x: 0, y: 0, z: -30 }), objects: [greenBehind] }))
+  const hidden = read(width >> 1, height >> 1)
+  // Past the fog's end, in its black: what's added is nothing.
+  const foggedShot = shotFrame({ ...shotScene({ x: 0, y: 0, z: -10 }), objects: [] })
+  renderer.render({
+    ...foggedShot,
+    beams: {
+      ...foggedShot.beams!,
+      fog: { start: 0, end: 1, color: { x: 0, y: 0, z: 0 } } as never,
+    },
+  })
+  const foggedBeam = read(width >> 1, height >> 1)
+
+  // A red tractor across the view, no stray, its loot far past the tip.
+  const tractorScene = (z: number): SpaceScene => ({
+    ...shotScene({ x: 0, y: 0, z: -10 }),
+    beams: [],
+    objects: [greenBehind],
+    tractors: [
+      {
+        source: { x: -50, y: 0, z },
+        maxLength: 1500,
+        color: { x: 255, y: 0, z: 0 },
+        arms: [{ tip: { x: 50, y: 0, z }, loot: { x: 500, y: 0, z }, radius: 5 }],
+      },
+    ],
+    lineTexture: solid('line', [255, 255, 255]),
+    tractorLimits: { jitter: 0, endJitter: 0 },
+  })
+  renderer.render(collectSpaceFrame(tractorScene(-10)))
+  const tractorOver = read(width >> 1, height >> 1)
+  const tractorBeside = read(width >> 1, 2)
+  renderer.render(collectSpaceFrame(tractorScene(-300)))
+  const tractorHidden = read(width >> 1, height >> 1)
+
+  // A frame's own mesh goes when it's drawn, so the live count doesn't grow with the frames.
+  const buffers: WebGLBuffer[] = []
+  const createBuffer = gl.createBuffer.bind(gl)
+  gl.createBuffer = () => {
+    const buffer = createBuffer()
+    buffers.push(buffer)
+    return buffer
+  }
+  const liveBuffers = () => buffers.filter((buffer) => gl.isBuffer(buffer)).length
+  const burst = shotScene({ x: 0, y: 0, z: -10 })
+  renderer.render(collectSpaceFrame({ ...burst, objects: [] }))
+  const liveOnce = liveBuffers()
+  for (let frame = 0; frame < 40; frame++)
+    renderer.render(collectSpaceFrame({ ...burst, objects: [] }))
+  const beamBuffers = liveBuffers() - liveOnce
+  gl.createBuffer = createBuffer
+
+  // Red is 5 ahead, and the mesh, green, 50: only the depth clear lets it show. Glass at half blends
+  // over what's there with no mesh of its own to hide it, in place or queued to the end.
+  const pass = (fields: Partial<SpaceScene>) =>
+    collectSpaceFrame({
+      camera: {
+        position: { x: 0, y: 0, z: 0 },
+        orientation: Matrix3.identity,
+        fovh: 45,
+        near: 1,
+        far: 1,
+      },
+      aspect: width / height,
+      ambient: { x: 255, y: 255, z: 255 },
+      lights: [],
+      objects: [square([1, 0, 0], 5, 5, 100)],
+      firstPerson: true,
+      ...fields,
+    })
+  const cockpitModel = square([0, 1, 0], 50, 50, 100).model
+  const sphere = { center: { x: 0, y: 0, z: 0 }, radius: 100 }
+  renderer.render(pass({ cockpit: { model: cockpitModel, sphere } }))
+  const cockpitMesh = read(width >> 1, height >> 1)
+  renderer.render(pass({}))
+  const bare = read(width >> 1, height >> 1)
+  const glass = {
+    ...square([0, 0, 1], 2, 2, 100).model,
+    material: () => ({
+      ...MATERIAL,
+      type: 'DcDtOcOt',
+      diffuse: { x: 0, y: 0, z: 1 },
+      opacity: 0.5,
+    }),
+  }
+  renderer.render(pass({ hud: true, cockpit: { model: glass, sphere } }))
+  const glassOver = read(width >> 1, height >> 1)
+  renderer.render(pass({ hud: true, effectsOff: true, cockpit: { model: glass, sphere } }))
+  const glassAtEnd = read(width >> 1, height >> 1)
+
   renderer.dispose()
   return {
+    cockpit: { mesh: cockpitMesh, bare, glass: glassOver, atEnd: glassAtEnd },
+    beams: { over, beside, hidden, fogged: foggedBeam },
+    beamBuffers,
+    tractor: { over: tractorOver, beside: tractorBeside, hidden: tractorHidden },
     corona,
     tunnel: tunnelPixels,
     suns,

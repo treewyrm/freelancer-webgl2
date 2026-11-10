@@ -9,6 +9,8 @@ import { readRigidModel, type RigidModel } from '@treewyrm/freelancer/rigid'
 import { readTextureLibrary, type Texture } from '@treewyrm/freelancer/texture'
 import { readSurfaceLibrary } from '@treewyrm/freelancer/surface'
 import { Directory } from '@treewyrm/freelancer/utf'
+import { beamArchetype, type BeamArchetype, type BeamSection } from '#/scene/beam.js'
+import type { TractorBeam } from '#/scene/tractor.js'
 import { BufferView } from '@treewyrm/freelancer/utility'
 import { getMesh, readVMeshLibrary } from '@treewyrm/freelancer/vmesh'
 import { getJointMatrix, type CompoundNode, type Hardpoint } from '@treewyrm/freelancer/compound'
@@ -373,6 +375,78 @@ const shapeOf = async (read: ReadAsset, name: string): Promise<Texture> => {
     if (found?.type === 'image') return found
   }
   throw new Error(`no texture shape ${name}`)
+}
+
+/**
+ * `FX/beam_effects.ini` as `FUN_0042e850` reads it, by nickname folded, with `code_beam` from
+ * `effect_shapes.ini`. A section's kind is its header; the keys are `FUN_0042e4a0`'s.
+ */
+export const loadBeamEffects = async (
+  read: ReadAsset,
+): Promise<{ beams: Map<string, BeamArchetype>; texture: Texture }> => {
+  const beams = new Map<string, BeamArchetype>()
+  for (const section of Document.read(await read('FX/beam_effects.ini'))) {
+    const header = section.name.toLowerCase()
+    if (header !== 'beamspear' && header !== 'beambolt') continue
+    const nickname = strings(section, 'nickname')[0]
+    if (!nickname) continue
+    const color = (key: string) => {
+      const values = numbers(section, key)
+      return values.length ? { color: vector(values) } : {}
+    }
+    const number = (key: string) => numbers(section, key)[0]
+    const fields: Partial<BeamSection> = {}
+    const set = <K extends keyof BeamSection>(key: K, value: BeamSection[K] | undefined) => {
+      if (value !== undefined) fields[key] = value
+    }
+    set('tipColor', color('tip_color').color)
+    set('tailColor', color('tail_color').color)
+    set('coreColor', color('core_color').color)
+    set('secCoreColor', color('sec_core_color').color)
+    set('outerColor', color('outter_color').color)
+    set('secOuterColor', color('sec_outter_color').color)
+    set('tipLength', number('tip_length'))
+    set('tailLength', number('tail_length'))
+    set('coreLength', number('core_length'))
+    set('coreWidth', number('core_width'))
+    set('secCoreWidth', number('sec_core_width'))
+    set('headWidth', number('head_width'))
+    set('flashSize', number('flash_size'))
+    set('headBrightness', number('head_brightness'))
+    set('trailBrightness', number('trail_brightness'))
+    set('headTexture', strings(section, 'head_texture')[0])
+    set('trailTexture', strings(section, 'trail_texture')[0])
+    beams.set(
+      nickname.toLowerCase(),
+      beamArchetype({ kind: header === 'beamspear' ? 'spear' : 'bolt', ...fields }),
+    )
+  }
+  return { beams, texture: await shapeOf(read, 'code_beam') }
+}
+
+/**
+ * Every `[Tractor]` in `EQUIPMENT/misc_equip.ini`, by nickname folded: its `max_length` and `color`
+ * as written, for a `TractorBeam`, with `line` from `effect_shapes.ini`. A colour not written is
+ * `FCliTractor`'s 255 each.
+ */
+export const loadTractors = async (
+  read: ReadAsset,
+): Promise<{
+  tractors: Map<string, Pick<TractorBeam, 'maxLength' | 'color'>>
+  texture: Texture
+}> => {
+  const tractors = new Map<string, Pick<TractorBeam, 'maxLength' | 'color'>>()
+  for (const section of Document.read(await read('EQUIPMENT/misc_equip.ini'))) {
+    if (section.name.toLowerCase() !== 'tractor') continue
+    const nickname = strings(section, 'nickname')[0]
+    if (!nickname) continue
+    const color = numbers(section, 'color')
+    tractors.set(nickname.toLowerCase(), {
+      maxLength: numbers(section, 'max_length')[0] ?? 0,
+      color: color.length ? vector(color) : { x: 255, y: 255, z: 255 },
+    })
+  }
+  return { tractors, texture: await shapeOf(read, 'line') }
 }
 
 /**
@@ -1397,6 +1471,19 @@ const loadField = async (
         }
       : {}),
   }
+}
+
+/**
+ * A ship's `[Cockpit] mesh`, from its `cockpit` file in `shiparch.ini` (`FirstPersonCameraLoad`), and
+ * the mesh's root bounding sphere, local. The host places it, as `FirstPersonCameraUpdate` does.
+ */
+export const loadCockpit = async (read: ReadAsset, ship: string, camera: Camera) => {
+  const section = (await sectionsOf(read, ['SHIPS/shiparch.ini'])).get(ship.toLowerCase())!
+  const file = Document.read(await read(pathOf(strings(section, 'cockpit')[0]!)))
+  const mesh = strings(file.getSection('Cockpit')!, 'mesh')[0]!
+  const place = await loadModelFile(read, mesh, camera)
+  const { center, radius } = place(Matrix4.identity).parts[0]!.reference.boundingSphere
+  return { place, sphere: { center, radius } }
 }
 
 export const loadSystem = async (

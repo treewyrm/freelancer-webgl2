@@ -175,6 +175,7 @@ export const fillSheetsDraw = (
   return {
     mesh,
     reference,
+    transient: true,
     byteOffset: 0,
     count: indices.length,
     // In world space, under the camera's own view (`Win3DApplyCamera`).

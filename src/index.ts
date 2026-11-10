@@ -26,9 +26,12 @@ export {
 export { instanceExtent, type Extent } from '#/scene/extent.js'
 export {
   collectSpaceFrame,
+  RETAIL_COCKPIT_LIMITS,
   RETAIL_SPACE_LIMITS,
   skyLayers,
+  type CockpitLimits,
   type SkyLayer,
+  type SpaceCockpit,
   type SpaceEffect,
   type SpaceFrame,
   type SpaceLimits,
@@ -127,6 +130,22 @@ export {
   type DynamicLightningSettings,
   type Random,
 } from '#/scene/lightning.js'
+export {
+  BeamEffect,
+  beamArchetype,
+  lookMatrix,
+  RETAIL_BEAM_LIMITS,
+  type BeamArchetype,
+  type BeamLimits,
+  type BeamSection,
+  type BeamStart,
+} from '#/scene/beam.js'
+export {
+  RETAIL_TRACTOR_LIMITS,
+  type TractorArm,
+  type TractorBeam,
+  type TractorLimits,
+} from '#/scene/tractor.js'
 export {
   EFFECT_TYPE_NAMES,
   effectLodRow,

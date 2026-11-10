@@ -18,11 +18,11 @@ it. Sphere materials aren't counted there. The nine `DcDt` rows hold 21,153 of t
 
 | Type | Draws | Read | Built | State | Picture |
 | ---- | ----: | ---- | ----- | ----- | ------- |
-| `DcDt` | 15,016 | Yes | Yes | `li_elite`, `li_elite_turned`, `ku_dragon`, `prison` | `li_elite`, `li_elite_turned`, `ku_dragon`, `prison` |
+| `DcDt` | 15,016 | Yes | Yes | `li_elite`, `li_elite_turned`, `ku_dragon`, `prison`, `cockpit_li`, `cockpit_rh` | `li_elite`, `li_elite_turned`, `ku_dragon`, `prison` |
 | `DcDtEc` | 3,200 | Yes | Yes | `prison` | `prison` |
 | `DcDtEt` | 1,334 | Yes | Yes | `prison`, `lair_core` | `prison`, `lair_core` |
 | `DcDtTwo` | 522 | Yes | Yes | `li_elite`, `li_elite_turned` | `li_elite`, `li_elite_turned` |
-| `DcDtOcOt` | 484 | Yes | Yes | `ku_dragon`, `prison`, both blended | `ku_dragon`, `prison` |
+| `DcDtOcOt` | 484 | Yes | Yes | `ku_dragon`, `prison`, both blended; `cockpit_rh`, in place | `ku_dragon`, `prison` |
 | `DcDtEcOcOtTwo` | 318 | Yes | Yes | `bands` | `bands` |
 | `DcDtEcOcOt` | 179 | Yes | Yes | `bands` | `bands` |
 | `DcDtOcOtTwo` | 78 | Yes | Yes | `lair_core`, `lair`, blended | `lair_core`, `lair` |
@@ -83,3 +83,5 @@ No file names these; the engine applies them.
 | `FxParticleAppearance` | M6 | Yes | Yes | `effect_child` | `effect_child` |
 | `FxOrientedAppearance` | M6 | Yes | Yes; crashes at retail's `poolSize` of 0 | `effect_oriented`, at 1000 | `effect_oriented`, at 1000 |
 | `FxMeshAppearance` | M6 | Yes; crashes the game on spawn | Reported, undrawn | | |
+| `code_beam`, `[BeamSpear]` and `[BeamBolt]` | M7 | Yes | Yes; `code_beam`'s 16-bit Targa one green step dark in 134 texels | `beam_shots`, every vertex | |
+| `line`, a `[Tractor]`'s | M7 | Yes | Yes | | |

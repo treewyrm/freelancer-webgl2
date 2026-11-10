@@ -68,7 +68,8 @@ end: its texture by name, stage setup, material, lights and matrices. Pinned by
 - [x] Texture upload: DXT and Targa, mip chains, vertical origin, addressing and filtering. Texels
       hash the same as both captures. Retail narrows 24-bit to R5G6B5 by rounding, and D3DX gives a
       cube's generated levels a rounded 2x2 box. **Not yet captured:** top-left Targas (the source
-      and the library agree on reversing them), DXT3, 16-bit Targas, the two 24-bit surfaces.
+      and the library agree on reversing them), DXT3, the two 24-bit surfaces. 16-bit Targas were
+      captured in `beam_shots`, and are one green step off: see M7.
 - [x] VMesh buffers, including the base-vertex scheme (library `RENDERER.md` §3). Indices rebased per
       reference. They match `li_elite` exactly, and every hull vertex and normal matches
       `li_elite_turned`, second passes negated. All 9,322 retail references stay in range.
@@ -775,7 +776,81 @@ renderer. Random streams need not match retail; each appearance's sizes, colours
       Not compared: the ten effect draws after the hull, which the reference doesn't start (the jump's
       `jump_tunnel_interior_player` and its jump-out effect, by `EnterTunnel`, are the likely ones),
       and the letterbox's viewport, 1024 by 554, which is the host's. The host reads `FX/jumpeffect.ini` with `loadJumpEffects`.
-- [ ] Projectiles and beams; the cockpit pass with its depth clear.
+- [x] A gun's shots: `BeamEffect` (`src/scene/beam.ts`) and `SpaceScene.beams`, from `FBeamEffect`
+      (`beam_effect.cpp`). A spear's cross (`FUN_004fa270`) or a bolt's tube (`FUN_004fb1e0`), growing over
+      `(core_length + tail_length + 7.5) / speed` from a first frame built as a spear whichever the kind;
+      only the player's spear flashes at `flash_size` there, and never from the cockpit. The host moves
+      it and places it each frame. A hit drops it at once; a life that runs out `kill`s it, and it coasts
+      on the walk's step and fades over 0.3 s, one more frame if the float leaves a little. Its view test
+      has its own radius of 50, its type's `pbubble`, and no fog, LOD or cloak (`beamView`). Every shot is
+      one draw after the effects and before the screen quads (`EffectVertexBatchFlush`): `code_beam` by
+      its whole texture, added, unculled, `LEQUAL`, no depth writes, in the effects' fog. `head_texture`
+      and `trail_texture` were checked in `Freelancer-original.exe` (`0x42e796`, `0x42e7f1`): `ball` and
+      `thin` are 1, where the decomp's header has `star`. `loadBeamEffects` reads retail's 55. The host
+      gets `lookMatrix` for the player's aim. Pinned by reading and by pixels. Matched in `beam_shots`,
+      below; the sampler and alpha test it inherits were guesses until then.
+- [x] **You:** `beam_shots` (`src/reference/systems.ts`): `rh_elite` with a spear on `HpWeapon01` and a bolt
+      on `HpWeapon02`, firing at nothing in the chase camera. **Matched in state and vertices**
+      (`src/reference/beams.test.ts`): two triplets of frames, each one click's shots, fully grown. In
+      every frame both shots are one `DrawIndexedPrimitiveUP` after the effects and before the HUD's
+      depth clear, the bolt (`pi_particle_03_beam`, 17 vertices) then the spear (`Li_laser_01_beam`,
+      12). Each is ours built at its place and turned by `lookMatrix` of its direction (to 4e-6):
+      every colour byte, UV and index, the places to 5e-4 at some 200 out. Frame to frame the bolt
+      travels 0.8 of the spear's distance, their muzzle velocities' 600 to 750. The inherited state
+      is what was guessed: clamped, linear, mips by nearest, alpha test `GREATER 0`, and here no fog.
+      It found:
+      - `code_beam` is a **16-bit** Targa, the first captured. Retail's device holds its 5-bit
+        channels as R5G6B5, rows as stored, green rounded to 6 bits: `g << 1 | g >> 4`. The format
+        library hands it over as 24-bit, and through 8 bits we get `g << 1`, one step dark in 134 of
+        its 4096 texels. A `todo` test holds it; the item below fixes it.
+
+      Not compared: the picture, and a first frame's flash, which neither triplet caught. The bolt's own `vis_effect`
+      (`pi_particle_03_proj`) is among the effects before the batch, and nothing here starts it.
+- [ ] 16-bit Targas as retail holds them: 102 of retail's 2,404 Targa chains, among them `code_beam`,
+      the tractor's `line`, the sun's `suncircle` and `lenscircle`, `bulb` and `shine`. In
+      `@treewyrm/freelancer`, keep a Targa's source depth (a format of its own, or its 5-bit data),
+      then here narrow it straight to R5G6B5 with green rounded (`planUpload`), and turn the `todo` in
+      `beams.test.ts` into a test. Whether one with its attribute bit set reaches the device as
+      A1R5G5B5 is uncaptured.
+- [x] The cockpit pass, from `FirstPersonCameraSceneDraw` (`LAB_00518420`), under `SpaceScene.firstPerson`:
+      `Frame.clearDepth` with the HUD on or a mesh; each sun's corona; `SpaceScene.cockpit`'s mesh, under
+      near 0.05 and far 500 and in the depth range 0.75 to 1, lit from its sphere as an object, or in a jump
+      by the jump's ambient alone, at the `ZFUNC` 4 the near lists left; then each sun's flare. Its glass,
+      `DcDtOcOt` in the Bretonia and Rheinland cockpits, draws in place in part order: the effects turn the
+      batcher's bin 1 off (`SpaceEffectsDrawFrame`, `0x4f75d6`) and only `Win3DDrawAll`'s end turns it back
+      on. With the effects option off (`SpaceScene.effectsOff`) it queues, and waits for the scene's end
+      (`EndSceneHalf`, `Frame.atEnd`) in the range the pass left, 0 to 0.75, under the frame's projection
+      with the HUD on, or still the mesh's with it off; that case is uncaptured. Pinned by reading and by
+      pixels, and matched in `cockpit_li` and `cockpit_rh` (`cockpits.test.ts`): state for state, depth
+      range, planes and the system's light in view space. The mesh's place and head motion are the host's
+      (`FirstPersonCameraUpdate`); the test takes retail's. The HUD itself, which draws between the mesh
+      and the flare in retail, is M10's: here the flare is ahead of the `end` hook.
+- [x] **You:** `cockpit_li` and `cockpit_rh` (`src/reference/systems.ts`): each in the cockpit view with the
+      `cockpit` option on, for the mesh's state and order, and for where the queued glass lands. It lands
+      right after the mesh, before the HUD, not at the scene's end as first read.
+- [x] A tractor's lines: `tractorDraws` (`src/scene/tractor.ts`) and `SpaceScene.tractors`, from
+      `FCliTractorBeam::BuildGeometry` (`cli_tractor_beam.cpp`) and `Win3DDrawFuzzyLine` and
+      `Win3DDrawFuzzyArc` (`win3d_immediate.cpp`). Each arm holding loot, eleven at most: a beam of
+      `floor(length / 5) + 1` camera-facing diamonds from the source to the tip, its inner points
+      strayed by `RandomVector(1)`, stopped on the loot's shell at a fifth of its physical radius, its
+      end strayed up to 0.5 in `+x` and `+y` only; and with the tip past the shell, five arcs of
+      1-unit diamonds off that end, in a cone of `0.8π` times how far in (`LookMatrixYup`). `line`'s
+      frame 0 times the `[Tractor]`'s colour, added, unlit, unculled, no depth writes, under the
+      effects' `LEQUAL` and fog, in bucket 0x2d: after Alchemy's and before the shots' flush
+      (`Frame.tractors`). Seen when its sphere of `max_length` about the source is
+      (`EffectInCameraView`). Retail draws each quad alone; added with no depth writes, one draw a
+      tractor is the same picture. The host reads `[Tractor]` and `line` with `loadTractors`, and
+      gives each frame's arms. Pinned by reading and by pixels. **Uncaptured**, so the sampler and alpha
+      test it inherits are taken as the shots' (`immediateDraw`, captured in `beam_shots`), and the arcs' sense of turn is read
+      as the engine's other quaternions, its math DLL not being in the decomp. Retail's jitter is the
+      game's one `rand()`, so only its kind can match.
+- [ ] **You:** a tractor reaching for loot, captured: the quads' state, sampler and order against the
+      shots'. Jettison a cargo item and tractor it back in, F11 while the line reaches and again once
+      it's in the shell, for the sparks.
+- [x] A frame's own meshes are freed once it's drawn: `Draw.transient`. Bands, billboards, clouds, the corona,
+      the exterior, the overlay, sheets, a sun's glow, the tunnel and now shots each built one a draw that the
+      renderer kept until `dispose()`, so a long flight would have run out of buffers. Pinned on the GPU: 40
+      frames of a shot leave no more buffers than one, where without the free they leave 80 more.
 - [ ] Measure effects' CPU cost in a whole system. A pushed lane steps on the CPU, by choice: bring back
       transform feedback only if this shows the need. The picture doesn't depend on it ([ADAPTING.md](ADAPTING.md#alchemy-m6)).
 - [x] **You:** a custom system and a save that places the ship, with screenshots and captures.

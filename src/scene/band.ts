@@ -428,6 +428,7 @@ export class AsteroidBand {
     return {
       mesh,
       reference,
+      transient: true,
       byteOffset: 0,
       count: vertexCount,
       world: Matrix4.identity,

@@ -642,6 +642,7 @@ const stripDraw = (
   return {
     mesh,
     reference,
+    transient: true,
     byteOffset: 0,
     count: corners.length,
     world: Matrix4.identity,

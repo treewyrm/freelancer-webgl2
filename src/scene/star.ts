@@ -175,6 +175,7 @@ const glowDraw = (
   return {
     mesh,
     reference,
+    transient: true,
     byteOffset: 0,
     count,
     // In world space, under the camera's own view (`Win3DApplyCamera`).

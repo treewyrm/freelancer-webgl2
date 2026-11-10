@@ -205,6 +205,8 @@ export type BlendMode = 'alpha' | 'add' | 'alphaAdd' | 'multiply' | 'screen' | '
 export interface Draw {
   mesh: VMeshData
   reference: VMeshRef
+  /** The mesh was built for this frame alone: the renderer frees it once the frame's drawn. */
+  transient?: boolean
   /** Into the reference's planned index buffer. */
   byteOffset: number
   count: number
@@ -237,6 +239,8 @@ export interface Draw {
   lights?: SceneLight[]
   /** In place of the frame's, for this draw. */
   projection?: Matrix4
+  /** `D3DVIEWPORT8`'s `MinZ` and `MaxZ`, for this draw: `[0, 1]` when absent. */
+  depthRange?: readonly [number, number]
   /** D3D's table fog, on depth: a nebula's, for what it holds (`StarSysApplyObjectLighting`). */
   fog?: Fog
   negateNormals: boolean
@@ -284,6 +288,10 @@ export interface Frame {
   effectFog?: Fog
   /** `less` when absent, as the menu's effects capture it; space's are `lequal`. */
   effectDepthFunc?: 'less' | 'lequal'
+  /** Each tractor's lines, after the effects, in the walk's own bucket (`EFT_TRACTORBEAM`). */
+  tractors?: Draw[]
+  /** Every shot of the frame, once the effects are walked (`EffectVertexBatchFlush`). */
+  beams?: Draw
   /**
    * Screen quads, after the effects, in D3D's pixels: added, the texture times each quad's colour,
    * `lequal` without writing depth (`ScreenQuadFlush` in `SpaceEffectsDrawFrame`). Each batch is one
@@ -291,10 +299,20 @@ export interface Frame {
    */
   screenQuads?: ScreenQuadBatch[]
   /**
+   * Clear depth before `afterEffects`: from the cockpit, with the HUD on or the cockpit showing
+   * (`FirstPersonCameraSceneDraw`, `0x518463`). None of what's already drawn can then hide what's next.
+   */
+  clearDepth?: boolean
+  /**
    * Drawn after the screen quads, before the `end` hook: a sun's corona, which the game draws once
-   * its effects are done (`ScaleEnvironmentEffects`, `0x51c7d4`).
+   * its effects are done (`ScaleEnvironmentEffects`, `0x51c7d4`), and from the cockpit, its mesh.
    */
   afterEffects?: Draw[]
+  /**
+   * After the `end` hook: what the cockpit's mesh queued with the effects option off, which the
+   * game's batcher draws only as the scene ends, past the HUD and every sun's flare (`EndSceneHalf`).
+   */
+  atEnd?: Draw[]
   /** What didn't draw as authored: materials M3 is to cover, and any mesh or texture not found. */
   unsupported: string[]
   /** Materials of a type no DLL registers. They draw nothing in retail either. */
@@ -901,7 +919,8 @@ export const collectModel = (
   view: Matrix4,
   time: number,
   draws: Draw[],
-  queued: Queued[],
+  /** The batcher's bin 1. None while it's off (`SetBinOrder(1, -1)`): each part draws where it stands. */
+  queued: Queued[] | undefined,
   unsupported: Set<string>,
   unregistered: Set<string>,
   limits: FrameLimits = RETAIL_FRAME_LIMITS,
@@ -991,7 +1010,7 @@ export const collectModel = (
       const target: Draw[] = []
       // The sky's override calls the batched face's `Submit` itself, so it never reaches a queue
       // (`FMaterialImpl::DrawBackdrop`), and draws where it stands.
-      const queuedHere = !model.sky && BATCHED.test(type) && passes[0]!.blend
+      const queuedHere = queued && !model.sky && BATCHED.test(type) && passes[0]!.blend
       if (queuedHere)
         queued.push({ depth: batchDepth(mesh, reference, world, view), draws: target })
 

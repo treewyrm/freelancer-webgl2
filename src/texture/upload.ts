@@ -27,7 +27,8 @@ const narrow = (value: number, bits: number): number => {
 /**
  * A Targa without alpha reaches retail's device as R5G6B5 (`DAOT`; captures, format 23). Hashes pin
  * this for colour-mapped and 24-bit chains. The library has expanded 16-bit Targas to 24-bit by here,
- * and none has been captured, so going through 8 bits may differ from retail's 5 to 6 in green.
+ * and through 8 bits green comes out one step dark from 16 up: retail rounds 5 bits to 6
+ * (`code_beam` in `beam_shots`, `src/reference/beams.test.ts`). 102 retail chains are 16-bit.
  */
 const rgbToRgb565 = (level: Uint8Array): Uint16Array => {
   const output = new Uint16Array(level.length / 3)

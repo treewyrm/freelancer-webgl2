@@ -260,11 +260,19 @@ export const viewEffect = (
     lod = blend
   }
 
-  // The side planes, as `ClassifySphere` has them.
+  return withinSides(at, camera, aspect, radius) ? { fate: 'draw', lod } : { ...unseen, lod }
+}
+
+/** A sphere at a place in view space against the side planes, as `ClassifySphere` has them. */
+export const withinSides = (
+  at: Vector3,
+  camera: Camera,
+  aspect: number,
+  radius: number,
+): boolean => {
   const tanX = Math.tan((camera.fovh * Math.PI) / 180)
   const tanY = tanX / aspect
   const sideX = (Math.abs(at.x) + tanX * at.z) / Math.hypot(1, tanX)
   const sideY = (Math.abs(at.y) + tanY * at.z) / Math.hypot(1, tanY)
-  const seen = sideX <= radius && sideY <= radius
-  return seen ? { fate: 'draw', lod } : { ...unseen, lod }
+  return sideX <= radius && sideY <= radius
 }

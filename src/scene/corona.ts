@@ -477,6 +477,7 @@ const screenDraw = (
   return {
     mesh,
     reference,
+    transient: true,
     byteOffset: 0,
     count,
     world: Matrix4.invert(view.view),

@@ -142,3 +142,38 @@ test("a gate tunnel draws over the jump's clear, its second layer added ONE, INV
   for (const [index, value] of corner!.entries())
     assert.ok(Math.abs(value - expected[index]!) <= 1, `${corner} against ${expected}`)
 })
+
+test('a shot adds over what stands behind it, and no further than its width', () => {
+  const { over, beside } = report.beams
+  assert.deepEqual(over, [255, 255, 255])
+  assert.deepEqual(beside, GREEN)
+})
+
+test("a shot takes the depth test, and the effects' fog", () => {
+  const { hidden, fogged } = report.beams
+  assert.deepEqual(hidden, GREEN)
+  assert.deepEqual(fogged, [0, 0, 0])
+})
+
+test("a tractor's line adds its colour over what's behind, under the depth test", () => {
+  const { over, beside, hidden } = report.tractor
+  assert.deepEqual(over, [255, 255, 0])
+  assert.deepEqual(beside, GREEN)
+  assert.deepEqual(hidden, GREEN)
+})
+
+test("a frame's own meshes are freed when it's drawn, however many frames go by", () => {
+  assert.equal(report.beamBuffers, 0)
+})
+
+test("the cockpit's mesh shows over a nearer scene, as its pass clears depth", () => {
+  const { mesh, bare } = report.cockpit
+  assert.deepEqual(mesh, GREEN)
+  assert.deepEqual(bare, RED, 'with neither HUD nor mesh, what the scene drew stands')
+})
+
+test("a cockpit's glass blends over the scene, in place or at the frame's end", () => {
+  for (const glass of [report.cockpit.glass, report.cockpit.atEnd])
+    for (const [index, value] of glass.entries())
+      assert.ok(Math.abs(value - [127.5, 0, 127.5][index]!) <= 1, `${glass}`)
+})

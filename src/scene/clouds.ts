@@ -528,6 +528,7 @@ export class Clouds {
     return {
       mesh,
       reference,
+      transient: true,
       byteOffset: 0,
       count: vertexCount,
       // Its corners are in view space: the game draws them under an identity.

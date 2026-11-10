@@ -588,6 +588,7 @@ export class AsteroidBillboards {
     return {
       mesh,
       reference,
+      transient: true,
       byteOffset: 0,
       count,
       world: Matrix4.identity,

@@ -3,8 +3,9 @@ import { existsSync, readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
-import { Document } from '@treewyrm/freelancer/ini'
+import { Document, type Property, type Section } from '@treewyrm/freelancer/ini'
 import { RETAIL_SPACE_LIMITS } from '#/scene/space.js'
+import { loadBeamEffects, loadTractors } from './space-load.js'
 import { saveText, systemIni, systemNickname, systems, universeSection } from './systems.js'
 
 const order = systems.get('space_order')!
@@ -213,3 +214,80 @@ test(
     assert.equal(String(target.getValues('goto')?.[2]?.value), jump!.tunnel)
   },
 )
+
+const skip = existsSync(data) ? false : 'no retail DATA'
+
+test("beam_shots' guns fit the hardpoints they're on, and each fires a beam", { skip }, () => {
+  const read = (path: string) => {
+    const file = readFileSync(join(data, path))
+    return new Uint8Array(file.buffer, file.byteOffset, file.byteLength)
+  }
+  const properties = ({ entries }: Section) =>
+    entries.filter((entry): entry is Property => typeof entry !== 'string')
+  const first = (section: Section, key: string) =>
+    properties(section).find(({ name }) => name === key)?.values[0]?.value as string
+  const { ship, equipment } = systems.get('beam_shots')!.player
+  const [arch] = [...Document.read(read('SHIPS/shiparch.ini'))].filter(
+    (section) => first(section, 'nickname') === ship,
+  )
+  const weapons = [...Document.read(read('EQUIPMENT/weapon_equip.ini'))]
+  const effects = [...Document.read(read('FX/effects.ini'))]
+  const guns = equipment.filter((line) => line.includes(','))
+  assert.equal(guns.length, 2)
+  const fits = properties(arch!).filter(({ name }) => name === 'hp_type')
+  for (const line of guns) {
+    const [nickname, hardpoint] = line.split(', ')
+    const gun = weapons.find((section) => first(section, 'nickname') === nickname)!
+    const type = first(gun, 'hp_gun_type')
+    assert.ok(
+      fits.some(
+        ({ values }) =>
+          values[0]?.value === type && values.slice(1).some(({ value }) => value === hardpoint),
+      ),
+      `${nickname} on ${hardpoint}, ${type}`,
+    )
+    const ammo = weapons.find(
+      (section) => first(section, 'nickname') === first(gun, 'projectile_archetype'),
+    )!
+    const effect = effects.find(
+      (section) => first(section, 'nickname') === first(ammo, 'const_effect'),
+    )!
+    assert.ok(first(effect, 'vis_beam'), `${nickname} fires no beam`)
+  }
+})
+
+test('retail has 55 beams, which load, and `code_beam`', { skip }, async () => {
+  const read = async (path: string) => {
+    const file = readFileSync(join(data, path))
+    return new Uint8Array(file.buffer, file.byteOffset, file.byteLength)
+  }
+  const { beams, texture } = await loadBeamEffects(read)
+  assert.equal(beams.size, 55)
+  assert.equal(texture.name.toLowerCase(), 'code_beam')
+  const spear = beams.get('li_laser_01_beam')!
+  assert.equal(spear.kind, 'spear')
+  const bolt = beams.get('pi_particle_03_beam')!
+  assert.equal(bolt.kind, 'bolt')
+  assert.equal(bolt.coreLength, 55)
+  assert.equal(bolt.ballHead, true)
+  assert.equal(bolt.thinTrail, false)
+  assert.equal(bolt.coreColor.x, Math.fround(245 * Math.fround(0.003921569)))
+  for (const [nickname, { tipLength, tailLength, coreWidth, headWidth }] of beams) {
+    assert.ok(tipLength >= coreWidth && headWidth >= coreWidth, nickname)
+    assert.ok(Number.isFinite(tailLength), nickname)
+  }
+})
+
+test("retail's one tractor loads, and `line`", { skip }, async () => {
+  const read = async (path: string) => {
+    const file = readFileSync(join(data, path))
+    return new Uint8Array(file.buffer, file.byteOffset, file.byteLength)
+  }
+  const { tractors, texture } = await loadTractors(read)
+  assert.deepEqual([...tractors.keys()], ['ge_s_tractor_01'])
+  assert.deepEqual(tractors.get('ge_s_tractor_01'), {
+    maxLength: 1500,
+    color: { x: 178.5, y: 178.5, z: 255 },
+  })
+  assert.equal(texture.name.toLowerCase(), 'line')
+})

@@ -25,9 +25,11 @@ import { NebulaLightning } from './lightning.js'
 import { zoneOf, type SpaceNebula } from './nebula.js'
 import { NebulaExterior } from './exterior.js'
 import { GateTunnel, RETAIL_TUNNEL_LAYER } from './tunnel.js'
+import { beamArchetype, BeamEffect } from './beam.js'
 import {
   collectSpaceFrame,
   skyLayers,
+  type SpaceCockpit,
   type SpaceLimits,
   type SpaceObject,
   type SpaceScene,
@@ -1180,4 +1182,145 @@ test('in a jump the frame is the tunnel, the ship by its light with no pilot, an
   assert.deepEqual(frame.background, { x: 1, y: 1, z: 1 })
   assert.deepEqual(order, ['jump', 'fire'])
   assert.deepEqual(frame.effectViews, [undefined, { fate: 'hold', lod: 1 }, undefined])
+})
+
+// A part just ahead of the eye. `queued` makes it a `DcDtOcOt` of low alpha.
+const cockpitOf = (queued = false): SpaceCockpit => ({
+  model: modelOf('cockpit', -1, queued ? { type: 'DcDtOcOt', opacity: 0.5 } : {}),
+  sphere: { center: { x: 0, y: 0, z: 0 }, radius: 5 },
+})
+
+const POINT: SpaceLight = {
+  type: 'point',
+  position: { x: 0, y: 0, z: 0 },
+  color: { x: 255, y: 255, z: 255 },
+  range: 1000,
+}
+
+test('from outside, no cockpit pass: no clear, and the scene as ever', () => {
+  const frame = collectSpaceFrame(sceneOf([], { cockpit: cockpitOf(), hud: true }))
+  assert.equal(frame.clearDepth, undefined)
+  assert.equal(frame.afterEffects, undefined)
+})
+
+test('from the cockpit, depth clears for the HUD or the mesh, and for neither not at all', () => {
+  const clearOf = (fields: Partial<SpaceScene>) =>
+    collectSpaceFrame(sceneOf([], { firstPerson: true, ...fields })).clearDepth
+  assert.equal(clearOf({}), undefined)
+  assert.equal(clearOf({ hud: true }), true)
+  assert.equal(clearOf({ cockpit: cockpitOf() }), true)
+})
+
+test("the mesh takes its own near and far, at the depth range's back, lit as an object", () => {
+  const lights: SpaceLight[] = [POINT]
+  const frame = collectSpaceFrame(
+    sceneOf([], {
+      firstPerson: true,
+      lights,
+      ambient: { x: 51, y: 51, z: 51 },
+      cockpit: cockpitOf(),
+    }),
+  )
+  const [draw] = frame.afterEffects!
+  assert.deepEqual(draw!.depthRange, [0.75, 1])
+  assert.equal(draw!.depthFunc, 'lequal', 'as the near lists left it')
+  // near 0.05, far 500: z maps -0.05 to -1.
+  const projection = draw!.projection!
+  const clip = projection.z.z * -0.05 + projection.w.z
+  assert.ok(Math.abs(clip / 0.05 + 1) < 1e-4, `${clip}`)
+  assert.equal(draw!.lights!.length, 1)
+  assert.ok(Math.abs(draw!.sceneAmbient!.x - 0.2) < 1e-6)
+})
+
+test('after the effects its glass draws where it stands, as the batcher’s bin is off', () => {
+  const frame = collectSpaceFrame(sceneOf([], { firstPerson: true, cockpit: cockpitOf(true) }))
+  assert.equal(frame.atEnd, undefined)
+  const [glass] = frame.afterEffects!
+  assert.equal(glass!.blend, true)
+  assert.deepEqual(glass!.depthRange, [0.75, 1])
+  assert.notEqual(glass!.projection, undefined)
+})
+
+test('with the effects option off, its queued draws wait for the scene, in the range left', () => {
+  const scene = { firstPerson: true, effectsOff: true, cockpit: cockpitOf(true) }
+  const hud = collectSpaceFrame(sceneOf([], { ...scene, hud: true }))
+  assert.equal(hud.afterEffects, undefined, 'nothing of it drew with the opaque')
+  const [held] = hud.atEnd!
+  assert.deepEqual(held!.depthRange, [0, 0.75])
+  assert.equal(held!.projection, undefined, 'the HUD re-applied the frame’s')
+  const bare = collectSpaceFrame(sceneOf([], scene))
+  assert.notEqual(bare.atEnd![0]!.projection, undefined, 'with no HUD, the mesh’s is still set')
+})
+
+test('in a jump the mesh keeps the jump’s ambient, with no light', () => {
+  const frame = collectSpaceFrame(
+    sceneOf([], {
+      firstPerson: true,
+      cockpit: cockpitOf(),
+      jump: {
+        ship: objectOf('ship', 10),
+        ambient: { x: 51, y: 0, z: 0 },
+        background: { x: 0, y: 0, z: 0 },
+      },
+    }),
+  )
+  assert.deepEqual(frame.afterEffects![0]!.lights, [])
+  assert.ok(Math.abs(frame.afterEffects![0]!.sceneAmbient!.x - 0.2) < 1e-6)
+  assert.equal(frame.clearDepth, true)
+})
+
+test('a shot has no draw without `code_beam`, which is reported, nor in a tunnel', () => {
+  const beam = new BeamEffect(beamArchetype({ kind: 'spear' }), {
+    orientation: { x: { x: 1, y: 0, z: 0 }, y: { x: 0, y: 1, z: 0 }, z: { x: 0, y: 0, z: 1 } },
+    position: { x: 0, y: 0, z: -10 },
+    speed: 600,
+  })
+  const bare = collectSpaceFrame(sceneOf([], { beams: [beam] }))
+  assert.equal(bare.beams, undefined)
+  assert.ok(bare.unsupported.includes('texture code_beam'))
+  const texture = { name: 'code_beam' } as Texture
+  const drawn = collectSpaceFrame(sceneOf([], { beams: [beam], beamTexture: texture }))
+  assert.equal(drawn.beams?.materialName, 'code_beam')
+  const tunnel = collectSpaceFrame(
+    sceneOf([], {
+      beams: [beam],
+      beamTexture: texture,
+      jump: {
+        ship: objectOf('ship', 10),
+        ambient: { x: 0, y: 0, z: 0 },
+        background: { x: 0, y: 0, z: 0 },
+      },
+    }),
+  )
+  assert.equal(tunnel.beams, undefined)
+})
+
+test('a tractor has no draw without `line`, which is reported, nor in a tunnel', () => {
+  const tractor = {
+    source: { x: 5, y: 0, z: -50 },
+    maxLength: 1500,
+    color: { x: 255, y: 255, z: 255 },
+    arms: [{ tip: { x: 5, y: 0, z: -100 }, loot: { x: 5, y: 0, z: -500 }, radius: 5 }],
+  }
+  const bare = collectSpaceFrame(sceneOf([], { tractors: [tractor] }))
+  assert.equal(bare.tractors, undefined)
+  assert.ok(bare.unsupported.includes('texture line'))
+  const lineTexture = { name: 'line' } as Texture
+  const drawn = collectSpaceFrame(sceneOf([], { tractors: [tractor, tractor], lineTexture }))
+  assert.deepEqual(
+    drawn.tractors?.map(({ materialName }) => materialName),
+    ['line', 'line'],
+  )
+  const tunnel = collectSpaceFrame(
+    sceneOf([], {
+      tractors: [tractor],
+      lineTexture,
+      jump: {
+        ship: objectOf('ship', 10),
+        ambient: { x: 0, y: 0, z: 0 },
+        background: { x: 0, y: 0, z: 0 },
+      },
+    }),
+  )
+  assert.equal(tunnel.tractors, undefined)
 })

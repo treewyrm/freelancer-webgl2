@@ -264,6 +264,17 @@ const RING_PLAYER: Omit<ReferenceSystem['player'], 'position'> = {
   rotate: [0, 0, 0],
 }
 
+// A gun on a hardpoint writes as a save does: nickname, hardpoint, its health.
+const GUN_PLAYER: Omit<ReferenceSystem['player'], 'position'> = {
+  ...RING_PLAYER,
+  ship: 'rh_elite',
+  equipment: [
+    ...RING_PLAYER.equipment,
+    'li_gun01_mark01, HpWeapon01, 1',
+    'fc_ou_gun02_mark03, HpWeapon02, 1',
+  ],
+}
+
 /** Files written for the asteroid lab, under `DATA`, as its system names them. */
 const ASTEROID_FIELD_FILE = 'solar\\asteroids\\lab\\lab_field.ini'
 const ASTEROID_NEBULA_FILE = 'solar\\nebula\\lab\\lab_nebula.ini'
@@ -1094,6 +1105,30 @@ export const systems: ReadonlyMap<string, ReferenceSystem> = new Map(
       name: 'dust_zone_quarter',
       ...DUST_QUARTER,
       player: { ...RING_PLAYER, position: [0, 0, 0] },
+    } satisfies ReferenceSystem,
+    {
+      // Hold fire at nothing, in the chase camera, and capture: a spear and a bolt from each gun,
+      // on their way out and growing. A frame just after the click holds their first frames.
+      name: 'beam_shots',
+      ...JUMP,
+      player: { ...GUN_PLAYER, position: [0, 0, 0], rotate: [0, 180, 0] },
+    } satisfies ReferenceSystem,
+    {
+      // In the cockpit view with the `cockpit` option on. Its meshes are all `DcDt`.
+      name: 'cockpit_li',
+      ...JUMP,
+      player: { ...RING_PLAYER, position: [0, 0, 0], rotate: [0, 180, 0] },
+    } satisfies ReferenceSystem,
+    {
+      // The same, in a cockpit with `DcDtOcOt`, whose queue waits for the scene's end.
+      name: 'cockpit_rh',
+      ...JUMP,
+      player: {
+        ...RING_PLAYER,
+        ship: 'rh_elite',
+        position: [0, 0, 0],
+        rotate: [0, 180, 0],
+      },
     } satisfies ReferenceSystem,
     {
       // Facing the hole: dock with it, and capture in the tunnel.

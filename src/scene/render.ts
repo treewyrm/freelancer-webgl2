@@ -27,6 +27,7 @@ import {
 import { planUpload } from '#/texture/upload.js'
 import type { Draw, Frame, HookName } from './frame.js'
 
+const WHOLE_DEPTH: readonly [number, number] = [0, 1]
 const EFFECT_SAMPLER: SamplerState = { ...DEFAULT_SAMPLER, wrapU: 'clamp', wrapV: 'clamp' }
 
 export interface HookContext {
@@ -219,8 +220,12 @@ export const createRenderer = (gl: WebGL2RenderingContext): Renderer => {
     let previousAmbient = false
     let ownLights = false
     let uploaded: Float32Array | undefined
+    const spent = new Set<VMeshData>()
     const drawOne = (draw: Draw) => {
+      if (draw.transient) spent.add(draw.mesh)
       setDrawUniforms(gl, active, draw)
+      const [nearDepth, farDepth] = draw.depthRange ?? WHOLE_DEPTH
+      gl.depthRange(nearDepth!, farDepth!)
       if (draw.cull === 'none') gl.disable(gl.CULL_FACE)
       else {
         gl.enable(gl.CULL_FACE)
@@ -308,6 +313,15 @@ export const createRenderer = (gl: WebGL2RenderingContext): Renderer => {
       })
       applyState()
     }
+    if (frame.tractors?.length || frame.beams) {
+      // The effects' renderer has had the program, so only `applyState` knows what's bound.
+      applyState()
+      previousAmbient = false
+      ownLights = false
+      frame.tractors?.forEach(drawOne)
+      if (frame.beams) drawOne(frame.beams)
+      applyState()
+    }
     if (frame.screenQuads?.length) {
       quads ??= createScreenQuadRenderer(gl)
       quads.draw(frame.screenQuads, { width, height }, ({ texture }) => {
@@ -321,9 +335,27 @@ export const createRenderer = (gl: WebGL2RenderingContext): Renderer => {
     // `applyState` has put the frame's ambient and lights back.
     previousAmbient = false
     ownLights = false
+    if (frame.clearDepth) {
+      // A hook or the host's own may have left a mask, as `gl.clear` obeys it.
+      gl.depthMask(true)
+      gl.clear(gl.DEPTH_BUFFER_BIT)
+    }
     frame.afterEffects?.forEach(drawOne)
+    gl.depthRange(0, 1)
     runHooks(frame.draws.length, (name) => name === 'end')
+    if (frame.atEnd?.length) {
+      applyState()
+      previousAmbient = false
+      ownLights = false
+      frame.atEnd.forEach(drawOne)
+      gl.depthRange(0, 1)
+    }
     release()
+    for (const mesh of spent) {
+      const resources = meshes.get(mesh)
+      if (resources) freeMesh(resources)
+      meshes.delete(mesh)
+    }
     return true
   }
 

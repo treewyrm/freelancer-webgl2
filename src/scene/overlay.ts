@@ -87,6 +87,7 @@ export const fogOverlayDraw = (
   return {
     mesh,
     reference,
+    transient: true,
     byteOffset: 0,
     count: 6,
     // Its corners are in clip space: the host's view is undone by `world`, the projection is none.

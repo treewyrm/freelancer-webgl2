@@ -30,6 +30,9 @@ import {
   updateStar,
   type CoronaView,
 } from './corona.js'
+import { beamBatch, beamDraw, beamView, type BeamEffect } from './beam.js'
+import { tractorDraws, type TractorBeam, type TractorLimits } from './tractor.js'
+import type { Random } from './lightning.js'
 import { fillSheetsDraw } from './sheets.js'
 import type { GateTunnel } from './tunnel.js'
 import {
@@ -50,6 +53,7 @@ import {
   nebulaState,
   RETAIL_NEBULA_LIMITS,
   type NebulaLimits,
+  type Fog,
   type SpaceField,
   type SpaceNebula,
   type NebulaState,
@@ -68,6 +72,7 @@ import {
   type Frame,
   type Queued,
   type SceneEffect,
+  type SceneLight,
   type SceneModel,
 } from './frame.js'
 
@@ -171,10 +176,41 @@ export interface SpaceScene {
   farClip?: number
   /** Over `RETAIL_SPACE_LIMITS`, for a mod that patches them. */
   limits?: Partial<SpaceLimits>
+  /** Over `RETAIL_COCKPIT_LIMITS`, for a mod that patches them. */
+  cockpitLimits?: Partial<CockpitLimits>
   /** Its `[Nebula]`s, in file order: the first that holds a point is the one it's in. */
   nebulae?: readonly SpaceNebula[]
   /** Within a type in the order given, which is newest first in the game (`FUN_004fc920`). */
   effects?: readonly SpaceEffect[]
+  /**
+   * Every gun's shot in flight, newest first as the game's list holds them (`EffectTypeListLink`).
+   * The frame ages them by `step`. A host drops one once it hits, or once it's `dead`.
+   */
+  beams?: readonly BeamEffect[]
+  /** `tex_shape = code_beam`, from `[Texture]` in `effect_shapes.ini`. */
+  beamTexture?: Texture
+  /** Every working tractor reaching for loot, newest first as the game's list holds them. */
+  tractors?: readonly TractorBeam[]
+  /** `tex_shape = line`, from `[Texture]` in `effect_shapes.ini`. */
+  lineTexture?: Texture
+  /** `rand()` for the tractors' jitter. */
+  tractorRandom?: Random
+  /** Over `RETAIL_TRACTOR_LIMITS`, for a mod that patches them. */
+  tractorLimits?: Partial<TractorLimits>
+  /**
+   * The camera is the cockpit's (`FFirstPersonCamera`): a shot's first frame shows no flash
+   * (`0x4fa2a0`), and the frame goes on with its pass (`FirstPersonCameraSceneDraw`, `0x518420`).
+   */
+  firstPerson?: boolean
+  /** The HUD option (`0xa`), on: from the cockpit, depth is cleared for it even with no mesh. */
+  hud?: boolean
+  /** Its mesh, when the `cockpit` option's applied value is over 0.999. Only from the cockpit. */
+  cockpit?: SpaceCockpit
+  /**
+   * The effects option (`0x25`), off. The host leaves out the effects and rings then; here it says
+   * only that the batcher's bin 1 stays on, so what the cockpit's mesh queues waits for `atEnd`.
+   */
+  effectsOff?: boolean
   /** `[System] space_color`, 0 to 1. Deep in a nebula, its fog's colour instead. */
   background?: Vector3
   time?: number
@@ -220,6 +256,32 @@ export interface SpaceScene {
    * types, and nothing else of the system, whose nebulae, fields and dust it leaves alone.
    */
   jump?: SpaceJump
+}
+
+/** `[Cockpit] mesh`, placed where `FirstPersonCameraUpdate` has it, under the ship's turn. */
+export interface SpaceCockpit {
+  model: SceneModel
+  /** Its world bounding sphere (`ClientMeshHolderGetBoundingSphere`), which it's lit by. */
+  sphere: { center: Vector3; radius: number }
+  /** The ship's nebula, as `Slot18c` gives it, and how deep. Its ambient and fog light the mesh. */
+  within?: { state: NebulaState; factor: number }
+}
+
+/** What the cockpit's pass hardcodes, and a mod can patch (`0x5c8914`, `0x5c8918`). */
+export interface CockpitLimits {
+  near: number
+  far: number
+  /** Its mesh keeps to the back of the depth range, behind all the HUD may draw. */
+  depthRange: readonly [number, number]
+  /** The rest, which the pass leaves set for the HUD and the scene's end. */
+  afterDepthRange: readonly [number, number]
+}
+
+export const RETAIL_COCKPIT_LIMITS: Readonly<CockpitLimits> = {
+  near: 0.05,
+  far: 500,
+  depthRange: [0.75, 1],
+  afterDepthRange: [0, 0.75],
 }
 
 /**
@@ -471,6 +533,17 @@ export const collectSpaceFrame = ({
   dust,
   dustZones = [],
   dustOptions,
+  beams = [],
+  beamTexture,
+  tractors = [],
+  lineTexture,
+  tractorRandom,
+  tractorLimits,
+  firstPerson = false,
+  hud = false,
+  cockpit,
+  cockpitLimits,
+  effectsOff = false,
   jump,
 }: SpaceScene): SpaceFrame => {
   const resolved = { ...RETAIL_SPACE_LIMITS, ...limits }
@@ -491,6 +564,11 @@ export const collectSpaceFrame = ({
     return collectJumpFrame(jump, { ...given, far: systemFar }, aspect, time, effects, {
       effectView,
       limits: resolved,
+      hud,
+      effectsOff,
+      cockpit: firstPerson ? cockpit : undefined,
+      firstPerson,
+      cockpitLimits: { ...RETAIL_COCKPIT_LIMITS, ...cockpitLimits },
     })
   const range = systemFar - rangeMargin
   const { position: eye } = given
@@ -1087,12 +1165,46 @@ export const collectSpaceFrame = ({
         }),
       )
     }
+  const litCockpit = () => {
+    const { sphere, within } = cockpit!
+    const nebula = within?.state.nebula
+    const lit = lightObject(
+      lighting,
+      sphere.center,
+      sphere.radius,
+      ambient,
+      time,
+      nebula?.ambient && { ambient: nebula.ambient, factor: within!.factor },
+    )
+    const fog =
+      within &&
+      nebula &&
+      fogOf(within.state.start, fogEnd(within.state, sphere.center), nebula.fog.color)
+    return cockpitDraws(
+      cockpit!,
+      camera,
+      aspect,
+      view,
+      time,
+      hud,
+      effectsOff,
+      { ...RETAIL_COCKPIT_LIMITS, ...cockpitLimits },
+      unsupported,
+      unregistered,
+      resolved,
+      { lights: lit.lights, ambient: lit.ambient, ...(fog && { fog }) },
+    )
+  }
   // `SpaceEnvFxEndCockpitPass` (`0x51c9e0`): then every sun's flare, from where the last draw left it.
+  const flares: Draw[] = []
   if (quality > 0 && viewport)
     for (const { star } of objects) {
       const flare = star && starFlare(star, { view, ...viewport })
-      if (flare) afterEffects.push(flare)
+      if (flare) flares.push(flare)
     }
+  // From the cockpit its mesh goes between them (`0x51848b`, `0x5185e5`), past the depth clear.
+  const shownCockpit = firstPerson && cockpit ? litCockpit() : undefined
+  afterEffects.push(...(shownCockpit?.drawn ?? []), ...flares)
 
   const effectDraws: EffectDraw[] = []
   // A placed effect is drawn only if seen. What it is otherwise the host learns from `effectViews`.
@@ -1138,6 +1250,33 @@ export const collectSpaceFrame = ({
     field && field.enclosure !== 0
       ? fogOf(field.state.start, fogEnd(field.state, eye), BLACK)
       : undefined
+  // `SpaceEffectsDrawFrame` walks the shots after every other effect, in their own bucket, and draws
+  // them as one once the walk is done (`0x4f76cd`). No `code_beam` and retail starts none.
+  if (beams.length && !beamTexture) unsupported.add('texture code_beam')
+  const shots = beamBatch(firstPerson)
+  if (beamTexture) {
+    const seen = beamView(camera, aspect, view, effectView)
+    for (const beam of beams) beam.walk(blinkStep, seen, shots)
+  }
+  // Its bucket after the shots' draws as it's walked, ahead of their flush. No `line` and retail
+  // starts none (`CliTractorBeamInit`).
+  if (tractors.length && !lineTexture) unsupported.add('texture line')
+  const tractorsDrawn = lineTexture
+    ? tractorDraws(
+        tractors,
+        lineTexture,
+        {
+          camera,
+          aspect,
+          view,
+          ...(tractorRandom && { random: tractorRandom }),
+          ...(tractorLimits && { limits: tractorLimits }),
+        },
+        effectFog,
+      )
+    : []
+  const beamsDraw = beamTexture && beamDraw(shots, beamTexture, effectFog)
+
   // Deep enough in, the clear is the fog's colour, which its lightning flashes.
   const deep = field && field.state.depth >= 1 ? field.state.nebula : undefined
   const fogged = deep && (deep.lightning?.fogColor(deep.fog.color) ?? deep.fog.color)
@@ -1156,10 +1295,62 @@ export const collectSpaceFrame = ({
     // `SpaceEffectsDrawFrame` (`0x4f7480`) sets `ZFUNC` 4 around every effect.
     effectDepthFunc: 'lequal',
     effectViews: views,
+    ...(tractorsDrawn.length && { tractors: tractorsDrawn }),
+    ...(beamsDraw && { beams: beamsDraw }),
     ...(quads.length && shine && { screenQuads: [{ texture: shine.texture, quads }] }),
+    ...(firstPerson && (hud || cockpit) && { clearDepth: true }),
     ...(afterEffects.length && { afterEffects }),
+    ...(shownCockpit?.atEnd.length && { atEnd: shownCockpit.atEnd }),
     unsupported: [...unsupported],
     unregistered: [...unregistered],
+  }
+}
+
+/**
+ * `FirstPersonCameraSceneDraw`'s mesh (`0x5184a7`), lit as the caller's pass lights it. Its parts are
+ * tested under the pass's own near and far, then drawn at the back of the depth range. The effects
+ * left the batcher's bin 1 off (`SpaceEffectsDrawFrame`, `0x4f75d6`) and only `Win3DDrawAll`'s end
+ * turns it on, so each part draws in order, glass too (`cockpit_rh`). With the effects option off
+ * it's on, and what it queues waits for the scene's end (`EndSceneHalf`), under the range the pass
+ * left and the projection last applied: with the HUD on the frame's, as `HudCameraDraw` re-applies
+ * it, and off still the mesh's. That case is uncaptured.
+ */
+const cockpitDraws = (
+  { model }: SpaceCockpit,
+  given: Camera,
+  aspect: number,
+  view: Matrix4,
+  time: number,
+  hud: boolean,
+  effectsOff: boolean,
+  { near, far, depthRange, afterDepthRange }: CockpitLimits,
+  unsupported: Set<string>,
+  unregistered: Set<string>,
+  limits: FrameLimits,
+  lit: { lights: SceneLight[]; ambient: Vector3; fog?: Fog },
+): { drawn: Draw[]; atEnd: Draw[] } => {
+  const camera = { ...given, near, far }
+  const projection = projectionMatrix(camera, aspect)
+  const drawn: Draw[] = []
+  const queued: Queued[] | undefined = effectsOff ? [] : undefined
+  collectModel(model, camera, aspect, view, time, drawn, queued, unsupported, unregistered, limits)
+  const atEnd: Draw[] = []
+  if (queued) flushQueued(queued, atEnd)
+  // `ZFUNC` is still the 4 the near lists, or the tunnel, left (`cockpit_li`).
+  const litDraw = (draw: Draw): Draw => ({
+    ...draw,
+    lights: lit.lights,
+    sceneAmbient: draw.sceneAmbient ?? lit.ambient,
+    ...(lit.fog && { fog: lit.fog }),
+    ...(draw.depthFunc === 'less' && { depthFunc: 'lequal' as const }),
+  })
+  return {
+    drawn: drawn.map((draw) => ({ ...litDraw(draw), projection, depthRange })),
+    atEnd: atEnd.map((draw) => ({
+      ...litDraw(draw),
+      depthRange: afterDepthRange,
+      ...(!hud && { projection }),
+    })),
   }
 }
 
@@ -1178,7 +1369,23 @@ const collectJumpFrame = (
   aspect: number,
   time: number,
   effects: readonly SpaceEffect[],
-  { effectView, limits }: { effectView: EffectViewOptions | undefined; limits: SpaceLimits },
+  {
+    effectView,
+    limits,
+    firstPerson,
+    hud,
+    effectsOff,
+    cockpit,
+    cockpitLimits,
+  }: {
+    effectView: EffectViewOptions | undefined
+    limits: SpaceLimits
+    firstPerson: boolean
+    hud: boolean
+    effectsOff: boolean
+    cockpit: SpaceCockpit | undefined
+    cockpitLimits: CockpitLimits
+  },
 ): SpaceFrame => {
   const view = viewMatrix(camera)
   const draws: Draw[] = tunnel?.draws() ?? []
@@ -1229,6 +1436,24 @@ const collectJumpFrame = (
       collectEffect(effect.instance, view, effect.texture, effectDraws, unsupported, effect.visible)
     })
 
+  // From the cockpit, its mesh takes no light in the jump, only its ambient (`0x5184d9`).
+  const shownCockpit =
+    cockpit &&
+    cockpitDraws(
+      cockpit,
+      camera,
+      aspect,
+      view,
+      time,
+      hud,
+      effectsOff,
+      cockpitLimits,
+      unsupported,
+      unregistered,
+      limits,
+      { lights: [], ambient: shipAmbient },
+    )
+
   return {
     background: { x: background.x / 255, y: background.y / 255, z: background.z / 255 },
     hooks: hooksOf(draws),
@@ -1240,6 +1465,9 @@ const collectJumpFrame = (
     effects: effectDraws,
     effectDepthFunc: 'lequal',
     effectViews: views,
+    ...(firstPerson && (hud || cockpit) && { clearDepth: true }),
+    ...(shownCockpit?.drawn.length && { afterEffects: shownCockpit.drawn }),
+    ...(shownCockpit?.atEnd.length && { atEnd: shownCockpit.atEnd }),
     unsupported: [...unsupported],
     unregistered: [...unregistered],
   }

@@ -96,6 +96,7 @@ Selection and highlight flags never enter a material program.
 - Instances share meshes and textures. Removing one instance frees nothing another still uses.
 - **Context loss rebuilds from retained data**, so design for it from the first buffer.
 - Editing an asset invalidates only what depends on it.
+- A mesh built for one frame says so (`Draw.transient`), and goes when the frame's drawn. An asset's stays until invalidated or disposed.
 
 ## Modules
 
