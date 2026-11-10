@@ -26,9 +26,7 @@ const narrow = (value: number, bits: number): number => {
 
 /**
  * A Targa without alpha reaches retail's device as R5G6B5 (`DAOT`; captures, format 23). Hashes pin
- * this for colour-mapped and 24-bit chains. The library has expanded 16-bit Targas to 24-bit by here,
- * and through 8 bits green comes out one step dark from 16 up: retail rounds 5 bits to 6
- * (`code_beam` in `beam_shots`, `src/reference/beams.test.ts`). 102 retail chains are 16-bit.
+ * this for colour-mapped and 24-bit chains.
  */
 const rgbToRgb565 = (level: Uint8Array): Uint16Array => {
   const output = new Uint16Array(level.length / 3)
@@ -40,9 +38,25 @@ const rgbToRgb565 = (level: Uint8Array): Uint16Array => {
   return output
 }
 
+/**
+ * A 16-bit Targa is X1R5G5B5 to retail whatever its attribute bits (`GetTgaSourceFormat`,
+ * `src/Shading/TextureLibrary.cpp`), so R5G6B5 as the rest, green widened by repeating its top bit.
+ * Hashes pin it on all seven levels of `code_beam` (`beam_shots`, `src/reference/beams.test.ts`).
+ * One with its attribute bit set is uncaptured, and none is in retail.
+ */
+const xrgb1555ToRgb565 = (level: Uint8Array): Uint16Array =>
+  toLittleEndian16(level).map((pixel) => {
+    const green = (pixel >> 5) & 0x1f
+    return ((pixel & 0x7c00) << 1) | (((green << 1) | (green >> 4)) << 5) | (pixel & 0x1f)
+  })
+
 /** D3D's A1R5G5B5 has alpha on top, GL's RGB5_A1 at the bottom. */
 const argb1555ToRgba5551 = (level: Uint8Array): Uint16Array =>
   toLittleEndian16(level).map((pixel) => ((pixel << 1) & 0xffff) | (pixel >> 15))
+
+/** X1R5G5B5 as RGB5_A1, opaque: the same 5-bit channels the device would sample. */
+const xrgb1555ToRgba5551 = (level: Uint8Array): Uint16Array =>
+  toLittleEndian16(level).map((pixel) => ((pixel << 1) & 0xffff) | 1)
 
 const swapRedBlue = (level: Uint8Array): Uint8Array => {
   const output = level.slice()
@@ -81,8 +95,11 @@ const flatLayout = ({ format, storage }: Texture): TextureLayout => {
       return format
     case 'rgb16_565':
       return 'rgb565'
+    case 'rgb16_555':
+      // No retail surface is X1R5G5B5. Held as stored is a guess: D3DX may convert it.
+      return storage === 'targa' ? 'rgb565' : 'rgb5a1'
     case 'rgba16_5551':
-      return 'rgb5a1'
+      return storage === 'targa' ? 'rgb565' : 'rgb5a1'
     case 'rgba32_8888':
       return 'rgba8'
     case 'rgb24_888':
@@ -96,14 +113,24 @@ const flatLayout = ({ format, storage }: Texture): TextureLayout => {
 const flatLevel = (texture: Texture, level: Uint8Array, at: number) => {
   const { format, storage, flip, height } = texture
   if (storage === 'targa') {
-    // The library has already put a Targa in RGB order.
+    // The library has already put a 24- or 32-bit Targa in RGB order.
     const rows = flip ? reverseRows(level, Math.max(1, height >> at)) : level
-    return format === 'rgb24_888' ? rgbToRgb565(rows) : rows
+    switch (format) {
+      case 'rgb24_888':
+        return rgbToRgb565(rows)
+      case 'rgb16_555':
+      case 'rgba16_5551':
+        return xrgb1555ToRgb565(rows)
+      default:
+        return rows
+    }
   }
   // A surface is as stored, whatever its header's origin says.
   switch (format) {
     case 'rgb16_565':
       return toLittleEndian16(level)
+    case 'rgb16_555':
+      return xrgb1555ToRgba5551(level)
     case 'rgba16_5551':
       return argb1555ToRgba5551(level)
     case 'rgba32_8888':

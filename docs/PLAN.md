@@ -69,7 +69,7 @@ end: its texture by name, stage setup, material, lights and matrices. Pinned by
       hash the same as both captures. Retail narrows 24-bit to R5G6B5 by rounding, and D3DX gives a
       cube's generated levels a rounded 2x2 box. **Not yet captured:** top-left Targas (the source
       and the library agree on reversing them), DXT3, the two 24-bit surfaces. 16-bit Targas were
-      captured in `beam_shots`, and are one green step off: see M7.
+      captured in `beam_shots`, and match since M7.
 - [x] VMesh buffers, including the base-vertex scheme (library `RENDERER.md` §3). Indices rebased per
       reference. They match `li_elite` exactly, and every hull vertex and normal matches
       `li_elite_turned`, second passes negated. All 9,322 retail references stay in range.
@@ -270,7 +270,8 @@ Adapted from `freelancer-vscode`'s Alchemy; see [ADAPTING.md](ADAPTING.md#alchem
 - [x] **You:** `effect_sprites`, `effect_folder` and `effect_motion`. Each matches its capture in draws, states,
       and every corner and UV the scene pins; `effect_motion` by shape, as the game's `dt` is unknown. The folder
       cut is confirmed: both sprites early, only the control past 5 s. Pictures: `effect_sprites` 99.40% within
-      2, a mean of 0.37, `effect_folder` 99.91%, 0.36. They also found a clamp and an alpha test the audit
+      2, a mean of 0.37, `effect_folder` 99.91%, 0.36; all the effect scenes are 99.998% or better since
+      M7's 16-bit Targas. They also found a clamp and an alpha test the audit
       hadn't, and that the last of a repeated property stands.
 - [x] Reference scenes for what's left: `effect_beams`, `effect_child`, `effect_oriented`, `effect_fields`,
       `effect_pool` and `effect_dust`. Its camera travels, since dust fades to nothing under a still one.
@@ -801,17 +802,21 @@ renderer. Random streams need not match retail; each appearance's sizes, colours
       It found:
       - `code_beam` is a **16-bit** Targa, the first captured. Retail's device holds its 5-bit
         channels as R5G6B5, rows as stored, green rounded to 6 bits: `g << 1 | g >> 4`. The format
-        library hands it over as 24-bit, and through 8 bits we get `g << 1`, one step dark in 134 of
-        its 4096 texels. A `todo` test holds it; the item below fixes it.
+        library handed it over as 24-bit, and through 8 bits we got `g << 1`, one step dark in 134 of
+        its 4096 texels. Fixed by the item below.
 
       Not compared: the picture, and a first frame's flash, which neither triplet caught. The bolt's own `vis_effect`
       (`pi_particle_03_proj`) is among the effects before the batch, and nothing here starts it.
-- [ ] 16-bit Targas as retail holds them: 102 of retail's 2,404 Targa chains, among them `code_beam`,
-      the tractor's `line`, the sun's `suncircle` and `lenscircle`, `bulb` and `shine`. In
-      `@treewyrm/freelancer`, keep a Targa's source depth (a format of its own, or its 5-bit data),
-      then here narrow it straight to R5G6B5 with green rounded (`planUpload`), and turn the `todo` in
-      `beams.test.ts` into a test. Whether one with its attribute bit set reaches the device as
-      A1R5G5B5 is uncaptured.
+- [x] 16-bit Targas as retail holds them: 102 of retail's 2,404 Targa chains, among them `code_beam`,
+      the tractor's `line`, the sun's `suncircle` and `lenscircle`, `bulb` and `shine`.
+      `@treewyrm/freelancer` keeps a 16-bit Targa's pixels as stored, as `rgb16_555` (X1R5G5B5), or
+      `rgba16_5551` with one attribute bit, and writes them back byte for byte. `planUpload` narrows
+      both straight to R5G6B5, green as `g << 1 | g >> 4`. Retail reads every 16-bit Targa as 5-5-5
+      with no alpha, attribute bits or not (`GetTgaSourceFormat`, `src/Shading/TextureLibrary.cpp`);
+      none in retail sets one, so that case is read, not captured. **Matched in `beam_shots`:** every
+      texel of `code_beam`'s seven levels. It also settles the effect scenes' green sprite, which was
+      a 16-bit Targa, not the rig's filtering: `effect_sprites` from 99.40% within 2 to 99.998%, and
+      `effect_child`, `_folder`, `_beams` and `_oriented` to 100%, each at a mean near 0.25.
 - [x] The cockpit pass, from `FirstPersonCameraSceneDraw` (`LAB_00518420`), under `SpaceScene.firstPerson`:
       `Frame.clearDepth` with the HUD on or a mesh; each sun's corona; `SpaceScene.cockpit`'s mesh, under
       near 0.05 and far 500 and in the depth range 0.75 to 1, lit from its sphere as an object, or in a jump

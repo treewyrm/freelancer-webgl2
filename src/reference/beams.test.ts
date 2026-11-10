@@ -118,10 +118,9 @@ test(
   { skip },
   async () => {
     const { beams, texture, frames } = await load()
-    // Named by retail's own levels: ours differ (below), so the corpus index can't name them.
     const index: TextureIndex = new Map(
-      (await retailCodeBeam()).map((level, at) => [
-        contentHash(bytesOf(level)),
+      planUpload(texture).faces[0]!.map((level, at) => [
+        contentHash(bytesOf(level as Uint16Array)),
         [{ source: 'FX/beam.txm', name: 'code_beam', width: 64 >> at }],
       ]),
     )
@@ -219,18 +218,9 @@ test(
   },
 )
 
-test(
-  "beam_shots: code_beam uploads as retail's device holds it",
-  {
-    skip,
-    todo:
-      'a 16-bit Targa reaches us as 24-bit: green through 8 bits rounds to g << 1 where retail has ' +
-      "g << 1 | g >> 4, one step dark in 134 of 4096 texels. Needs the format library's source depth",
-  },
-  async () => {
-    const { texture } = await load()
-    const ours = planUpload(texture).faces[0]!
-    const retail = await retailCodeBeam()
-    retail.forEach((level, at) => assert.deepEqual(ours[at], level, `level ${at}`))
-  },
-)
+test("beam_shots: code_beam uploads as retail's device holds it", { skip }, async () => {
+  const { texture } = await load()
+  const ours = planUpload(texture).faces[0]!
+  const retail = await retailCodeBeam()
+  retail.forEach((level, at) => assert.deepEqual(ours[at], level, `level ${at}`))
+})

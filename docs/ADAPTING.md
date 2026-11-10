@@ -97,8 +97,6 @@ needs its own frame's `dt` to compare against.
 
 - **Uncaptured:** `FLDustAppearance`'s kite and fade, which a THN host can't show, so M7's; and gravity,
   radial, turbulence and collide fields. A field's frame of lag stands on the source, with `effect_fields` consistent with it.
-- **The green sprites:** `effect_sprites` and `effect_child` are off by up to 5 on pure green, about one step of
-  a 16-bit texture's green. That the rig filters it otherwise is a guess.
 - An animated texture's own playback, which picks the atlas when `UseCommonTexFrame` is off (`0x6244ef0`): built,
   uncaptured. See [PLAN.md](PLAN.md#m8-rooms-and-cutscenes).
 - The beam's wireframe flag `0x1C65B7B9` isn't drawn. D3D's fill mode has no GL equivalent, but lines could do.

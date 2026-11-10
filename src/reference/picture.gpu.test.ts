@@ -45,15 +45,14 @@ const WIDER: Record<string, { close: number; mean: number; compared?: number }> 
   starsphere_ew05: { close: 0.995, mean: 0.65 },
   // Far off, so small: 792 pixels, measured at 99.1% and a mean of 0.56, and its vertices all match.
   character_far: { close: 0.98, mean: 0.75, compared: 500 },
-  // Measured at 99.40% and a mean of 0.37. Most of what's left is the pure green sprite, off by up to 5:
-  // about one step of a 16-bit texture's green, which the rig may filter otherwise. Not settled.
-  effect_sprites: { close: 0.99, mean: 0.45 },
-  // A green sprite again, as `effect_sprites`. Measured at 98.90% and a mean of 0.38.
-  effect_child: { close: 0.985, mean: 0.45, compared: 4000 },
-  // Few pixels to compare. Measured at 99.90% and a mean of 0.36.
-  effect_oriented: { close: 0.995, mean: 0.45, compared: 4000 },
-  // Few pixels to compare: two sprites, then one. Measured at 99.91% and a mean of 0.36.
-  effect_folder: { close: 0.995, mean: 0.45, compared: 4000 },
+  // The effects are held tighter than the default. Measured at 99.998% and a mean of 0.25, once
+  // 16-bit Targas narrowed from their own 5 bits: before, the green sprite was off by up to 5.
+  effect_sprites: { close: 0.9995, mean: 0.3 },
+  effect_beams: { close: 0.9995, mean: 0.35 },
+  // Few pixels to compare. Each measured at 100% and a mean of 0.25 to 0.26.
+  effect_child: { close: 0.9995, mean: 0.3, compared: 4000 },
+  effect_oriented: { close: 0.9995, mean: 0.3, compared: 4000 },
+  effect_folder: { close: 0.9995, mean: 0.3, compared: 4000 },
 }
 
 // The door shield's ramp isn't bound in retail's capture either.

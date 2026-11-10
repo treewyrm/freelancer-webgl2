@@ -46,7 +46,7 @@
     "access": "public"
   },
   "dependencies": {
-    "@treewyrm/freelancer": "^2.2.0"
+    "@treewyrm/freelancer": "^2.3.0"
   },
   "devDependencies": {
     "@types/node": "^26.6.6",

@@ -31,6 +31,21 @@ test('24-bit Targa becomes R5G6B5 by rounding, not truncation', () => {
   assert.deepEqual([...upload.faces[0]![0]!], [0xffff, 0, (1 << 11) | (1 << 5) | 1])
 })
 
+test('16-bit Targa becomes R5G6B5 from its own 5 bits, green widened, the top bit ignored', () => {
+  // X1R5G5B5 0x8200 is green 16 and the top bit; 0x7c1f is red and blue at 31.
+  for (const format of ['rgb16_555', 'rgba16_5551'] as const) {
+    const upload = planUpload(flat({ format, width: 2, levels: [bytes(0x00, 0x82, 0x1f, 0x7c)] }))
+    assert.equal(upload.layout, 'rgb565', format)
+    // GetTgaSourceFormat: 16 to 6 bits is 33, where through 8 bits it rounds to 32.
+    assert.deepEqual([...upload.faces[0]![0]!], [33 << 5, 0xf81f], format)
+  }
+  // Rows reverse by the pixel, not the byte.
+  const top = planUpload(
+    flat({ format: 'rgb16_555', height: 2, flip: true, levels: [bytes(1, 0, 2, 0)] }),
+  )
+  assert.deepEqual([...top.faces[0]![0]!], [2, 1])
+})
+
 test('a top-left Targa has its rows reversed in every level, a surface never', () => {
   const rows = bytes(1, 1, 1, 1, 2, 2, 2, 2)
   const first = (fields: Partial<Texture>) => [...planUpload(flat(fields)).faces[0]![0]!]
@@ -48,6 +63,8 @@ test('a surface is little-endian and D3D ordered, and comes out in GL order', ()
   // A1R5G5B5 with alpha and all of red, as RGB5_A1.
   assert.deepEqual([...one('rgba16_5551', bytes(0x00, 0xfc)).faces[0]![0]!], [0xf801])
   assert.deepEqual([...one('rgb16_565', bytes(0x34, 0x12)).faces[0]![0]!], [0x1234])
+  // X1R5G5B5, which no retail surface is, as RGB5_A1 and opaque.
+  assert.deepEqual([...one('rgb16_555', bytes(0x00, 0x7c)).faces[0]![0]!], [0xf801])
   assert.deepEqual([...one('rgba32_8888', bytes(1, 2, 3, 4)).faces[0]![0]!], [3, 2, 1, 4])
 })
 
