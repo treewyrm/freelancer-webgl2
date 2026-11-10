@@ -304,6 +304,23 @@ export interface SystemOptions {
   effectDetail?: number
   /** How long a solar's `use_animation` scripts have played. At rest when absent. */
   animationSeconds?: number
+  /** More ships than the player's, unturned, each engine's effects at its `sparam`. For the bench. */
+  ships?: {
+    ship: string
+    engine: string
+    position: readonly [number, number, number]
+    sparam: number
+  }[]
+  /** `[Effect]`s by nickname, each started again when it finishes. For the bench. */
+  extraEffects?: { nickname: string; position: readonly [number, number, number] }[]
+}
+
+export interface LoadedSystem extends SpaceScene {
+  /**
+   * Steps the placed effects a frame, seen from `camera` (the scene's when absent), as the host does
+   * between frames. The dust, clouds and the fields' rocks step in `collectSpaceFrame`.
+   */
+  tick: (dt: number, camera?: Camera) => void
 }
 
 /** `FX/effect_types.ini` over the built-in table, and `FX/effects.ini`'s `[EffectLOD]` rows. */
@@ -569,7 +586,12 @@ export const jumpOutFrame = async (
 }
 
 // Where the `[VisEffect]`s of what reference systems carry are: `freelancer.ini` lists them all.
-const ALE_TABLES = ['FX/ENGINES/engines_ale.ini', 'FX/MISC/misc_ale.ini', 'FX/SPACE/space_ale.ini']
+const ALE_TABLES = [
+  'FX/ENGINES/engines_ale.ini',
+  'FX/MISC/misc_ale.ini',
+  'FX/SPACE/space_ale.ini',
+  'FX/EXPLOSIONS/explosions_ale.ini',
+]
 const EQUIPMENT = [
   'EQUIPMENT/select_equip.ini',
   'EQUIPMENT/misc_equip.ini',
@@ -583,6 +605,10 @@ interface Placed {
   world: Matrix4
   /** The ship or solar it's on. */
   on: Vector3
+  /** 0 at rest, as the engines are unless the host says otherwise. */
+  sparam: number
+  /** Started again once it finishes, as a battle keeps making explosions. */
+  repeat?: () => SpaceEffect
 }
 
 interface EffectTables {
@@ -631,10 +657,12 @@ const startEffect = async (
   on: Vector3,
   tables: EffectTables,
   read: ReadAsset,
+  { sparam = 0, repeat = false }: { sparam?: number; repeat?: boolean } = {},
 ): Promise<Placed> => {
-  const effect = (await effectSource(nickname, tables, read))()
+  const source = await effectSource(nickname, tables, read)
   const position = { x: world.w.x, y: world.w.y, z: world.w.z }
-  return { effect: { ...effect, position, watched: { position: on } }, world, on }
+  const start = (): SpaceEffect => ({ ...source(), position, watched: { position: on } })
+  return { effect: start(), world, on, sparam, ...(repeat && { repeat: start }) }
 }
 
 /**
@@ -1499,8 +1527,10 @@ export const loadSystem = async (
     effectRate = 60,
     animationSeconds,
     highDetailTextures,
+    ships,
+    extraEffects,
   }: SystemOptions,
-): Promise<SpaceScene> => {
+): Promise<LoadedSystem> => {
   // The system's own files, which the mount writes to the lab install, read from it first.
   const own = new Map(
     (system.files ?? []).map(({ path, text }) => [pathOf(path).toLowerCase(), text]),
@@ -1523,10 +1553,17 @@ export const loadSystem = async (
   const rand = msvcRand()
   const equipment = await sectionsOf(read, EQUIPMENT)
   const equipmentLods = await lodBlocksOf(read, EQUIPMENT)
-  const loadouts = await sectionsOf(read, ['SOLAR/loadouts.ini'])
-  /** A loadout's items, each with its hardpoint when it has one, in the order it lists them. */
-  const loadoutOf = (section: Section) => {
-    const loadout = strings(section, 'loadout')[0]
+  // A retail system's objects take theirs from all three.
+  const loadouts = await sectionsOf(read, [
+    'SOLAR/loadouts.ini',
+    'SHIPS/loadouts.ini',
+    'SHIPS/loadouts_special.ini',
+  ])
+  /**
+   * A loadout's items, each with its hardpoint when it has one, in the order it lists them: the
+   * object's own, or else its archetype's.
+   */
+  const loadoutOf = (section: Section, loadout = strings(section, 'loadout')[0]) => {
     if (!loadout) return []
     return loadouts
       .get(loadout.toLowerCase())!
@@ -1546,9 +1583,10 @@ export const loadSystem = async (
     section: Section,
     world: Matrix4,
     jointState: PlaceOptions['jointState'],
+    loadout?: string,
   ) => {
     const attached: SceneModel[] = []
-    for (const { item, point } of loadoutOf(section)) {
+    for (const { item, point } of loadoutOf(section, loadout)) {
       if (!item || !point || !strings(item, 'DA_archetype').length) continue
       const parent = findHardpoint(model, point, jointState)!
       const nickname = item.getNickname()!.toLowerCase()
@@ -1614,8 +1652,9 @@ export const loadSystem = async (
     section: Section,
     world: Matrix4,
     jointState: PlaceOptions['jointState'],
+    loadout?: string,
   ): SpaceFlare[] =>
-    loadoutOf(section).flatMap(({ item, point }) => {
+    loadoutOf(section, loadout).flatMap(({ item, point }) => {
       if (item?.name.toLowerCase() !== 'light' || !point) return []
       const light = flareLightOf(item)
       const { point: hardpoint, part } = findHardpoint(model, point, jointState)!
@@ -1636,8 +1675,11 @@ export const loadSystem = async (
    * Its `[InternalFX]`s' `use_animation` scripts, each looping from when the solar was made
    * (`CEInternalFX`, `EvalPlayback` with flags 2), as the joint states they give its parts.
    */
-  const animate = async (section: Section): Promise<PlaceOptions['jointState']> => {
-    const names = loadoutOf(section).flatMap(({ item }) =>
+  const animate = async (
+    section: Section,
+    loadout?: string,
+  ): Promise<PlaceOptions['jointState']> => {
+    const names = loadoutOf(section, loadout).flatMap(({ item }) =>
       item?.name.toLowerCase() === 'internalfx' ? strings(item, 'use_animation') : [],
     )
     if (!names.length || animationSeconds === undefined) return undefined
@@ -1656,7 +1698,7 @@ export const loadSystem = async (
   }
 
   const objects: SpaceObject[] = []
-  for (const { archetype: nickname, position, star: starName } of system.objects) {
+  for (const { archetype: nickname, position, star: starName, loadout } of system.objects) {
     const { section, model, lists, place } = await archetype(nickname)
     const at = vector(position)
     const type = String(section.getValue('type')!.value).toUpperCase()
@@ -1678,9 +1720,9 @@ export const loadSystem = async (
         ? model.radius
         : (rootLevel(model)?.reference.boundingSphere.radius ?? radius)
     const range = lodRange(sources(model), lists, { detail })
-    const jointState = await animate(section)
-    const attached = await attach(model, section, Matrix4.translation(at), jointState)
-    const flares = flaresOf(model, section, Matrix4.translation(at), jointState)
+    const jointState = await animate(section, loadout)
+    const attached = await attach(model, section, Matrix4.translation(at), jointState, loadout)
+    const flares = flaresOf(model, section, Matrix4.translation(at), jointState, loadout)
     const hitbox = await hitboxOf(section, model, Matrix4.translation(at), read, jointState)
     objects.push({
       model: place(Matrix4.translation(at), jointState),
@@ -1698,17 +1740,17 @@ export const loadSystem = async (
   }
 
   const tables: EffectTables = {
-    effects: await sectionsOf(read, ['FX/effects.ini']),
+    effects: await sectionsOf(read, ['FX/effects.ini', 'FX/effects_explosion.ini']),
     visuals: await sectionsOf(read, ALE_TABLES),
     pools: createPools(),
   }
   const placed: Placed[] = []
 
   // A solar's loadout: each `[AttachedFX]` on its hardpoint, as the loadout lists them.
-  for (const { archetype: nickname, position } of system.objects) {
+  for (const { archetype: nickname, position, loadout } of system.objects) {
     const section = archetypes.get(nickname.toLowerCase())!
     const { model } = await archetype(nickname)
-    for (const { item: fx, point } of loadoutOf(section)) {
+    for (const { item: fx, point } of loadoutOf(section, loadout)) {
       if (fx?.name.toLowerCase() !== 'attachedfx' || !point) continue
       const at = vector(position)
       const world = Matrix4.multiply(Matrix4.translation(at), hardpoint(model, point)!)
@@ -1716,47 +1758,79 @@ export const loadSystem = async (
     }
   }
 
-  const hull = await archetype(system.player.ship)
-  const world = Matrix4.translation(ship)
-  const pilotName = strings(hull.section, 'pilot_mesh')[0]
-  let pilot: SceneModel | undefined
-  if (pilotName) {
-    const simple = await archetype(pilotName)
-    // `AttachPilotMesh`: `HpPilot`'s orientation, and its position less `HpConnect`'s, unturned.
-    const seat = hardpoint(hull.model, 'HpPilot')!
-    const connect = hardpoint(simple.model, 'HpConnect')?.w ?? { x: 0, y: 0, z: 0 }
-    const offset = {
-      ...seat,
-      w: { x: seat.w.x - connect.x, y: seat.w.y - connect.y, z: seat.w.z - connect.z, w: 1 },
+  /**
+   * A ship at `position`, unturned, with its pilot and its engine's nozzles, each with its
+   * `flame_effect` and a trail: `trail_effect_player` for the player's (`CliEngineAttachExhaustEffects`,
+   * `0x528980`), `trail_effect` for another's.
+   */
+  const addShip = async (
+    nickname: string,
+    engineNickname: string | undefined,
+    position: Vector3,
+    trail: 'trail_effect_player' | 'trail_effect',
+    sparam: number,
+  ) => {
+    const hull = await archetype(nickname)
+    const world = Matrix4.translation(position)
+    const pilotName = strings(hull.section, 'pilot_mesh')[0]
+    let pilot: SceneModel | undefined
+    if (pilotName) {
+      const simple = await archetype(pilotName)
+      // `AttachPilotMesh`: `HpPilot`'s orientation, and its position less `HpConnect`'s, unturned.
+      const seat = hardpoint(hull.model, 'HpPilot')!
+      const connect = hardpoint(simple.model, 'HpConnect')?.w ?? { x: 0, y: 0, z: 0 }
+      const offset = {
+        ...seat,
+        w: { x: seat.w.x - connect.x, y: seat.w.y - connect.y, z: seat.w.z - connect.z, w: 1 },
+      }
+      pilot = simple.place(Matrix4.multiply(world, offset))
     }
-    pilot = simple.place(Matrix4.multiply(world, offset))
-  }
-  // The engine's nozzles, each with its `flame_effect` and the player's `trail_effect_player`
-  // (`CliEngineAttachExhaustEffects`, `0x528980`).
-  const engine = system.player.equipment
-    .map((nickname) => equipment.get(nickname.toLowerCase()))
-    .find((section) => section?.name.toLowerCase() === 'engine')!
-  const nozzles = ['HpEngine01', 'HpEngine02', 'HpEngine03', 'HpEngine04'].flatMap((name) => {
-    const at = hardpoint(hull.model, name)
-    return at ? [Matrix4.multiply(world, at)] : []
-  })
-  for (const nozzle of nozzles)
-    for (const key of ['flame_effect', 'trail_effect_player']) {
-      const nickname = strings(engine, key)[0]
-      if (nickname) placed.push(await startEffect(nickname, nozzle, ship, tables, read))
-    }
+    const engine = engineNickname ? equipment.get(engineNickname.toLowerCase()) : undefined
+    const nozzles = ['HpEngine01', 'HpEngine02', 'HpEngine03', 'HpEngine04'].flatMap((name) => {
+      const at = hardpoint(hull.model, name)
+      return at ? [Matrix4.multiply(world, at)] : []
+    })
+    if (engine)
+      for (const nozzle of nozzles)
+        for (const key of ['flame_effect', trail]) {
+          const effect = strings(engine, key)[0]
+          if (effect)
+            placed.push(await startEffect(effect, nozzle, position, tables, read, { sparam }))
+        }
 
-  const range = lodRange(sources(hull.model), hull.lists, { detail })
-  const distanceRender = hull.section.getValue('distance_render')
-  objects.push({
-    model: hull.place(world),
-    position: ship,
-    sphere: await bodySphere(hull.section, ship, read),
-    ...(pilot ? { pilot } : {}),
-    hitbox: (await hitboxOf(hull.section, hull.model, world, read))!,
-    ...(range > 0 ? { lodRange: range } : {}),
-    ...(distanceRender ? { distanceRender: Number(distanceRender.value) } : {}),
-  })
+    const range = lodRange(sources(hull.model), hull.lists, { detail })
+    const distanceRender = hull.section.getValue('distance_render')
+    objects.push({
+      model: hull.place(world),
+      position,
+      sphere: await bodySphere(hull.section, position, read),
+      ...(pilot ? { pilot } : {}),
+      hitbox: (await hitboxOf(hull.section, hull.model, world, read))!,
+      ...(range > 0 ? { lodRange: range } : {}),
+      ...(distanceRender ? { distanceRender: Number(distanceRender.value) } : {}),
+    })
+  }
+
+  const playerEngine = system.player.equipment.find(
+    (nickname) => equipment.get(nickname.toLowerCase())?.name.toLowerCase() === 'engine',
+  )
+  // At rest: no throttle, so every `sparam` is 0 (`FCliEngineEquipFx::Update`).
+  await addShip(system.player.ship, playerEngine, ship, 'trail_effect_player', 0)
+  for (const other of ships ?? [])
+    await addShip(other.ship, other.engine, vector(other.position), 'trail_effect', other.sparam)
+  for (const { nickname, position } of extraEffects ?? [])
+    placed.push(
+      await startEffect(
+        nickname,
+        Matrix4.translation(vector(position)),
+        vector(position),
+        tables,
+        read,
+        {
+          repeat: true,
+        },
+      ),
+    )
 
   const lights: SpaceLight[] = system.lights.map((light) => ({
     type: light.type === 'DIRECTIONAL' ? 'directional' : 'point',
@@ -1772,11 +1846,15 @@ export const loadSystem = async (
       loadSky(pathOf(system.background[layer]).split('/').at(-1)!, read, { space: true }),
     ),
   )
-  // At rest: no throttle, so every `sparam` is 0 (`FCliEngineEquipFx::Update`).
   const view = viewMatrix(camera)
-  for (let step = 0; step < (effectSeconds ?? 0) * effectRate; step++)
-    for (const { effect, world: placement } of placed)
-      effect.instance.advance(1 / effectRate, { placement, view, sparam: 0 })
+  const stepEffects = (dt: number, from: Camera = camera) => {
+    const view = viewMatrix(from)
+    for (const { effect, world: placement, sparam, repeat } of placed) {
+      if (repeat && effect.instance.finished) effect.instance = repeat().instance
+      effect.instance.advance(dt, { placement, view, sparam })
+    }
+  }
+  for (let step = 0; step < (effectSeconds ?? 0) * effectRate; step++) stepEffects(1 / effectRate)
 
   const rings: PlanetRing[] = await Promise.all(
     system.objects.flatMap(({ ring }) => {
@@ -1839,6 +1917,7 @@ export const loadSystem = async (
       }
 
   return {
+    tick: stepEffects,
     camera,
     aspect: 1024 / 768,
     ambient: vector(system.ambient),

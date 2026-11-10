@@ -18,6 +18,8 @@ export interface FixtureOptions {
   context?: WebGLContextAttributes
   args?: unknown
   read?: (path: string) => Promise<Uint8Array>
+  /** Slows the page's CPU this many times, as Chrome's DevTools do: a slower machine, for the bench. */
+  cpuThrottling?: number
 }
 
 export interface FixtureResult<T> {
@@ -82,11 +84,17 @@ const bundle = async (fixture: URL): Promise<string> => {
 export const runFixture = async <T>(
   browser: Browser,
   fixture: URL,
-  { width = 256, height = 256, context, args, read }: FixtureOptions = {},
+  { width = 256, height = 256, context, args, read, cpuThrottling }: FixtureOptions = {},
 ): Promise<FixtureResult<T>> => {
   const page = await browser.newPage()
 
   try {
+    if (cpuThrottling)
+      await (
+        await page.context().newCDPSession(page)
+      ).send('Emulation.setCPUThrottlingRate', {
+        rate: cpuThrottling,
+      })
     await page.addScriptTag({ content: await bundle(fixture) })
     if (read)
       await page.exposeFunction('readForFixture', async (path: string) =>

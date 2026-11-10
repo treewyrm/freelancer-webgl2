@@ -856,8 +856,18 @@ renderer. Random streams need not match retail; each appearance's sizes, colours
       the exterior, the overlay, sheets, a sun's glow, the tunnel and now shots each built one a draw that the
       renderer kept until `dispose()`, so a long flight would have run out of buffers. Pinned on the GPU: 40
       frames of a shot leave no more buffers than one, where without the free they leave 80 more.
-- [ ] Measure effects' CPU cost in a whole system. A pushed lane steps on the CPU, by choice: bring back
-      transform feedback only if this shows the need. The picture doesn't depend on it ([ADAPTING.md](ADAPTING.md#alchemy-m6)).
+- [x] Measure effects' CPU cost in a whole system: `npm run bench` (`src/reference/bench.ts`). It reads a
+      retail system's INI (`readRetailSystem`), adds a dozen ships under full throttle and, in two of its
+      four scenes, eight heavy effects started again as they end (battleship explosions, a Nomad engine,
+      the wormhole, the neutron star, the lane's ride), and flies the camera at 80 a second for 600
+      frames. Li01 from Manhattan's ring, and Ku02 in `ZONE_Ku02_Shiun_exclusion_2`'s `attractdust`. On
+      an M4 Max with the CPU throttled 4x, stepping every placed effect takes 0.3 to 0.7 ms a frame;
+      79 to 700 particles are stepped lanes, uploading at most 45 KB a frame. The rule set beforehand
+      was transform feedback only past 2 ms for stepped lanes, and the whole tick is under half that,
+      so **it stays out**. The corpus overstated the dust: a zone caps it by `spacedust_maxparticles`,
+      259 of retail's 270 dust zones at 250 or less, where the uncapped corpus run held a thousand.
+- [ ] `SOLAR/ASTEROIDS/Li01_Badlands_Asteroids.ini` doesn't load: a cube's asteroids mix vertex formats,
+      which `mergeCube` refuses. Found by the bench, which leaves the field out.
 - [x] **You:** a custom system and a save that places the ship, with screenshots and captures.
       `space_order` (`src/reference/systems.ts`, [how](VALIDATION.md#a-reference-system-for-a-space-frame))
       matches retail in `src/reference/space-order.test.ts`: state, place, far plane and lights on all

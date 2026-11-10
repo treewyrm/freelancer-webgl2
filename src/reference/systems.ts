@@ -38,6 +38,8 @@ export interface ReferenceSystem {
     star?: string
     /** `goto =` and `jump_effect =`: a jump gate's or hole's far end, its tunnel and its effect. */
     jump?: { system: string; object: string; tunnel: string; effect: string }
+    /** `loadout =`, over its archetype's. Only a retail system read for the bench has one. */
+    loadout?: string
   }[]
   /** `[zone]`s, turned about X alone so `EulerMatrix`'s order can't matter. */
   zones?: {

@@ -27,6 +27,7 @@ npm run build       # tsdown → dist/, platform: 'neutral'
 npm run format      # Prettier, code only, never .md
 npm run reference -- mount li_elite   # put a scene on the lab install's menu; also collect, restore
 npm run capture -- references/li_elite   # read a capture; add --draw n for one draw in full
+npm run bench       # effects' CPU cost in retail systems; BENCH_THROTTLE=4 for a slower CPU
 ```
 
 Single file: `node --import tsx --test src/gl/program.gpu.test.ts`

@@ -86,8 +86,11 @@ matches (`effect_oriented`): a mod that sets the size is what can reach the type
 **Left out on purpose.** Replay and fixed steps belong to a scrubbing host, which makes a new
 `EffectInstance` and steps it, as the extension's `effect/game-run.ts` does. The affine closed form needs a fixed step, and transform feedback paid for
 17.7% of particle-steps at the extension's measure. A pushed lane steps on the CPU and uploads each frame.
-Bring either back only on a measurement from a real scene, which is M7's, and the affine form not at all
-unless the step is fixed: it's exact only at equal steps.
+Bring either back only on a measurement from a real scene, and the affine form not at all unless the
+step is fixed: it's exact only at equal steps. M7 measured it (`npm run bench`): stepping every effect in a
+retail system takes under 0.75 ms a frame on a CPU throttled 4x, heavy effects included, so neither comes
+back. The extension's 27% for dust came from running each dust uncapped; a zone caps it, at 250 at most
+in retail.
 
 **The fixed step is settled: the host's `dt`, as retail** (`0x4f8bc7`). Emission truncates per frame and
 turbulence depends on the step, so a fixed step is a different picture at any other frame rate. A capture
