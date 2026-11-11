@@ -27,8 +27,8 @@ An earlier attempt, `freelancer-render`, failed the other way, by transcribing t
 | [M4](#m4-spheres-and-the-sky) | Planets, atmospheres, starspheres | Done, backdrop uncaptured |
 | [M5](#m5-characters) | Skinned characters | Done, mid-script frames uncaptured |
 | [M6](#m6-effects) | Alchemy effects | Done, dust and some fields uncaptured |
-| [M7](#m7-the-space-frame) | A whole system, as the game frames it | **In progress** |
-| [M8](#m8-rooms-and-cutscenes) | Bases and THN playback | |
+| [M7](#m7-the-space-frame) | A whole system, as the game frames it | Done, dust uncaptured |
+| [M8](#m8-rooms-and-cutscenes) | Bases and THN playback | **Next** |
 | [M9](#m9-retire-the-old-renderer) | Old renderer deleted from the extension | |
 | [M10](#m10-hud-and-2d-interface) | HUD and 2D interface | Later |
 
@@ -952,11 +952,11 @@ renderer. Random streams need not match retail; each appearance's sizes, colours
       captured steps give retail's 17, 20 and 21 flames and 22 smoke in every frame, after 6 s at 87 a
       second (`RUNS`, fitted). Pinned in `space-order.test.ts` by count, and on the GPU: a basic
       particle at 0.0099 draws nothing, and at 0.0101 draws 2.
-- [ ] Dust against retail, here: a THN host can't show it (see M8), so `FLDustAppearance`'s kite and fade wait
+- [ ] **Deferred: dust against retail.** A THN host can't show it (see M8), so `FLDustAppearance`'s kite and fade wait
       for a flying camera.
 
-**Done when** a reference system matches in draw order and state, and the system editor runs on this
-renderer.
+**Done when** a reference system matches in draw order and state. The system editor moves onto this
+renderer in M9, with the other surfaces.
 
 ## M8: Rooms and cutscenes
 
@@ -982,6 +982,9 @@ renderer.
 
 ## M9: Retire the old renderer
 
+- [ ] The extension's system editor on this renderer, behind the setting: `collectSpaceFrame` over a
+      `SpaceScene`, moved from M7.
+- [ ] **You:** a system in the editor with the setting on.
 - [ ] Every surface on this renderer, switches defaulting on for a release, then removed.
 - [ ] The effect editor's particle markers and sprite frames, read from `EffectInstance`, and its gizmos' placement
       and the host's travel from `effect/game-run.ts`, so the old pool stops stepping underneath.
