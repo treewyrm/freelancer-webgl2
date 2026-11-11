@@ -52,6 +52,14 @@ if (!frame) throw new Error('no frames')
 
 console.log(device)
 console.log(`frames ${frames.map((entry) => entry.index).join(', ')}; showing ${frame.index}`)
+for (const { index, wall, clock } of frames) {
+  const ms = (seconds: number | undefined): string =>
+    seconds === undefined ? '?' : (seconds * 1000).toFixed(3)
+  const game = clock
+    ? `dt ${ms(clock.step)} ms${clock.paused ? ' (paused)' : ''}, tick ${clock.ticks}`
+    : 'no game clock'
+  console.log(`  ${index}: wall ${ms(wall)} ms, ${game}`)
+}
 
 if (flag === '--draw') {
   const draw = frame.draws[Number(argument)]

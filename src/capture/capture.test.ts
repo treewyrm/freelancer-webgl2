@@ -44,6 +44,35 @@ test('a frame keeps its events in order and resolves its textures', () => {
   assert.equal(second?.texture, undefined)
 })
 
+test("a frame carries the game's own dt, and none from a build it can't read", () => {
+  const timed = lines.frame.replace(
+    '}',
+    ',"wall":0.0105,"dt":0.0104,"raw":0.0104,"paused":0,"t":12.5,"tick":1200}',
+  )
+  const [frame] = readCapture([lines.texture, lines.draw, timed].join('\n')).frames
+  assert.equal(frame?.wall, 0.0105)
+  assert.deepEqual(frame?.clock, {
+    step: 0.0104,
+    capped: 0.0104,
+    raw: 0.0104,
+    paused: 0,
+    elapsed: 12.5,
+    ticks: 1200,
+  })
+
+  const paused = timed.replace('"paused":0', '"paused":1')
+  assert.equal(
+    readCapture([lines.texture, lines.draw, paused].join('\n')).frames[0]?.clock?.step,
+    0,
+  )
+
+  const untimed = lines.frame.replace('}', ',"wall":0.0105}')
+  assert.equal(
+    readCapture([lines.texture, lines.draw, untimed].join('\n')).frames[0]?.clock,
+    undefined,
+  )
+})
+
 test('a texture line binds only what follows it, so a reused address stays honest', () => {
   const replaced = lines.texture.replace('"w":32', '"w":64')
   const draw = lines.draw.replace('"n":0', '"n":1')

@@ -4,7 +4,11 @@ import { existsSync, readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
+import { floatAt } from '@treewyrm/freelancer/alchemy'
 import { Matrix4 } from '@treewyrm/freelancer/math'
+import { AGE, BORN, LIFE, RECORD } from '#/alchemy/effect.js'
+import { KIND_BASIC } from '#/alchemy/draw.js'
+import { readCapture } from '#/capture/capture.js'
 import { indexTextures, namesOf } from '#/capture/texture-names.js'
 import { flareQuads } from '#/scene/flare.js'
 import { collectSpaceFrame } from '#/scene/space.js'
@@ -121,6 +125,43 @@ test(
         assert.ok(Math.abs(ours[axis][cell] - theirs[axis][cell]) < 0.002, `${axis}.${cell}`)
   },
 )
+
+test("its effects hold retail's particles, stepped by the game's own clock", { skip }, async () => {
+  const read = async (path: string) => {
+    const file = readFileSync(join(data, path))
+    return new Uint8Array(file.buffer, file.byteOffset, file.byteLength)
+  }
+  const { frames } = readCapture(readFileSync(run, 'utf8'))
+  const { options } = readSpaceRun(folder, system, RUNS.space_order)
+  // Before the log, `RUNS`' fit: the smoke's 22 of a 2.96 Hz, ten-second particle says how long, the
+  // flame's 17 at what rate. The log's own first frame stepped at 83 a second.
+  const scene = await loadSystem(system, read, options)
+  let frame = collectSpaceFrame(scene)
+  for (const { clock, draws, index } of frames) {
+    scene.tick(clock!.step, undefined, frame.effectViews)
+    frame = collectSpaceFrame(scene)
+    // What the vertex stage draws: the live, and of a basic one only those not under an alpha of
+    // 0.01, which both of retail's fills skip (`0x6216735`, `0x62171d5`).
+    const ours = frame.effects.map((draw) => {
+      if (draw.type !== 'sprite') return undefined
+      const { lane, lists, sparam } = draw
+      let count = 0
+      for (let at = lane.tail; at < lane.head; at++) {
+        const o = at * RECORD
+        const age = lane.records[o + AGE]! + (lane.clock - lane.records[o + BORN]!)
+        const life = lane.records[o + LIFE]!
+        if (!(age <= life)) continue
+        const alpha = lists.alpha ? floatAt(lists.alpha, sparam, Math.min(age / life, 1)) : 1
+        if (lists.kind !== KIND_BASIC || alpha >= 0.01) count++
+      }
+      return count
+    })
+    const theirs = draws
+      .slice(FIRST_EFFECT, FIRST_EFFECT + EFFECT_DRAWS)
+      .map(({ primitives }) => primitives / 2)
+    assert.deepEqual(ours, theirs, `frame ${index}, after ${clock!.step}`)
+  }
+})
 
 test(
   'each object is lit as retail lit it: the same lights, colours and directions',

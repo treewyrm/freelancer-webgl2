@@ -1,6 +1,7 @@
 #include "log.h"
 
 #include <cstdarg>
+#include <cstdint>
 #include <cstdio>
 #include <cstring>
 
@@ -19,6 +20,50 @@ bool overflowed = false;
 unsigned frame = 0;
 int remaining = 0;   // frames still to capture
 bool keyWasDown = false;
+
+LARGE_INTEGER frequency{};
+LARGE_INTEGER lastPresent{};
+
+// Freelancer.exe 1.1's frame clock (FUN_0042d770), read where the game keeps it. Its accessor
+// FUN_0042d680 gives TickClientFrame (FUN_005b2890) the capped dt, or 0 while paused, after the
+// tick at 0x005b3342 and before the frame, so at Present these hold the dt that frame stepped by.
+struct GameClock {
+    const double* elapsed;   // 0x667d38, the sum of capped dt
+    const double* capped;    // 0x667d40, dt clamped to a second
+    const double* raw;       // 0x667d48, dt as measured
+    const unsigned* ticks;   // 0x667d50, frames ticked
+    const int* paused;       // 0x667d68, pause depth: nonzero gives the frame 0
+};
+GameClock clock{};
+bool clockResolved = false;
+
+bool readable(const void* address, size_t size) {
+    MEMORY_BASIC_INFORMATION info{};
+    if (!VirtualQuery(address, &info, sizeof(info)) || info.State != MEM_COMMIT) return false;
+    if (info.Protect & (PAGE_NOACCESS | PAGE_GUARD)) return false;
+    const char* end = (const char*)info.BaseAddress + info.RegionSize;
+    return (const char*)address + size <= end;
+}
+
+bool codeIs(uintptr_t address, const unsigned char* bytes, size_t size) {
+    return readable((const void*)address, size) && memcmp((const void*)address, bytes, size) == 0;
+}
+
+// Only on the build whose stores these are; any other leaves the frame line without them. Checked
+// at the first capture, as SafeDisc decrypts .text only once the game runs.
+void resolveClock() {
+    clockResolved = true;
+    if ((uintptr_t)GetModuleHandleA(nullptr) != 0x400000) return;
+    static const unsigned char storeRaw[] = {0xdd, 0x15, 0x48, 0x7d, 0x66, 0x00};     // 0x42d7cd
+    static const unsigned char storeCapped[] = {0xdd, 0x15, 0x40, 0x7d, 0x66, 0x00};  // 0x42d7fa
+    static const unsigned char readPaused[] = {0xa1, 0x68, 0x7d, 0x66, 0x00};         // 0x42d680
+    if (!codeIs(0x42d7cd, storeRaw, sizeof(storeRaw)) ||
+        !codeIs(0x42d7fa, storeCapped, sizeof(storeCapped)) ||
+        !codeIs(0x42d680, readPaused, sizeof(readPaused)) || !readable((void*)0x667d38, 0x34))
+        return;
+    clock = {(const double*)0x667d38, (const double*)0x667d40, (const double*)0x667d48,
+             (const unsigned*)0x667d50, (const int*)0x667d68};
+}
 
 }  // namespace
 
@@ -47,6 +92,9 @@ void init() {
     settings.vertsMax = GetPrivateProfileIntA("log", "verts_max", 64, ini);
     settings.matrices = GetPrivateProfileIntA("log", "matrices", 1, ini) != 0;
     settings.allDraws = GetPrivateProfileIntA("log", "all_draws", 1, ini) != 0;
+
+    QueryPerformanceFrequency(&frequency);
+    QueryPerformanceCounter(&lastPresent);
 
     output = fopen(settings.file, "wb");
     if (!output) return;
@@ -80,9 +128,19 @@ bool armed() { return remaining > 0; }
 unsigned frameIndex() { return frame; }
 
 bool framePresented(unsigned draws) {
+    LARGE_INTEGER now{};
+    QueryPerformanceCounter(&now);
+    const double wall = (double)(now.QuadPart - lastPresent.QuadPart) / (double)frequency.QuadPart;
+    lastPresent = now;
+
     bool finished = false;
     if (remaining > 0) {
-        put("{\"ev\":\"frame\",\"i\":%u,\"draws\":%u}", frame, draws);
+        if (!clockResolved) resolveClock();
+        put("{\"ev\":\"frame\",\"i\":%u,\"draws\":%u,\"wall\":%.9g", frame, draws, wall);
+        if (clock.capped)
+            put(",\"dt\":%.17g,\"raw\":%.17g,\"paused\":%d,\"t\":%.17g,\"tick\":%u", *clock.capped,
+                *clock.raw, *clock.paused, *clock.elapsed, *clock.ticks);
+        put("}");
         endLine();
         flush();
         finished = --remaining == 0;

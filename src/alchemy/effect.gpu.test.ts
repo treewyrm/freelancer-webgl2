@@ -33,6 +33,13 @@ test('alpha goes into the top byte unclamped, and wraps', () => {
   assert.deepEqual(report.alphaWrapped.slice(0, 3), [126, 126, 126])
 })
 
+test('a basic particle under an alpha of 0.01 is not drawn, and one over is', () => {
+  // Both fills skip it before building it (`fcomp` 0.01 at `0x6216735` and `0x62171d5`);
+  // `_ftol(0.0101 × 255)` is 2.
+  assert.deepEqual(report.faint.under.slice(0, 3), [0, 0, 0])
+  assert.deepEqual(report.faint.over.slice(0, 3), [2, 2, 2])
+})
+
 test('a roll of a quarter turn takes the wide axis to the vertical', () => {
   assert.ok(Math.abs(report.rolled.above - 38.4) <= 1.5, `${report.rolled.above}`)
   assert.ok(Math.abs(report.rolled.right - 12.8) <= 1.5, `${report.rolled.right}`)

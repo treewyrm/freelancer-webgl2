@@ -915,8 +915,33 @@ renderer. Random streams need not match retail; each appearance's sizes, colours
       `effectLodType`, `effectLodRow`: the host's names, `effect_type` case-sensitive as `strcmp`).
       Counts follow the frame rate, an emitter releasing `floor(dt × frequency)` a step: retail's
       three frames hold 18, 20 and 22 flame particles, and 96 steps a second draws nearest.
-- [ ] d3d8log: a time per frame, so a capture says its own frame rate and an effect's count can be
-      pinned.
+- [x] d3d8log: a time per frame, so a capture says its own frame rate and an effect's count can be
+      pinned. Each `frame` line has `wall`, the seconds since the last `Present`, and the game's own
+      clock read from its globals: `dt`, `raw`, `paused`, `t` and `tick` (`FUN_0042d770`). At
+      `Present` they hold the dt that frame stepped by, since WinMain ticks at `0x005b3342` and reads
+      `FUN_0042d680` at `0x005b3347`, before the frame. Both are read in the unprotected
+      `Freelancer-original.exe`. The installed `Freelancer.exe` is SafeDisc, encrypted on disk, so
+      the proxy checks the two stores' bytes once the game runs and logs `wall` alone on any other
+      build. `readCapture` gives `CaptureFrame.wall` and `.clock`, with `step` 0 while paused, and
+      `npm run capture` prints them. Pinned by reading; the clock is unseen in a capture yet.
+- [x] `space_order` captured again with the clock. Its frames stepped 12.0, 104.9 and 79.4 ms. `dt`
+      trails `wall` by a frame, as the tick precedes the frame, and logging is what slows the last two.
+      The platform's rotation is refitted to 6.9625 s. It found three things, built and pinned:
+      - Effects step by at most 0.1 (`SpaceEffectsDrawFrame`, `0x4f75eb`): `effectMaxStep` in
+        `RETAIL_SPACE_LIMITS`, on the rocks' effects and the loader's `tick`.
+      - The loader stepped every placed effect at LOD 1. Its warm-up now takes `viewSpaceEffects`, the
+        frame's views without stepping anything, and `tick` takes a frame's `effectViews`.
+      - The smoke's 22 against our 29 is its age: about 6 s had run, where `effectSeconds` says 20.
+- [x] **Effect counts against retail, pinned.** Retail's emitter (`0x6245bf0`), basic list update
+      (`0x62188c0`), node order (`LinkNodeTree`, `0x6201e00`: appearances 0x64, then fields, then
+      emitters 0x12c, so a list ages before its emitter adds to it) and the effect's LOD blend
+      (`0x42da00`, `XScale` half the width over tan(fovx/2)) all match ours. The gap was in the
+      comparison: retail's capture counts drawn quads, and both its fills skip a basic particle under
+      an alpha of 0.01 (`0x6216735`, `0x62171d5`), as our vertex stage does. The flame's alpha starts at
+      0 and ends at 0, so the newest and oldest are never drawn. Counting what's drawn, the
+      captured steps give retail's 17, 20 and 21 flames and 22 smoke in every frame, after 6 s at 87 a
+      second (`RUNS`, fitted). Pinned in `space-order.test.ts` by count, and on the GPU: a basic
+      particle at 0.0099 draws nothing, and at 0.0101 draws 2.
 - [ ] Dust against retail, here: a THN host can't show it (see M8), so `FLDustAppearance`'s kite and fade wait
       for a flying camera.
 

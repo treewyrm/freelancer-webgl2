@@ -10,6 +10,7 @@ import {
   RETAIL_EFFECT_TYPES,
   viewEffect,
   type EffectView,
+  type EffectViewFrame,
   type EffectViewOptions,
   type PlacedEffect,
 } from './effect-view.js'
@@ -147,7 +148,7 @@ export interface SpaceObject {
 export interface SpaceFrame extends Frame {
   /**
    * In the scene's order: an effect with a `position` is drawn, runs unseen, or ends, as the game
-   * would. The host steps it with `lod` next. Undefined for one with no position, which draws.
+   * would. The host steps it with `lod` next, by no more than `effectMaxStep`. Undefined for one with no position, which draws.
    */
   effectViews: (EffectView | undefined)[]
 }
@@ -333,6 +334,8 @@ export interface SpaceLimits extends FrameLimits, NebulaLimits {
   otherFieldDepth: number
   /** How far short of the draw range a ring piece goes to the far list (`0x5d3d24`). */
   ringFarMargin: number
+  /** The most the effect walk steps an effect by: `SpaceEffectsDrawFrame` (`0x4f75eb`). */
+  effectMaxStep: number
 }
 
 export const RETAIL_SPACE_LIMITS: Readonly<SpaceLimits> = {
@@ -346,6 +349,7 @@ export const RETAIL_SPACE_LIMITS: Readonly<SpaceLimits> = {
   nearDistance: 200,
   otherFieldDepth: 0.25,
   ringFarMargin: 5000,
+  effectMaxStep: Math.fround(0.1),
 }
 
 const MAIN = 0
@@ -506,6 +510,40 @@ const underOwn =
     }
   }
 
+/** The far plane: `space_farclip`, held to the least one, or the default (`FUN_00410150`). */
+const systemFarOf = (farClip: number | undefined, limits: SpaceLimits): number =>
+  farClip === undefined ? limits.farClip : Math.max(farClip, limits.leastFarClip)
+
+const viewOne = (
+  effect: SpaceEffect,
+  frame: EffectViewFrame,
+  options: EffectViewOptions | undefined,
+): EffectView | undefined =>
+  effect.type === SKIPPED_EFFECT_TYPE || !effect.position
+    ? undefined
+    : viewEffect({ ...effect, position: effect.position }, frame, options)
+
+/**
+ * The scene's effects' views as `collectSpaceFrame` finds them, stepping nothing: for a host that
+ * runs effects ahead of the first frame under a camera that stays put.
+ */
+export const viewSpaceEffects = ({
+  camera,
+  aspect,
+  nebulae = [],
+  effects = [],
+  farClip,
+  limits,
+  effectView,
+}: SpaceScene): (EffectView | undefined)[] => {
+  const resolved = { ...RETAIL_SPACE_LIMITS, ...limits }
+  const { position: eye } = camera
+  const states = nebulae.map((nebula) => nebulaState(nebula, eye, resolved))
+  const { field } = listNebulae(states, eye, systemFarOf(farClip, resolved) - resolved.rangeMargin)
+  const frame = { camera, aspect, view: viewMatrix(camera), field, nebulae: states }
+  return effects.map((effect) => viewOne(effect, frame, effectView))
+}
+
 export const collectSpaceFrame = ({
   camera: given,
   aspect,
@@ -548,7 +586,6 @@ export const collectSpaceFrame = ({
 }: SpaceScene): SpaceFrame => {
   const resolved = { ...RETAIL_SPACE_LIMITS, ...limits }
   const {
-    leastFarClip,
     rangeMargin,
     farListPlane,
     solarQueryRange,
@@ -556,10 +593,7 @@ export const collectSpaceFrame = ({
     otherFieldDepth,
     ringFarMargin,
   } = resolved
-  const systemFar =
-    farClip === undefined
-      ? (limits?.farClip ?? RETAIL_SPACE_LIMITS.farClip)
-      : Math.max(farClip, leastFarClip)
+  const systemFar = systemFarOf(farClip, resolved)
   if (jump)
     return collectJumpFrame(jump, { ...given, far: systemFar }, aspect, time, effects, {
       effectView,
@@ -689,7 +723,11 @@ export const collectSpaceFrame = ({
     const fraction = exclusionBands.length ? nearFieldFraction(asteroid, eye, 1000) : 0
     for (const exclusion of exclusionBands) exclusion.update(eye, fraction)
     // Then its dynamic asteroids, near the field or not (`0x5223a6`).
-    for (const { rocks } of asteroid.dynamic ?? []) rocks.update(given, step, { blocked: lane })
+    for (const { rocks } of asteroid.dynamic ?? [])
+      rocks.update(given, step, {
+        blocked: lane,
+        effectStep: Math.min(step, resolved.effectMaxStep),
+      })
     // Its pieces numbered through, its own band's first (`FUN_00524740`, `FUN_00522850`).
     const numbered = [...(band ? [band] : []), ...exclusionBands].flatMap((owner) =>
       owner.pieces.map((piece, at) => ({ owner, piece, at })),
@@ -1225,11 +1263,8 @@ export const collectSpaceFrame = ({
   }
   const dustEffects = dust ? dust.effects().map(({ effect }) => effect) : []
   const all = [...effects, ...rockEffects, ...dustEffects]
-  const viewsOf = all.map((effect): EffectView | undefined => {
-    if (effect.type === SKIPPED_EFFECT_TYPE || !effect.position) return undefined
-    const placed = { ...effect, position: effect.position }
-    return viewEffect(placed, { camera, aspect, view, field, nebulae: states }, effectView)
-  })
+  const effectFrame = { camera, aspect, view, field, nebulae: states }
+  const viewsOf = all.map((effect) => viewOne(effect, effectFrame, effectView))
   const views = viewsOf.slice(0, effects.length)
   const viewOf = new Map(rockEffects.map((effect, at) => [effect, viewsOf[effects.length + at]]))
   for (const { rocks, effects: theirs } of carried)

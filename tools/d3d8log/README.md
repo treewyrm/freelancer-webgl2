@@ -85,7 +85,8 @@ places a `clear`, `scene`, `target` or `copy` among the draws.
  "viewport":[0,0,1024,768,0,1],"material":{"diffuse":[1,1,1,1],...,"power":0},
  "lights":[{"index":0,"type":3,...}],"stages":[{"texture":"0x0a1b2c3d","COLOROP":4,...},...],
  "idx":[0,1,2,0,2,3],"pos":"model","v":[{"p":[-2.5,-2.5,0],"d":"0xffffffff","t0":[0,1]},...]}
-{"ev":"frame","i":1042,"draws":317}
+{"ev":"frame","i":1042,"draws":317,"wall":0.0104,"dt":0.0104,"raw":0.0104,"paused":0,"t":512.3,
+ "tick":48211}
 {"ev":"shot","i":1044,"red":[...256],"green":[...256],"blue":[...256],"file":"d3d8log.f1044.bmp",
  "w":1024,"h":768}
 ```
@@ -95,6 +96,13 @@ places a `clear`, `scene`, `target` or `copy` among the draws.
   floats, everything else as an integer. A stage's `transform` appears only when
   `TEXTURETRANSFORMFLAGS` is on.
 - **`lights`** lists only enabled lights. `clip` appears only when clip planes are on.
+- **`wall`** is seconds since the previous `Present`, by `QueryPerformanceCounter`.
+- **`dt`, `raw`, `paused`, `t` and `tick`** are the game's own frame clock, read from Freelancer.exe
+  1.1's globals at `Present` (`FUN_0042d770`, which stores them at `0x667d38`..`0x667d68`): the
+  capped and measured dt, pause depth, the sum of capped dt, and frames ticked. The frame stepped by
+  `dt`, or by 0 while `paused` is nonzero (`FUN_0042d680`, read at `0x005b3347` after the tick and
+  before the frame). They appear only when the stores at `0x42d7cd` and `0x42d7fa` hold the expected
+  bytes at the first capture, so another build logs `wall` alone.
 - **`shot`** comes after the last frame of a capture. The gamma ramps are recorded because the picture
   may or may not include them, and a comparison has to know. On failure it has `hr` instead of `file`.
 - **`idx`** stops at 1024 entries; `indices` is the true count.

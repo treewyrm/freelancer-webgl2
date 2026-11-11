@@ -269,11 +269,16 @@ export class DynamicAsteroids {
    * of the two is a guess. A rock inside 1.05 of the sphere is faded over its outer 0.35, by the
    * radius squared. Any other is placed afresh on the sphere, or released if the spawn point is
    * outside the zone, in a zone that excludes them, or `blocked`: the player's ship in a lane.
+   * Their effects step by `effectStep`, the effect walk's own, `step` when absent.
    */
-  update(camera: Camera, step = 0, { blocked = false }: { blocked?: boolean } = {}): void {
+  update(
+    camera: Camera,
+    step = 0,
+    { blocked = false, effectStep = step }: { blocked?: boolean; effectStep?: number } = {},
+  ): void {
     this.#move(step)
     this.#recycle(camera, blocked)
-    this.#run(camera, step)
+    this.#run(camera, effectStep)
   }
 
   #recycle(camera: Camera, blocked: boolean): void {

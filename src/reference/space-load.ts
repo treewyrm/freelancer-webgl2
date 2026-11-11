@@ -64,7 +64,14 @@ import {
   type TunnelLayer,
   type TunnelSettings,
 } from '#/scene/tunnel.js'
-import { skyLayers, type SpaceEffect, type SpaceObject, type SpaceScene } from '#/scene/space.js'
+import {
+  RETAIL_SPACE_LIMITS,
+  skyLayers,
+  viewSpaceEffects,
+  type SpaceEffect,
+  type SpaceObject,
+  type SpaceScene,
+} from '#/scene/space.js'
 import { starRadius, type Star, type StarGlow } from '#/scene/star.js'
 import type { Hitbox, HitboxSurface } from '#/scene/hitbox.js'
 import type { FlareBead, LensGlow, StarLensFlare, StarSpine, StarSpines } from '#/scene/corona.js'
@@ -74,6 +81,7 @@ import {
   effectTypeIndex,
   type EffectLodSizes,
   type EffectType,
+  type EffectView,
   type EffectViewOptions,
 } from '#/scene/effect-view.js'
 import { viewMatrix } from '#/scene/camera.js'
@@ -318,9 +326,9 @@ export interface SystemOptions {
 export interface LoadedSystem extends SpaceScene {
   /**
    * Steps the placed effects a frame, seen from `camera` (the scene's when absent), as the host does
-   * between frames. The dust, clouds and the fields' rocks step in `collectSpaceFrame`.
+   * between frames, each at the `lod` of its view in the last frame's `effectViews`. The dust, clouds and the fields' rocks step in `collectSpaceFrame`.
    */
-  tick: (dt: number, camera?: Camera) => void
+  tick: (dt: number, camera?: Camera, views?: readonly (EffectView | undefined)[]) => void
 }
 
 /** `FX/effect_types.ini` over the built-in table, and `FX/effects.ini`'s `[EffectLOD]` rows. */
@@ -1858,14 +1866,21 @@ export const loadSystem = async (
     ),
   )
   const view = viewMatrix(camera)
-  const stepEffects = (dt: number, from: Camera = camera) => {
+  // Each at its view's `lod`, by no more than the walk steps one (`SpaceEffectsDrawFrame`).
+  const stepEffects = (
+    dt: number,
+    from: Camera = camera,
+    views: readonly (EffectView | undefined)[] = [],
+  ) => {
     const view = viewMatrix(from)
+    const step = Math.min(dt, RETAIL_SPACE_LIMITS.effectMaxStep)
+    const lodOf = new Map(scene.effects!.map((effect, at) => [effect, views[at]?.lod]))
     for (const { effect, world: placement, sparam, repeat } of placed) {
       if (repeat && effect.instance.finished) effect.instance = repeat().instance
-      effect.instance.advance(dt, { placement, view, sparam })
+      const lod = lodOf.get(effect)
+      effect.instance.advance(step, { placement, view, sparam, ...(lod !== undefined && { lod }) })
     }
   }
-  for (let step = 0; step < (effectSeconds ?? 0) * effectRate; step++) stepEffects(1 / effectRate)
 
   const rings: PlanetRing[] = await Promise.all(
     system.objects.flatMap(({ ring }) => {
@@ -1923,7 +1938,7 @@ export const loadSystem = async (
         if (visibility > 0) clouds.draw(camera, { cut: frame === 0, holds })
       }
 
-  return {
+  const scene: LoadedSystem = {
     tick: stepEffects,
     camera,
     aspect: 1024 / 768,
@@ -1949,4 +1964,9 @@ export const loadSystem = async (
       ),
     ),
   }
+  // The camera stands still from entering the system, so each effect's view is the frame's.
+  const views = viewSpaceEffects(scene)
+  for (let step = 0; step < (effectSeconds ?? 0) * effectRate; step++)
+    stepEffects(1 / effectRate, camera, views)
+  return scene
 }

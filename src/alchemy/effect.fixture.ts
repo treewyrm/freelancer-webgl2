@@ -14,6 +14,8 @@ export interface EffectReport {
   basicSpan: number
   basicCentre: number[]
   alphaWrapped: number[]
+  /** A basic particle just under and just over an alpha of 0.01. */
+  faint: { under: number[]; over: number[] }
   rolled: { above: number; right: number }
   triangle: { apexRow: number; baseRow: number; baseSpan: number }
   blurSpan: { x: number; y: number }
@@ -116,6 +118,11 @@ const fixture: Fixture<EffectReport> = (gl) => {
 
   shot(quad({ BasicApp_Alpha: eased(1.5) }))
   const alphaWrapped = pixelAt(32, 32)
+
+  shot(quad({ BasicApp_Alpha: eased(0.0099) }))
+  const faintUnder = pixelAt(32, 32)
+  shot(quad({ BasicApp_Alpha: eased(0.0101) }))
+  const faint = { under: faintUnder, over: pixelAt(32, 32) }
 
   // A quarter turn, with an aspect of 3: `R·cos − U·sin` puts the wide axis along -U.
   shot(quad({ BasicApp_Rotate: eased(Math.PI / 2), BasicApp_HToVAspect: eased(3) }))
@@ -348,6 +355,7 @@ const fixture: Fixture<EffectReport> = (gl) => {
       basicSpan,
       basicCentre,
       alphaWrapped,
+      faint,
       rolled,
       triangle,
       blurSpan,

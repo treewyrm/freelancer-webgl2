@@ -117,8 +117,26 @@ export interface CaptureShot {
   blue: number[]
 }
 
+/** Freelancer.exe 1.1's frame clock at `Present`, read from its globals (`FUN_0042d770`). */
+export interface CaptureClock {
+  /** The dt this frame stepped by: `FUN_0042d680`, the capped dt or 0 while paused. */
+  step: number
+  /** Capped to a second; the same as `raw` below that. */
+  capped: number
+  raw: number
+  paused: number
+  /** The sum of capped dt since the game started. */
+  elapsed: number
+  /** Frames ticked, so a gap between captured frames shows. */
+  ticks: number
+}
+
 export interface CaptureFrame {
   index: number
+  /** Seconds since the previous `Present`, by the proxy's own counter. */
+  wall: number | undefined
+  /** Absent on another build of the executable, or a log from before it was recorded. */
+  clock: CaptureClock | undefined
   events: CaptureEvent[]
   draws: CaptureDraw[]
   shot: CaptureShot | undefined
@@ -257,7 +275,25 @@ export const readCapture = (text: string): Capture => {
         const draws = events.filter((event) => event.kind === 'draw')
         if (draws.length !== line['draws'])
           throw new Error(`frame ${line['i']} has ${draws.length} draws, says ${line['draws']}`)
-        capture.frames.push({ index: line['i'], events, draws, shot: undefined })
+        const clock: CaptureClock | undefined =
+          line['dt'] === undefined
+            ? undefined
+            : {
+                step: line['paused'] ? 0 : line['dt'],
+                capped: line['dt'],
+                raw: line['raw'],
+                paused: line['paused'],
+                elapsed: line['t'],
+                ticks: line['tick'],
+              }
+        capture.frames.push({
+          index: line['i'],
+          wall: line['wall'],
+          clock,
+          events,
+          draws,
+          shot: undefined,
+        })
         events = []
         break
       }

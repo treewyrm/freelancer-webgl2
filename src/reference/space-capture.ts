@@ -43,19 +43,19 @@ const cameraOf = (draws: readonly CaptureDraw[], far: readonly number[], at: num
 /**
  * Each run's far solar and draws: `space_order`'s first far face, and its hull after the pilot. And
  * how its effects ran: an emitter releases `floor(dt × frequency)` a step, so a flame's count is the
- * frame rate's. Retail's three frames hold 18, 20 and 22 of a 110 Hz flame living 0.2294 s, which is
- * 78 to 96 a second; at 96 its picture is nearest. The log has no frame times to say. Nor how long
- * the platform's `Sc_rotate living quarters` had looped: one angle, 1.79292, puts its part where
- * retail drew it to 0.002 in every cell, and the script reaches it at 7.6306 s, a period on.
+ * frame rate's, which 96 a second stands in for. `space_order`'s log has the game's clock, and its
+ * drawn quads match at 87 a second for 6 s before it (`space-order.test.ts`), both fitted. Nor
+ * does the log say how long the platform's `Sc_rotate living quarters` had looped: 6.9625 s puts its
+ * part where retail drew it to 0.0017 in every cell.
  */
 export const RUNS = {
   space_order: {
     far: 'Lab_far_planet',
     farDraw: 10,
     hullDraw: 101,
-    effectSeconds: 20,
-    effectRate: 96,
-    animationSeconds: 7.6306,
+    effectSeconds: 6,
+    effectRate: 87,
+    animationSeconds: 6.9625,
   },
   // No solar past the draw range: the camera is found from the near ringed planet, on the main list.
   // Inside the near ring's band: its pieces about the camera draw after the ship, then its clouds.
