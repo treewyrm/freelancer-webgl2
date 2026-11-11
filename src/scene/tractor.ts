@@ -95,12 +95,12 @@ const RAND_UNIT = f(1 / 32767)
 const byte = (value: number) => Math.min(Math.max(Math.trunc(value * 255), 0), 255)
 
 // `CliTractorBeamInit` (`FUN_00512be0`): the bytes `ReadUnknown` kept, over 255 as a float.
-const colorBytes = ({ x, y, z }: Vector3): [number, number, number, number] => {
+export const colorBytes = ({ x, y, z }: Vector3): [number, number, number, number] => {
   const unit = (value: number) => byte(f((Math.trunc(value) & 0xff) * BYTE_TO_UNIT))
   return [unit(z), unit(y), unit(x), 0xff]
 }
 
-type V = [number, number, number]
+export type V = [number, number, number]
 
 const sub = (a: V, b: V): V => [f(a[0] - b[0]), f(a[1] - b[1]), f(a[2] - b[2])]
 const add = (a: V, b: V): V => [f(a[0] + b[0]), f(a[1] + b[1]), f(a[2] + b[2])]
@@ -137,10 +137,29 @@ const MOST_VERTICES = 0x10000
 
 const QUAD_UVS = [0, 0, 1, 0, 1, 1, 0, 1]
 
-// `FuzzyEmitQuad`: one quad about `mid`, the whole texture over it. A point gone NaN, as an arc of
-// half a turn has no axis, leaves the quad to D3D, which draws nothing for it: none is built.
-const quad = (lines: Lines, mid: V, along: V, side: V) => {
-  const corners = [add(mid, along), add(mid, side), sub(mid, along), sub(mid, side)]
+/**
+ * One segment's quad corners, in `FuzzyEmitQuad`'s order: its length along, by
+ * `(next - cur) × (eye - cur)` across, turned to the eye, each by `quadScale` past it. The beam's
+ * is half as wide as long (`narrow`); an arc's is square.
+ */
+export const segmentCorners = (
+  cur: V,
+  next: V,
+  eye: V,
+  quadScale: number,
+  narrow: boolean,
+): [V, V, V, V] => {
+  const side = cross(sub(next, cur), sub(eye, cur))
+  const mid = add(cur, scale(sub(next, cur), 0.5))
+  const half = length(sub(mid, cur))
+  const along = scale(sub(cur, mid), quadScale)
+  const across = scale(rescale(side, f(narrow ? half * 0.5 : half)), quadScale)
+  return [add(mid, along), add(mid, across), sub(mid, along), sub(mid, across)]
+}
+
+// `FuzzyEmitQuad`: one quad, the whole texture over it. A point gone NaN, as an arc of half a turn
+// has no axis, leaves the quad to D3D, which draws nothing for it: none is built.
+const quad = (lines: Lines, corners: readonly V[]) => {
   if (!corners.every((corner) => corner.every(Number.isFinite))) return
   let batch = lines.batches.at(-1)!
   if (batch.count + 4 > MOST_VERTICES) lines.batches.push((batch = emptyBatch()))
@@ -153,15 +172,8 @@ const quad = (lines: Lines, mid: V, along: V, side: V) => {
   batch.indices.push(first, first + 1, first + 2, first, first + 2, first + 3)
 }
 
-// Each segment's quad: its length along, by `(Next - Cur) × (Eye - Cur)` across, turned to the eye.
-// The beam's is half as wide as long; an arc's is square.
-const segment = (lines: Lines, cur: V, next: V, quadScale: number, narrow: boolean) => {
-  const side = cross(sub(next, cur), sub(lines.eye, cur))
-  const mid = add(cur, scale(sub(next, cur), 0.5))
-  const half = length(sub(mid, cur))
-  const across = rescale(side, f(narrow ? half * 0.5 : half))
-  quad(lines, mid, scale(sub(cur, mid), quadScale), scale(across, quadScale))
-}
+const segment = (lines: Lines, cur: V, next: V, quadScale: number, narrow: boolean) =>
+  quad(lines, segmentCorners(cur, next, lines.eye, quadScale, narrow))
 
 // `Win3DDrawFuzzyLine` (`FUN_00423be0`), textured: `floor(length / width) + 1` segments, each inner
 // point jittered by `jitter × width`, the last the end itself.
@@ -230,9 +242,11 @@ const fuzzyArc = (
   }
 }
 
-// The quaternion's turn of `v` by `angle` about a unit `axis`, as Rodrigues gives it: toward the end,
-// reading `QuaternionToMatrix` and `TransformMatrix` as the engine's other quaternions turn. Uncaptured.
-const rotate = (v: V, [kx, ky, kz]: V, angle: number): V => {
+/**
+ * The quaternion's turn of `v` by `angle` about a unit `axis`, as Rodrigues gives it: from `start`
+ * toward the end about `start × end`, as `tractor_reach` captures an arc of two chords.
+ */
+export const rotate = (v: V, [kx, ky, kz]: V, angle: number): V => {
   const c = Math.cos(angle)
   const s = Math.sin(angle)
   const dot = (kx * v[0] + ky * v[1] + kz * v[2]) * (1 - c)

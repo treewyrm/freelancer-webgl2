@@ -845,13 +845,23 @@ renderer. Random streams need not match retail; each appearance's sizes, colours
       (`Frame.tractors`). Seen when its sphere of `max_length` about the source is
       (`EffectInCameraView`). Retail draws each quad alone; added with no depth writes, one draw a
       tractor is the same picture. The host reads `[Tractor]` and `line` with `loadTractors`, and
-      gives each frame's arms. Pinned by reading and by pixels. **Uncaptured**, so the sampler and alpha
-      test it inherits are taken as the shots' (`immediateDraw`, captured in `beam_shots`), and the arcs' sense of turn is read
-      as the engine's other quaternions, its math DLL not being in the decomp. Retail's jitter is the
-      game's one `rand()`, so only its kind can match.
-- [ ] **You:** a tractor reaching for loot, captured: the quads' state, sampler and order against the
-      shots'. Jettison a cargo item and tractor it back in, F11 while the line reaches and again once
-      it's in the shell, for the sparks.
+      gives each frame's arms. Pinned by reading and by pixels, and captured since (below). Retail's
+      jitter is the game's one `rand()`, so only its kind can match.
+- [x] Tractors captured, both pinned in `src/reference/tractor-capture.test.ts`. `tractor_loot` is a
+      jettisoned crate in Li01 held in its shell, three frames. `tractor_reach` is one 1200 off, reached
+      for and held, 60 frames at `frames = 30` a press: the beam grows from 14 segments to 242 over 14
+      frames, then five arcs. In all 24 frames with a tractor:
+      - Each quad is a single `DrawIndexedPrimitiveUP`, the last of the scene before the HUD's depth
+        clear, every render and stage state the shots' in `beam_shots` but the unread ambient, and
+        `[Tractor]`'s colour on every vertex.
+      - The beam is `floor(reach / 5) + 1` segments, each inner point strayed exactly 1. From each
+        quad's ends alone, `segmentCorners` rebuilds its corners to 0.011: the beam's half as wide as
+        long, the arcs' square, turned by `(next - cur) × (eye - cur)` in the world. In D3D's view
+        space, which mirrors it, the turn reads backwards.
+      - The arcs leave the beam's end, five of them. Their ends and the beam's are on one sphere to
+        0.001, which gives the centre the log hasn't. Each has `floor(angle / acos(1 - 1/2r²)) + 1`
+        chords, the cosine held to -1. In frame 28902 each has two, and every middle point is `rotate`'s
+        turn from the start toward the end, strayed exactly 0.2; the other sense misses by over 1.
 - [x] A frame's own meshes are freed once it's drawn: `Draw.transient`. Bands, billboards, clouds, the corona,
       the exterior, the overlay, sheets, a sun's glow, the tunnel and now shots each built one a draw that the
       renderer kept until `dispose()`, so a long flight would have run out of buffers. Pinned on the GPU: 40

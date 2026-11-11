@@ -84,4 +84,4 @@ No file names these; the engine applies them.
 | `FxOrientedAppearance` | M6 | Yes | Yes; crashes at retail's `poolSize` of 0 | `effect_oriented`, at 1000 | `effect_oriented`, at 1000 |
 | `FxMeshAppearance` | M6 | Yes; crashes the game on spawn | Reported, undrawn | | |
 | `code_beam`, `[BeamSpear]` and `[BeamBolt]` | M7 | Yes | Yes | `beam_shots`, every vertex and every texel of `code_beam` | |
-| `line`, a `[Tractor]`'s | M7 | Yes | Yes | | |
+| `line`, a `[Tractor]`'s | M7 | Yes | Yes | `tractor_loot` and `tractor_reach`, reaching and held: every quad's corners, colour and UVs, the shots' state, the arcs' turn | |
