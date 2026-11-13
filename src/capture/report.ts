@@ -18,10 +18,13 @@ const DISABLE = 1
 const textureName = (index: TextureIndex | undefined, stage: CaptureStage): string => {
   const { texture } = stage
   if (!texture) return '-'
+
   const names = index ? namesOf(index, texture) : []
   const size = `${texture.width}x${texture.height}/${texture.format}`
   if (!names.length) return `? ${size}`
+
   const first = names[0]!
+
   return `${first.name} (${first.source}${names.length > 1 ? ` +${names.length - 1}` : ''})`
 }
 
@@ -31,6 +34,7 @@ const summary = (draw: CaptureDraw, index: TextureIndex | undefined): string => 
     .filter(({ states }) => states['COLOROP'] !== DISABLE)
     .map((stage) => textureName(index, stage))
     .join(', ')
+
   return [
     `${draw.n}`.padStart(4),
     `${draw.primitives}`.padStart(5),
@@ -52,25 +56,30 @@ if (!frame) throw new Error('no frames')
 
 console.log(device)
 console.log(`frames ${frames.map((entry) => entry.index).join(', ')}; showing ${frame.index}`)
+
 for (const { index, wall, clock } of frames) {
   const ms = (seconds: number | undefined): string =>
     seconds === undefined ? '?' : (seconds * 1000).toFixed(3)
   const game = clock
     ? `dt ${ms(clock.step)} ms${clock.paused ? ' (paused)' : ''}, tick ${clock.ticks}`
     : 'no game clock'
+
   console.log(`  ${index}: wall ${ms(wall)} ms, ${game}`)
 }
 
 if (flag === '--draw') {
   const draw = frame.draws[Number(argument)]
   if (!draw) throw new Error(`no draw ${argument}`)
+
   const stages = draw.stages.map((stage) => ({
     ...stage,
     texture: textureName(index, stage),
   }))
+
   console.dir({ ...draw, stages }, { depth: 6, maxArrayLength: 32 })
 } else {
   console.log('   n  prims   fvf  blend     lights  z  textures')
+
   for (const event of frame.events)
     console.log(event.kind === 'draw' ? summary(event, index) : JSON.stringify(event))
 }

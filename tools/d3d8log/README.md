@@ -1,17 +1,5 @@
 # d3d8log — a proxy `d3d8.dll` that writes what Freelancer draws
 
-Copied from `freelancer-testing/tools/d3d8log`, where it was written for the Alchemy lab.
-
-Freelancer is Direct3D 8, fixed-function, and builds its particle quads on the CPU. So the four
-corners of every sprite, in metres, are in a vertex buffer that passes through this DLL — which
-turns `BasicApp_Size` into a subtraction and `BasicApp_MotionBlur`'s roll into an `atan2`.
-
-Why a shim rather than a frame debugger: see
-`freelancer-vscode/docs/renderer/ALCHEMY-LAB.md`, "Instrumented capture".
-Short version — the game is a 32-bit x86 binary under emulation on Windows-on-ARM, rendering through
-a paravirtual GPU. This sits above all of it, inside the game's own process, and does not care what
-is underneath.
-
 ## Build
 
 Cross-compiled on macOS; nothing is needed inside the guest.
@@ -32,8 +20,7 @@ nothing else is touched.
 Press **F11** in game (`key` in `d3d8log.ini`; F9 opens the game's chat log). Three frames land in `d3d8log.jsonl` beside the executable, with the last one's
 front buffer in `d3d8log.f<frame>.bmp`, then it goes quiet until the next press. Everything is configurable in `d3d8log.ini`, which is read once at startup.
 
-`all_draws = 1` logs every draw in the frame. The reader arrives in M0 of
-[docs/PLAN.md](../../docs/PLAN.md), as `src/capture/`.
+`all_draws = 1` logs every draw in the frame. The reader is `src/capture/`, run as `npm run capture`.
 
 ## What it wraps, and what it deliberately does not
 

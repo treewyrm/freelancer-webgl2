@@ -5,6 +5,7 @@
  */
 import type { Vector3 } from '@treewyrm/freelancer/math'
 import type { SpaceLight } from './light.js'
+import { clampByte } from './retail.js'
 
 /** `[BackgroundLightning]`, each key over what `FNebulaEffect`'s constructor sets. */
 export interface BackgroundLightningSettings {
@@ -66,7 +67,7 @@ const f = Math.fround
 
 // Kept below 1, as `ParseFogSection` keeps the fog's.
 const below = (value: number) => (value < 1 ? value : 1)
-const byte = (value: number) => Math.min(Math.max(Math.trunc(value), 0), 255)
+const byte = clampByte
 
 /**
  * One nebula's lightning timers, which the host keeps for as long as the nebula exists.
@@ -99,9 +100,12 @@ export class NebulaLightning {
     this.background = { ...RETAIL_BACKGROUND_LIGHTNING, ...settings.background }
     this.dynamic = { ...RETAIL_DYNAMIC_LIGHTNING, ...settings.dynamic }
     this.random = random
+
     // `gap` starts the first wait at its full length; without it, `Load`'s -1.
     const gap = settings.background?.gap
+
     this.#backgroundTimer = gap === undefined ? -1 : -gap
+
     // Down -Z from the constructor's identity, and off.
     if (this.dynamic.duration > 0)
       this.#light = {
@@ -111,9 +115,16 @@ export class NebulaLightning {
       }
   }
 
+  /** A flash on the next step rather than after its wait, for an editor: retail has no such call. */
+  fire(kind: 'background' | 'dynamic'): void {
+    if (kind === 'background') this.#backgroundTimer = 0
+    else this.#dynamicTimer = 0
+  }
+
   /** `FNebulaEffect::Update`'s part, each frame: `depth` is its `+0x294`, where `eye` is. */
   update(step: number, depth: number, eye: Vector3): void {
     this.#step = step
+
     const light = this.#light
     if (!light) return
     // Out of it, off. Part way in, as it was.
@@ -128,12 +139,15 @@ export class NebulaLightning {
     const { gap, duration, color, ambientIntensity, intensityIncrease } = this.dynamic
     const previous = this.#dynamicTimer
     const timer = this.#step + previous
+
     this.#dynamicTimer = f(timer)
+
     if (!(previous > 0)) {
       if (!(timer > 0)) return
     } else if (timer > duration) {
       // The next flash's wait, and its direction: the third number lands in x.
       this.#dynamicTimer = f((this.random() * RAND_SCALE * f(0.7) - 1.5) * f(gap))
+
       const first = this.random() * RAND_SCALE
       const second = this.random() * RAND_SCALE
       const third = this.random() * RAND_SCALE
@@ -141,10 +155,12 @@ export class NebulaLightning {
       const y = second + second - 1
       const x = third + third - 1
       const inverse = f(1 / Math.sqrt(z * z + y * y + x * x))
+
       light.direction = { x: f(x * inverse), y: f(y * inverse), z: f(f(z) * inverse) }
       light.on = false
       return
     }
+
     const intensity = this.#flashing
       ? f(f(ambientIntensity) + f(intensityIncrease))
       : f(ambientIntensity)
@@ -153,6 +169,7 @@ export class NebulaLightning {
     const red = below(f(flicker * f(color.x)))
     const green = below(f(flicker * f(color.y)))
     const blue = below(flicker * f(color.z))
+
     light.color = {
       x: byte(f(red * 255)),
       y: byte(f(green * 255)),
@@ -178,19 +195,25 @@ export class NebulaLightning {
   fogColor(base: Vector3): Vector3 {
     const { gap, duration, color, intensity } = this.background
     if (duration <= 0) return base
+
     const previous = this.#backgroundTimer
     const timer = this.#step + previous
+
     this.#backgroundTimer = f(timer)
     this.#flashing = false
+
     if (previous > 0) {
       this.#flashing = true
+
       if (timer > duration)
         this.#backgroundTimer = f((this.random() * RAND_SCALE * f(0.7) - 1.5) * f(gap))
     } else if (timer > 0) this.#flashing = true
+
     if (!this.#flashing) return base
 
     const first = f(this.random() * RAND_SCALE)
     const scale = this.random() * f(intensity) * first * RAND_SCALE
+
     return {
       x: below(f(scale * f(color.x) + base.x)),
       y: below(f(f(scale * f(color.y)) + base.y)),

@@ -8,12 +8,12 @@
  */
 import { Matrix3, Matrix4, type Vector3 } from '@treewyrm/freelancer/math'
 import { outsideSquared, type CubeExclusion } from './asteroids.js'
-import { onSphere } from './billboards.js'
 import { viewMatrix, type Camera } from './camera.js'
 import type { EffectView } from './effect-view.js'
 import type { Random } from './lightning.js'
 import { immersion, type Zone } from './nebula.js'
 import type { SpaceEffect } from './space.js'
+import { onSphere, RAND_UNIT } from './retail.js'
 
 const f = Math.fround
 
@@ -84,7 +84,6 @@ export interface DynamicEffectAt {
 
 let started = 0
 
-const RAND_UNIT = 3.0517578125e-5
 const RAND_TWICE = 6.103515625e-5
 // `DAT_005d3e6c` and `DAT_00613858`: the recycle distance and the fade band, over the radius squared.
 const FAR = f(1.05)
@@ -99,17 +98,9 @@ const IMMERSED = f(0.001)
  */
 const EXCLUSION_REACH = 10000
 
-/** A right-handed turn about a unit axis, its columns the turned axes. */
-const turn = ({ x, y, z }: Vector3, angle: number): Matrix3 => {
-  const c = Math.cos(angle)
-  const s = Math.sin(angle)
-  const t = 1 - c
-  return {
-    x: { x: t * x * x + c, y: t * x * y + s * z, z: t * x * z - s * y },
-    y: { x: t * x * y - s * z, y: t * y * y + c, z: t * y * z + s * x },
-    z: { x: t * x * z + s * y, y: t * y * z - s * x, z: t * z * z + c },
-  }
-}
+/** A right-handed turn about a unit axis, its columns the turned axes: `Matrix3.axisAngle` holds rows. */
+const turn = (axis: Vector3, angle: number): Matrix3 =>
+  Matrix3.transpose(Matrix3.axisAngle(axis, angle))
 
 const clampOne = ({ x, y, z }: Vector3): Vector3 => ({
   x: x < 1 ? x : 1,
@@ -146,15 +137,21 @@ export class DynamicAsteroids {
     this.field = field
     this.random = random
     this.effect = effect
+
     // `FUN_00520850` and `CliAsteroidApplyDetail` store the scale as a float.
     const scale = f((1 - detail) * 0.5 + detail)
+
     this.count = Math.trunc(Math.trunc(settings.count ?? 10) * scale + 0.5)
     this.#rocks = Array.from({ length: this.count }, () => undefined)
+
     const radius = settings.placementRadius
+
     this.radius = f(radius ?? 150)
     this.ahead = radius === undefined ? 75 : f(radius * 0.7)
+
     // `CliDynamicAsteroidApplyParentTints`.
     const shift = settings.colorShift ?? { x: 1, y: 1, z: 1 }
+
     this.diffuse = clampOne({
       x: f(field.diffuse.x * shift.x),
       y: f(shift.y * field.diffuse.y),
@@ -171,12 +168,13 @@ export class DynamicAsteroids {
     return this.#rocks
   }
 
-  /** `CliDynamicAsteroidUpdate`'s spawn point: `ahead` along the view. */
+  /** `CliDynamicAsteroidUpdate`'s spawn point: `ahead` along the view, `(m[2], m[5], m[8])`. */
   centre({ position, orientation }: Camera): Vector3 {
     const back = -this.ahead
+
     return {
-      x: f(f(orientation.z.x * back) + position.x),
-      y: f(f(orientation.z.y * back) + position.y),
+      x: f(f(orientation.x.z * back) + position.x),
+      y: f(f(orientation.y.z * back) + position.y),
       z: f(f(orientation.z.z * back) + position.z),
     }
   }
@@ -185,18 +183,22 @@ export class DynamicAsteroids {
   #allowed(centre: Vector3, eye: Vector3): boolean {
     const { zone, edgeFraction = 0, exclusions = [] } = this.field
     if (zone && !(immersion(zone, edgeFraction, centre) > IMMERSED)) return false
+
     // `is_dynamic_asteroid_excluded` over the zones nearest the camera first.
     const order = exclusions
       .map((exclusion) => ({ exclusion, key: outsideSquared(exclusion, eye) }))
       .sort((a, b) => a.key - b.key)
+
     for (const { exclusion, key } of order) {
       if (key > EXCLUSION_REACH) break
+
       if (
         exclusion.excludeDynamicAsteroids &&
         immersion(exclusion.zone, exclusion.edgeFraction ?? 0, centre) !== 0
       )
         return false
     }
+
     return true
   }
 
@@ -226,17 +228,22 @@ export class DynamicAsteroids {
     const { random } = this
     const most = f(this.settings.maxVelocity ?? 50)
     const spin = f(this.settings.maxAngularVelocity ?? 5)
+
+    // A draw as [-1, 1) with its square's size and its own sign, times the most.
     const axis = () => {
       const value = f(random() * RAND_TWICE - 1)
       const square = f(value * value)
+
       return f((value > 0 ? square : -square) * most)
     }
+
     const [vx, vy, vz] = [axis(), axis(), axis()]
     // The first draw turns about Y, the second about X.
     const first = f(random() * RAND_UNIT)
     const second = f(random() * RAND_UNIT * spin)
     const third = f(random() * spin * RAND_TWICE - spin)
     const firstScaled = f(first * spin)
+
     rock.position = position
     rock.orientation = Matrix3.identity
     rock.velocity = { x: vx, y: vy, z: vz }
@@ -251,11 +258,16 @@ export class DynamicAsteroids {
    */
   #move(step: number): void {
     if (!(step > 0)) return
+
     for (const rock of this.#rocks) {
       if (!rock?.placed) continue
+
       const { position: p, velocity: v, spin: w } = rock
+
       rock.position = { x: f(p.x + v.x * step), y: f(p.y + v.y * step), z: f(p.z + v.z * step) }
+
       const rate = Math.hypot(w.x, w.y, w.z)
+
       if (rate > 0)
         rock.orientation = Matrix3.multiply(
           rock.orientation,
@@ -284,20 +296,26 @@ export class DynamicAsteroids {
   #recycle(camera: Camera, blocked: boolean): void {
     const centre = this.centre(camera)
     const allowed = !blocked && this.#allowed(centre, camera.position)
+
     for (let index = 0; index < this.count; index++) {
       let rock = this.#rocks[index]
+
       if (rock?.placed) {
         const alpha = this.#fade(centre, rock.position)
+
         if (alpha !== undefined) {
           rock.alpha = alpha
           continue
         }
+
         rock.placed = false
       }
+
       if (!allowed) {
         this.#rocks[index] = undefined
         continue
       }
+
       // A new rock's alpha is the heap's: until it's next faded, taken as 0.
       rock ??= {
         position: centre,
@@ -311,19 +329,24 @@ export class DynamicAsteroids {
         serial: 0,
       }
       this.#rocks[index] = rock
+
       const unit = onSphere(this.random)
+
       this.#place(rock, {
         x: f(this.radius * unit.x + centre.x),
         y: f(this.radius * unit.y + centre.y),
         z: f(this.radius * unit.z + centre.z),
       })
+
       // The old effect is dropped and the archetype's started afresh, at intensity 0 (`0x52607e`).
       if (this.effect) {
+        rock.effect?.instance.release()
         rock.effect = this.effect()
         rock.serial = ++started
         rock.intensity = 0
         rock.lod = 1
       }
+
       rock.placed = true
     }
   }
@@ -335,7 +358,9 @@ export class DynamicAsteroids {
    */
   #run(camera: Camera, step: number): void {
     if (!this.effect) return
+
     const view = viewMatrix(camera)
+
     for (const rock of this.#rocks) {
       if (!rock?.effect) continue
       rock.effect.instance.advance(step, {
@@ -344,7 +369,11 @@ export class DynamicAsteroids {
         placement: Matrix4.fromRotationTranslation(rock.orientation, rock.position),
         view,
       })
-      if (rock.effect.instance.finished) delete rock.effect
+
+      if (rock.effect.instance.finished) {
+        rock.effect.instance.release()
+        delete rock.effect
+      }
     }
   }
 
@@ -354,6 +383,7 @@ export class DynamicAsteroids {
    */
   effects(): DynamicEffectAt[] {
     const effects: DynamicEffectAt[] = []
+
     for (const rock of this.#rocks)
       if (rock?.effect)
         effects.push({
@@ -364,6 +394,7 @@ export class DynamicAsteroids {
           },
           serial: rock.serial,
         })
+
     return effects
   }
 
@@ -380,6 +411,7 @@ export class DynamicAsteroids {
    */
   draws(): DynamicDraw[] {
     const draws: DynamicDraw[] = []
+
     for (const rock of this.#rocks) {
       if (!rock || !(rock.alpha > VISIBLE)) continue
       rock.intensity = rock.alpha < 0 ? 0 : rock.alpha > 1 ? 1 : rock.alpha
@@ -388,6 +420,7 @@ export class DynamicAsteroids {
         alpha: rock.alpha,
       })
     }
+
     return draws
   }
 }

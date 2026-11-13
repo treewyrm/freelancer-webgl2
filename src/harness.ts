@@ -95,7 +95,9 @@ export const runFixture = async <T>(
       ).send('Emulation.setCPUThrottlingRate', {
         rate: cpuThrottling,
       })
+
     await page.addScriptTag({ content: await bundle(fixture) })
+
     if (read)
       await page.exposeFunction('readForFixture', async (path: string) =>
         Buffer.from(await read(path)).toString('base64'),

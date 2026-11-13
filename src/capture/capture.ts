@@ -175,8 +175,10 @@ const readStage = (line: Line, textures: Map<number, CaptureTexture>): CaptureSt
   const { texture, transform, ...states } = line
   const pointer = texture === null ? undefined : Number(texture)
   const found = pointer === undefined ? undefined : textures.get(pointer)
+
   if (pointer !== undefined && !found)
     throw new Error(`stage binds texture 0x${pointer.toString(16)}, which has no texture line`)
+
   return { texture: found, states, transform }
 }
 
@@ -218,6 +220,7 @@ export const readCapture = (text: string): Capture => {
     if (!source) return
 
     let line: Line
+
     try {
       line = JSON.parse(source)
     } catch {
@@ -239,6 +242,7 @@ export const readCapture = (text: string): Capture => {
         break
       case 'texture': {
         const texture = readTexture(line)
+
         textures.set(texture.pointer, texture)
         break
       }
@@ -273,8 +277,10 @@ export const readCapture = (text: string): Capture => {
         break
       case 'frame': {
         const draws = events.filter((event) => event.kind === 'draw')
+
         if (draws.length !== line['draws'])
           throw new Error(`frame ${line['i']} has ${draws.length} draws, says ${line['draws']}`)
+
         const clock: CaptureClock | undefined =
           line['dt'] === undefined
             ? undefined
@@ -286,6 +292,7 @@ export const readCapture = (text: string): Capture => {
                 elapsed: line['t'],
                 ticks: line['tick'],
               }
+
         capture.frames.push({
           index: line['i'],
           wall: line['wall'],

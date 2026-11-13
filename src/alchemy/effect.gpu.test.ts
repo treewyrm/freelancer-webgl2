@@ -9,11 +9,13 @@ let report: EffectReport
 
 before(async () => {
   browser = await launch()
+
   const { value } = await runFixture<EffectReport>(
     browser,
     new URL('./effect.fixture.ts', import.meta.url),
     { width: 64, height: 64, context: { antialias: false, alpha: false } },
   )
+
   report = value
 })
 
@@ -47,6 +49,7 @@ test('a roll of a quarter turn takes the wide axis to the vertical', () => {
 
 test('with no QuadTexture it is the equilateral triangle: apex at 2S, base √3·S either side, retail not the decomp', () => {
   const { apexRow, baseRow, baseSpan } = report.triangle
+
   // Apex 2 up and base 1 down: 3 of 10 on 64 is 19 rows.
   assert.ok(Math.abs(apexRow - baseRow - 18.2) <= 2, `${apexRow - baseRow}`)
   assert.ok(apexRow - 32 > 32 - baseRow, `${apexRow} ${baseRow}`)
@@ -73,6 +76,7 @@ test("a perp's Size is the full extent, and with the fade it is gone edge-on", (
 
 test("a perp's u runs along its roll, which starts from +X", () => {
   const { left, right } = report.perp.roll
+
   assert.ok(left[0]! > left[1]!, `${left}`)
   assert.ok(right[1]! > right[0]!, `${right}`)
 })
@@ -106,6 +110,7 @@ test("an appearance's scale resizes a perp, built in its frame, and not a basic,
 
 test("a particle's frame -1 is the playback's, and one past either end is the last (GetFrame)", () => {
   const { current, past, inside } = report.frameChoice
+
   assert.deepEqual(
     [current.slice(0, 3), past.slice(0, 3), inside.slice(0, 3)],
     [
@@ -114,4 +119,19 @@ test("a particle's frame -1 is the playback's, and one past either end is the la
       [0, 255, 0],
     ],
   )
+})
+
+test("a hook's outline frames each sprite through its own corners, and draws no sprite", () => {
+  const { edges, axisX, axisY, inside, perpNormal, error } = report.outlined
+
+  assert.equal(error, 0)
+  // Half-extent 1 of a 10-wide view on 64 pixels: edges 6.4 either side of the middle.
+  assert.equal(edges.length, 2, `${edges}`)
+  assert.ok(Math.abs(edges[0]! - 25.6) <= 1 && Math.abs(edges[1]! - 38.4) <= 1, `${edges}`)
+  // Centre to edge, about 6 pixels each.
+  assert.ok(Math.abs(axisX - 6.4) <= 1.5, `${axisX}`)
+  assert.ok(Math.abs(axisY - 6.4) <= 1.5, `${axisY}`)
+  assert.deepEqual(inside.slice(0, 3), [0, 0, 0])
+  // Half of the two half-extents of 1.
+  assert.ok(Math.abs(perpNormal - 6.4) <= 1.5, `${perpNormal}`)
 })

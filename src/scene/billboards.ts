@@ -21,6 +21,7 @@ import type { Random } from './lightning.js'
 import type { Fog } from './nebula.js'
 import { immersion, type Zone } from './nebula.js'
 import type { TextureShape } from './ring.js'
+import { insideSphere, inverseRoot, onSphere, RAND_UNIT } from './retail.js'
 
 const f = Math.fround
 
@@ -68,7 +69,7 @@ export interface BillboardLighting {
   lights: readonly SceneLight[]
   /** The `LIGHTING` option: off, the rocks are the tinted diffuse. On when absent. */
   lit?: boolean
-  /** What the ambient pass left on: the field's nebula's fog, with `contains_fog_zone`. */
+  /** What the ambient pass left on: the field's nebula's fog. */
   fog?: Fog
 }
 
@@ -85,8 +86,6 @@ interface Rock {
   phase: number
 }
 
-const RAND_UNIT = 3.0517578125e-5
-const TWO_PI = 6.2831854820251465
 // `DAT_005e0b00`: 35°, as a float.
 const TAN = Math.tan(0.6108652353286743)
 
@@ -94,35 +93,6 @@ const TAN = Math.tan(0.6108652353286743)
 const FORMAT = setMapCount(VertexFormat.Position | VertexFormat.Diffuse, 1)
 const STRIDE = 24
 const BLACK: Vector3 = { x: 0, y: 0, z: 0 }
-
-/** `random_inside_sphere` (`0x631db20`). */
-const insideSphere = (random: Random, radius: number): Vector3 => {
-  const scaled = f(Math.pow(random() * RAND_UNIT, 1 / 3) * radius)
-  const cos = random() * RAND_UNIT * 2 - 1
-  const sin = f(Math.sin(Math.acos(cos)) * scaled)
-  const phi = random() * RAND_UNIT * TWO_PI
-  return { x: f(Math.sin(phi) * sin), y: f(f(cos) * scaled), z: f(Math.cos(phi) * sin) }
-}
-
-/** `random_on_unit_sphere` (`0x631da50`). */
-export const onSphere = (random: Random): Vector3 => {
-  const u1 = f(random() * RAND_UNIT)
-  const u2 = f(random() * RAND_UNIT)
-  const cos = Math.min(Math.max(f(u1 + u1 - 1), -1), 1)
-  const theta = Math.acos(cos)
-  const phi = u2 * TWO_PI
-  const sin = Math.sin(theta)
-  return { x: f(Math.sin(phi) * sin), y: f(Math.cos(theta)), z: f(Math.cos(phi) * sin) }
-}
-
-// The inlined reciprocal square root of `FUN_0054e900`, one Newton step, left unrounded.
-const inverseRoot = (squared: number): number => {
-  const floats = new Float32Array([squared])
-  const bits = new Int32Array(floats.buffer)
-  bits[0] = 0x5f3759df - (bits[0]! >> 1)
-  const y = floats[0]!
-  return (1.5 - y * y * squared * 0.5) * y
-}
 
 const clampOne = ({ x, y, z }: Vector3): Vector3 => ({
   x: x < 1 ? x : 1,
@@ -184,17 +154,22 @@ export class AsteroidBillboards {
     const counts = exclusions.map(({ billboardCount }) =>
       billboardCount === undefined ? undefined : Math.trunc(billboardCount),
     )
+
     if (exclusions.length) {
       const most = Math.max(
         -1,
         ...counts.map((value) => (value !== undefined && value > 0 ? value : -1)),
       )
       const used = Math.max(count, most)
+
       density = f(count / used)
       count = used
     }
+
     this.density = density
+
     const inverse = f(1 / count)
+
     this.#densities = counts.map((value) =>
       value !== undefined && value > 0 ? f(value * inverse) : value,
     )
@@ -204,8 +179,10 @@ export class AsteroidBillboards {
     const rockCount = Math.trunc(count * qualityA)
     const step = f(1 / rockCount)
     const coin = () => random() * RAND_UNIT > 0.5
+
     for (let index = 0; index < rockCount; index++) {
       const half = f((random() * range * RAND_UNIT + low) * 0.5)
+
       this.#rocks.push({
         position: BLACK,
         half,
@@ -221,9 +198,12 @@ export class AsteroidBillboards {
 
     const start = settings.startDistance ?? 1500
     const percent = Math.min(Math.max(settings.fadePercent ?? 0.3, 0), 1)
+
+    // A sphere whose near edge is `a` ahead and whose radius is `TAN` of its centre's distance.
     if (start > 0) {
       const a = qualityB * start
       const r = (a * TAN) / (1 - TAN)
+
       this.radius = f(r)
       this.ahead = f(r + a)
       this.fade = f(r * f(percent))
@@ -236,10 +216,12 @@ export class AsteroidBillboards {
     // `BillboardSetFadePlanes`: from the cubes' reach to a cube and a quarter past it.
     const fill = f(Math.trunc(field.fillDistance) * (field.detailScale ?? 1))
     const far = f(field.cubeSize * 1.25 + fill)
+
     this.nearFade = fill < far ? [far, fill] : [fill, far]
 
     // `BillboardApplyTints`.
     const shift = settings.colorShift ?? { x: 1, y: 1, z: 1 }
+
     this.#diffuse = clampOne({
       x: f(shift.x * field.diffuse.x),
       y: f(shift.y * field.diffuse.y),
@@ -267,6 +249,7 @@ export class AsteroidBillboards {
     const reach = zone.radius + margin
     const squared = d.x * d.x + d.z * d.z + d.y * d.y
     if (squared > reach * reach) return false
+
     const distance = f(Math.sqrt(f(squared)))
     const inverse = 1 / distance
     const along = zone.radiusAlong({
@@ -274,6 +257,7 @@ export class AsteroidBillboards {
       y: f(d.y * inverse),
       z: f(d.z * inverse),
     })
+
     return distance - along <= margin
   }
 
@@ -284,17 +268,21 @@ export class AsteroidBillboards {
   #excluded(order: readonly number[], point: Vector3): { out: boolean; density?: number } {
     const exclusions = this.field.exclusions ?? []
     let density: number | undefined
+
     for (const at of order) {
       const exclusion = exclusions[at]!
       const inside = immersion(exclusion.zone, exclusion.edgeFraction ?? 0, point) !== 0
+
       if (exclusion.excludeBillboards) {
         if (inside) return { out: true }
         continue
       }
+
       const value = this.#densities[at]
       if (density !== undefined || !(value !== undefined && value > 0)) continue
       if (inside) density = value
     }
+
     return { out: false, ...(density !== undefined && { density }) }
   }
 
@@ -303,6 +291,7 @@ export class AsteroidBillboards {
     const { zone, edgeFraction = 0 } = this.field
     if (immersion(zone, edgeFraction, rock.position) === 0) return false
     if (!order) return true
+
     const { out, density } = this.#excluded(order, rock.position)
     if (out) return false
     return !(rock.phase > (density !== undefined && density > 0 ? density : this.density))
@@ -319,10 +308,13 @@ export class AsteroidBillboards {
     const shape = this.settings.shape
     const eye = camera.position
     if (!this.near(eye)) return []
+
     const { forward, right, up, centre } = this.#axes(camera)
+
     this.#up = up
 
     const colours = this.#colours(lighting, forward, right, up)
+
     if (!shape) return []
 
     const radiusSquared = this.radius * this.radius
@@ -334,17 +326,21 @@ export class AsteroidBillboards {
           .map(({ at }) => at)
       : undefined
     const { random } = this
+
     const away = (rock: Rock) => {
       const dx = rock.position.x - centre.x
       const dy = rock.position.y - centre.y
       const dz = rock.position.z - centre.z
+
       return dx * dx + dz * dz + dy * dy
     }
 
     for (const rock of this.#rocks) {
       let squared: number
+
       if (cut) {
         const offset = insideSphere(random, this.radius)
+
         rock.position = {
           x: f(centre.x + offset.x),
           y: f(centre.y + offset.y),
@@ -355,9 +351,11 @@ export class AsteroidBillboards {
         squared = away(rock)
       } else {
         squared = away(rock)
+
         if (squared > radiusSquared + 10) {
           // Back on the sphere's surface, unseen this frame.
           const on = onSphere(random)
+
           rock.position = {
             x: f(this.radius * on.x + centre.x),
             y: f(this.radius * on.y + centre.y),
@@ -368,15 +366,18 @@ export class AsteroidBillboards {
           continue
         }
       }
+
       if (!rock.visible) continue
 
       rock.alpha = this.#fade(rock.position, squared, eye, forward)
     }
 
     const first = this.#rocks[0]
+
     const emit = (rocks: Rock[]) => {
       const vertices = new Uint8Array(rocks.length * 3 * STRIDE)
       const floats = new Float32Array(vertices.buffer)
+
       rocks.forEach((rock, at) => {
         const size = f(rock.half + rock.half)
         const r = { x: f(right.x * size), y: f(right.y * size), z: f(right.z * size) }
@@ -394,6 +395,7 @@ export class AsteroidBillboards {
         const a = rock.swap ? r : u
         let b = rock.swap ? u : r
         if (rock.negate) b = { x: -b.x, y: -b.y, z: -b.z }
+
         const p = rock.position
         // Retail picks the corner colour by rock 0's U flip and this rock's V flip.
         const pick = Number(first!.flipU) + Number(rock.flipV) * 2
@@ -403,8 +405,10 @@ export class AsteroidBillboards {
           [{ x: f(a.x + p.x), y: f(a.y + p.y), z: f(a.z + p.z) }, [u1!, v1!], cornerColour],
           [{ x: f(b.x + p.x), y: f(b.y + p.y), z: f(b.z + p.z) }, [0.5, 0.5], colours.centre],
         ]
+
         triangle.forEach(([position, uv, colour], k) => {
           const index = at * 3 + k
+
           floats.set([position.x, position.y, position.z], (index * STRIDE) / 4)
           vertices.set(bytesOf(rock.alpha, colour), index * STRIDE + 12)
           floats.set(uv, (index * STRIDE + 16) / 4)
@@ -412,6 +416,7 @@ export class AsteroidBillboards {
       })
       return vertices
     }
+
     const opaque = this.#rocks.filter(
       (rock) => rock.visible && rock.alpha >= 1 && rock.alpha >= f(0.02),
     )
@@ -419,10 +424,13 @@ export class AsteroidBillboards {
       (rock) => rock.visible && rock.alpha < 1 && rock.alpha > f(0.02),
     )
     const draws: Draw[] = []
+
     if (opaque.length)
       draws.push(this.#drawOf(emit(opaque), opaque.length * 3, false, shape, lighting.fog))
+
     if (faded.length)
       draws.push(this.#drawOf(emit(faded), faded.length * 3, true, shape, lighting.fog))
+
     return draws
   }
 
@@ -440,10 +448,12 @@ export class AsteroidBillboards {
       y: f(forward.y * this.ahead + eye.y),
       z: f(forward.z * this.ahead + eye.z),
     }
+    // `right` = look × kept up, then `up` = right × look; each normalised.
     const kept = this.#up
     const cx = forward.y * kept.z - forward.z * kept.y
     const cy = forward.z * kept.x - forward.x * kept.z
     const cz = f(forward.x * kept.y - forward.y * kept.x)
+    // The reciprocal square root `FUN_0054e900` inlines.
     const rightInverse = f(inverseRoot(f(cx * cx + cz * cz + cy * cy)))
     const right = { x: f(cx * rightInverse), y: f(cy * rightInverse), z: f(cz * rightInverse) }
     const turned = {
@@ -459,6 +469,7 @@ export class AsteroidBillboards {
       y: f(upInverse * turned.y),
       z: f(upInverse * turned.z),
     }
+
     return { forward, right, up, centre }
   }
 
@@ -475,15 +486,19 @@ export class AsteroidBillboards {
       (point.x - eye.x) * forward.x + (point.z - eye.z) * forward.z + (point.y - eye.y) * forward.y,
     )
     let alpha: number
+
     if (depth > this.ahead) {
       const t = Math.min(1 - (this.radius - (depth - this.ahead)) / this.radius, 1)
       const band = ((1 - percent) * t * 0.5 + percent) * this.radius
       const bandSquared = band * band
+
       alpha = squared > radiusSquared - bandSquared ? f((radiusSquared - squared) / bandSquared) : 1
     } else {
       const fadeSquared = this.fade * this.fade
+
       alpha = squared > radiusSquared - fadeSquared ? f((radiusSquared - squared) / fadeSquared) : 1
     }
+
     if (alpha < f(0.02) || depth >= nearHigh) return alpha
     return depth < nearLow ? 0 : f(((depth - nearLow) / (nearHigh - nearLow)) * alpha)
   }
@@ -494,6 +509,7 @@ export class AsteroidBillboards {
     const dx = point.x - centre.x
     const dy = point.y - centre.y
     const dz = point.z - centre.z
+
     return this.#fade(point, dx * dx + dz * dz + dy * dy, camera.position, forward)
   }
 
@@ -503,6 +519,7 @@ export class AsteroidBillboards {
    */
   coloursAt(camera: Camera, lighting: BillboardLighting): { corners: Vector3[]; centre: Vector3 } {
     const { forward, right, up } = this.#axes(camera)
+
     return this.#colours(lighting, forward, right, up)
   }
 
@@ -518,6 +535,7 @@ export class AsteroidBillboards {
     up: Vector3,
   ): { corners: Vector3[]; centre: Vector3 } {
     if (!lit) return { corners: [0, 1, 2, 3].map(() => this.#diffuse), centre: this.#diffuse }
+
     const scale = f(f(this.settings.ambientIntensity ?? 1) * f(1 / 255))
     const shift = this.settings.colorShift ?? { x: 1, y: 1, z: 1 }
     const tint = this.#ambient
@@ -534,25 +552,33 @@ export class AsteroidBillboards {
       BLACK,
     ]
     const outputs = sides.map(() => ({ ...base }))
+
     for (const light of lights.slice(0, 4)) {
       const colour = {
         x: f(light.color.x * this.#diffuse.x),
         y: f(light.color.y * this.#diffuse.y),
         z: f(light.color.z * this.#diffuse.z),
       }
+
       sides.forEach((side, at) => {
         let d = { x: f(forward.x + side.x), y: f(forward.y + side.y), z: f(forward.z + side.z) }
         const inverse = 1 / Math.sqrt(d.x * d.x + d.y * d.y + d.z * d.z)
+
         d = { x: f(inverse * d.x), y: f(inverse * d.y), z: f(inverse * d.z) }
+
+        // Wrapped diffuse: 0 at a dot of -0.5, rising to 1 at 1.
         const dot = d.z * light.direction.z + d.y * light.direction.y + d.x * light.direction.x
         const weight = dot < -0.5 ? 0 : f((dot + 0.5) / 1.5)
         const out = outputs[at]!
+
         out.x = f(out.x + f(colour.x * weight))
         out.y = f(out.y + f(colour.y * weight))
         out.z = f(out.z + f(colour.z * weight))
       })
     }
+
     const clamped = outputs.map(clampOne)
+
     return { corners: clamped.slice(0, 4), centre: clamped[4]! }
   }
 
@@ -585,6 +611,7 @@ export class AsteroidBillboards {
       boundingBox: { min: BLACK, max: BLACK },
       boundingSphere: { center: BLACK, radius: 0 },
     }
+
     return {
       mesh,
       reference,

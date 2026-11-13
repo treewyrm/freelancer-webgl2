@@ -17,6 +17,7 @@ import { systems } from './systems.js'
 
 const data = process.env['FREELANCER_DATA'] ?? join(homedir(), 'Downloads/Freelancer/DATA')
 const references = process.env['FREELANCER_REFERENCES'] ?? 'references'
+
 interface RingRun {
   name: 'ring_outside' | 'ring_inside'
   /** The objects and ring pieces; the engine's effects follow, then a depth clear and the HUD. */
@@ -56,18 +57,23 @@ const modelViewOf = (world: readonly number[]): Matrix4 => {
     z: -world[c * 4 + 2]!,
     w: world[c * 4 + 3]!,
   })
+
   return { x: column(0), y: column(1), z: column(2), w: column(3) }
 }
 
 const load = async (name: RingRun['name']) => {
   const folder = join(references, name)
   const system = systems.get(name)!
+
   const read = async (path: string) => {
     const file = readFileSync(join(data, path))
+
     return new Uint8Array(file.buffer, file.byteOffset, file.byteLength)
   }
+
   const { draws, options } = readSpaceRun(folder, system, RUNS[name])
   const scene = await loadSystem(system, read, options)
+
   return { frame: collectSpaceFrame(scene), retail: draws, scene }
 }
 
@@ -81,6 +87,7 @@ const skipOf = (name: string) =>
 for (const { name, draws, rings, farPieces, clouds } of RUNS_COMPARED) {
   test(`${name} is retail draw for draw, in retail order`, { skip: skipOf(name) }, async () => {
     const { frame, retail } = await load(name)
+
     assert.deepEqual(frame.unsupported, ['texture envmapglass'])
     assert.equal(frame.draws.length, draws + (clouds === undefined ? 0 : 1))
     assert.deepEqual(
@@ -100,11 +107,13 @@ for (const { name, draws, rings, farPieces, clouds } of RUNS_COMPARED) {
     { skip: skipOf(name) },
     async () => {
       const { frame, retail } = await load(name)
+
       for (const n of rings) {
         const { states, stages, world } = retail[n]!
         const ours = frame.draws[n]!
         const what = `draw ${n}`
         const far = n < farPieces
+
         assert.equal(states['ZENABLE'], far ? 0 : 1, what)
         assert.equal(ours.depthFunc, far ? 'always' : 'lequal', what)
         assert.deepEqual(
@@ -117,6 +126,7 @@ for (const { name, draws, rings, farPieces, clouds } of RUNS_COMPARED) {
           [states['ALPHATESTENABLE'], states['ALPHAFUNC'], states['ALPHAREF']],
           [1, 5, 0],
         )
+
         // Both stages wrap and filter as the default sampler does.
         for (const stage of [0, 1])
           assert.deepEqual(
@@ -126,9 +136,12 @@ for (const { name, draws, rings, farPieces, clouds } of RUNS_COMPARED) {
             [1, 1, 2, 2, 1],
             `${what} stage ${stage}`,
           )
+
         assert.equal(stages[1]!.states['COLOROP'], ours.second ? 5 : 1, what)
+
         // Drawn in world space: the modelview is the view alone.
         const theirs = modelViewOf(world!)
+
         for (const axis of ['x', 'y', 'z', 'w'] as const)
           for (const cell of ['x', 'y', 'z'] as const)
             assert.ok(Math.abs(frame.view[axis][cell] - theirs[axis][cell]) < 1e-3, what)
@@ -141,19 +154,24 @@ for (const { name, draws, rings, farPieces, clouds } of RUNS_COMPARED) {
     { skip: skipOf(name) },
     async () => {
       const { frame, retail } = await load(name)
+
       for (const n of rings) {
         const ours = frame.draws[n]!
         const vertices = retail[n]!.vertexData!
         const floats = new Float32Array(ours.mesh.vertices.buffer)
         const bytes = ours.mesh.vertices
+
         assert.equal(vertices.length, bytes.length / 32, `draw ${n}`)
         vertices.forEach(({ p, d, t0, t1 }, at) => {
           const what = `draw ${n}, vertex ${at}`
+
           // The zone's transform runs at extended precision in retail: within two float steps.
           p.forEach((c, axis) =>
             assert.ok(Math.abs(c - floats[at * 8 + axis]!) <= Math.abs(c) * 2.4e-7 + 1e-4, what),
           )
+
           const [b, g, r, a] = bytes.slice(at * 32 + 12, at * 32 + 16)
+
           assert.equal(Number(d), ((a! << 24) | (r! << 16) | (g! << 8) | b!) >>> 0, what)
           assert.deepEqual(
             [...t0!, ...t1!].map(Math.fround),
@@ -174,6 +192,7 @@ for (const { name, draws, rings, farPieces, clouds } of RUNS_COMPARED) {
         const theirs = retail[clouds]!
         const ours = frame.draws[clouds]!
         const { states, stages, world } = theirs
+
         assert.equal(theirs.call, 'DrawPrimitive')
         assert.equal(theirs.primitive, 'trilist')
         assert.deepEqual(
@@ -195,7 +214,9 @@ for (const { name, draws, rings, farPieces, clouds } of RUNS_COMPARED) {
         assert.equal(stages[1]!.states['COLOROP'], 1)
         // Under an identity modelview, in view space; ours stands its world at the view's inverse.
         assert.deepEqual(world, [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, -1, 0, 0, 0, 0, 1])
+
         const identity = Matrix4.multiply(frame.view, ours.world)
+
         for (const axis of ['x', 'y', 'z', 'w'] as const)
           for (const cell of ['x', 'y', 'z', 'w'] as const)
             assert.ok(Math.abs(identity[axis][cell] - (axis[0] === cell[0] ? 1 : 0)) < 1e-6)
@@ -204,9 +225,11 @@ for (const { name, draws, rings, farPieces, clouds } of RUNS_COMPARED) {
         const sim = scene.rings![0]!.clouds![0]!
         const ahead = sim.reach + sim.radius
         const { puffRadius = 50, colorA, colorB, nearFade = [50, 100] } = sim.settings
+
         const quadsOf = (corners: { p: number[]; d: number }[]) =>
           Array.from({ length: corners.length / 6 }, (_, at) => {
             const [a, b, c] = [corners[at * 6]!, corners[at * 6 + 1]!, corners[at * 6 + 2]!]
+
             return {
               centre: [(a.p[0]! + c.p[0]!) / 2, (a.p[1]! + c.p[1]!) / 2, a.p[2]!],
               half: Math.hypot(c.p[0]! - a.p[0]!, c.p[1]! - a.p[1]!) / 2 / Math.SQRT2,
@@ -215,6 +238,7 @@ for (const { name, draws, rings, farPieces, clouds } of RUNS_COMPARED) {
               colour: a.d,
             }
           })
+
         const vertices = new Float32Array(ours.mesh.vertices.buffer)
         const bytes = ours.mesh.vertices
         const ourCorners = Array.from({ length: ours.count }, (_, at) => ({
@@ -227,6 +251,7 @@ for (const { name, draws, rings, farPieces, clouds } of RUNS_COMPARED) {
             0,
         }))
         const theirCorners = theirs.vertexData!.map(({ p, d }) => ({ p, d: Number(d) }))
+
         for (const [who, quads] of [
           ['retail', quadsOf(theirCorners)],
           ['ours', quadsOf(ourCorners)],
@@ -236,19 +261,24 @@ for (const { name, draws, rings, farPieces, clouds } of RUNS_COMPARED) {
           quads.forEach(({ centre, half, diagonal, colour }, at) => {
             const what = `${who}, puff ${at}`
             const depth = -centre[2]!
+
             assert.ok(depth >= nearFade[0], what)
             assert.ok(
               half >= puffRadius * 0.8 - 0.1 && half <= puffRadius * 1.2 + 0.1,
               `${what}: ${half}`,
             )
             assert.ok(diagonal < 0.01, what)
+
             const distance = Math.hypot(centre[0]!, centre[1]!, depth - ahead)
+
             assert.ok(distance <= sim.radius * Math.sqrt(1.02), `${what}: ${distance}`)
             // Far to near, by the depth the last frame drew it at.
             if (at) assert.ok(depth <= -quads[at - 1]!.centre[2]! + 1e-3, what)
+
             // Each colour lies between A and B, the same way along each channel.
             const [r, g] = [(colour >>> 16) & 0xff, (colour >>> 8) & 0xff]
             const t = (r - colorA!.x * 255) / ((colorB!.x - colorA!.x) * 255)
+
             assert.ok(t >= -0.05 && t <= 1.05, `${what}: ${t}`)
             assert.ok(Math.abs(g - (colorA!.y + (colorB!.y - colorA!.y) * t) * 255) <= 2, what)
           })

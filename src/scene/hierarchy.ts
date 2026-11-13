@@ -18,13 +18,16 @@ export const partTransforms = <T>(
   stateOf?: (part: CompoundNode<T>) => JointState | undefined,
 ): Map<CompoundNode<T>, Matrix4> => {
   const transforms = new Map<CompoundNode<T>, Matrix4>()
+
   const visit = (part: CompoundNode<T>, parent: Matrix4) => {
     const world = part.joint
       ? Matrix4.multiply(parent, getJointMatrix(part.joint, stateOf?.(part)))
       : parent
+
     transforms.set(part, world)
     for (const child of part.children) visit(child, world)
   }
+
   visit(root, model)
   return transforms
 }
@@ -45,6 +48,7 @@ const wrapRange = (range: number): number => {
 /** A revolute hardpoint's range, and its limits opened to ±π at a full turn or more. */
 const limitsOf = ({ min, max }: { min: number; max: number }) => {
   const range = max - min
+
   return range >= FULL_TURN
     ? { range, min: -HALF_TURN, max: HALF_TURN }
     : { range: wrapRange(range), min, max }
@@ -67,11 +71,14 @@ const rotate = (v: Vector3, m: Matrix3): Vector3 => Matrix3.transform(v, Matrix3
 export const attachJoint = (parent: Hardpoint, child: Hardpoint): Joint => {
   const parentAt = parent.position ?? Vector3.zero
   const childAt = child.position ?? Vector3.zero
+
   if (child.type === 'fixed') {
     const orientation = product(parent.orientation, Matrix3.transpose(child.orientation))
     const position = Vector3.subtract(parentAt, rotate(childAt, orientation))
+
     return { type: 'fixed', position, orientation }
   }
+
   const orientation = product(parent.orientation, child.orientation)
   const axis = rotate(child.axis, orientation)
   const joint = {
@@ -82,8 +89,10 @@ export const attachJoint = (parent: Hardpoint, child: Hardpoint): Joint => {
     axis,
   } as const
   if (parent.type !== 'revolute') return { ...joint, min: child.min, max: child.max }
+
   const outer = limitsOf(parent)
   const inner = limitsOf(child)
   const { min, max } = outer.range < inner.range ? outer : inner
+
   return { ...joint, min, max }
 }

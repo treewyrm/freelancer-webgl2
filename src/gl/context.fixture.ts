@@ -11,6 +11,7 @@ export default ((gl) => {
   gl.clear(gl.COLOR_BUFFER_BIT)
 
   const pixel = new Uint8Array(4)
+
   gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixel)
 
   return {

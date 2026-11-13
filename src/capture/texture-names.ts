@@ -34,16 +34,21 @@ export const contentHash = (bytes: Uint8Array): string => hex(crc32(bytes)) + he
 const asDevice = ({ layout }: TextureUpload, pixels: Uint8Array | Uint16Array): Uint8Array => {
   if (layout === 'rgb5a1') {
     const output = (pixels as Uint16Array).map((pixel) => (pixel >> 1) | ((pixel & 1) << 15))
+
     return new Uint8Array(output.buffer)
   }
+
   if (layout === 'rgba8') {
     const output = (pixels as Uint8Array).slice()
+
     for (let at = 0; at < output.length; at += 4) {
       output[at] = pixels[at + 2]!
       output[at + 2] = pixels[at]!
     }
+
     return output
   }
+
   return new Uint8Array(pixels.buffer, pixels.byteOffset, pixels.byteLength)
 }
 
@@ -51,10 +56,12 @@ const asDevice = ({ layout }: TextureUpload, pixels: Uint8Array | Uint16Array): 
 const inARow = (levels: Uint8Array[]): Uint8Array => {
   const output = new Uint8Array(levels.reduce((total, level) => total + level.length, 0))
   let offset = 0
+
   for (const level of levels) {
     output.set(level, offset)
     offset += level.length
   }
+
   return output
 }
 
@@ -66,7 +73,9 @@ export const addLibrary = (
 ): void => {
   for (const entry of library) {
     if (entry.type === 'animated') continue
+
     const upload = planUpload(entry)
+
     upload.faces[0]!.forEach((_, at) => {
       const width = Math.max(1, upload.width >> at)
       const height = Math.max(1, upload.height >> at)
@@ -74,6 +83,7 @@ export const addLibrary = (
 
       const hash = contentHash(inARow(upload.faces.map((face) => asDevice(upload, face[at]!))))
       const names = index.get(hash) ?? []
+
       names.push({ source, name: entry.name, width })
       index.set(hash, names)
     })
@@ -83,6 +93,7 @@ export const addLibrary = (
 const filesUnder = (directory: string): string[] =>
   readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
     const path = join(directory, entry.name)
+
     return entry.isDirectory() ? filesUnder(path) : [path]
   })
 
@@ -102,6 +113,7 @@ export const forEachLibrary = (
 /** Indexes every texture library under a `DATA` directory. */
 export const indexTextures = (root: string): TextureIndex => {
   const index: TextureIndex = new Map()
+
   forEachLibrary(root, (source, library) => addLibrary(index, source, library))
   return index
 }
@@ -109,11 +121,13 @@ export const indexTextures = (root: string): TextureIndex => {
 /** The entries holding a captured texture, by its largest level that is found at the same width. */
 export const namesOf = (index: TextureIndex, texture: CaptureTexture): TextureName[] => {
   if (texture.width === undefined) return []
+
   for (const [at, hash] of texture.hash.entries()) {
     const width = Math.max(1, texture.width >> at)
     const names = hash === undefined ? [] : (index.get(hash) ?? [])
     const matching = names.filter((name) => name.width === width)
     if (matching.length) return matching.map(({ source, name }) => ({ source, name }))
   }
+
   return []
 }

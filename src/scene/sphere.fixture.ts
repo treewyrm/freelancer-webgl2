@@ -52,6 +52,7 @@ const lookAtOrigin = (position: Vector3) => {
     y: back.z * r.x - back.x * r.z,
     z: back.x * r.y - back.y * r.x,
   }
+
   // A camera holds its axes as columns of these rows.
   return Matrix3.transpose({ x: r, y: up, z: back })
 }
@@ -59,6 +60,7 @@ const lookAtOrigin = (position: Vector3) => {
 const fixture: Fixture<SphereReport> = (gl) => {
   const renderer = createRenderer(gl)
   const { drawingBufferWidth: width, drawingBufferHeight: height } = gl
+
   const draw = (position: Vector3, level?: number) => {
     const camera = {
       position,
@@ -67,6 +69,7 @@ const fixture: Fixture<SphereReport> = (gl) => {
       near: 1,
       far: 1000,
     }
+
     renderer.render(
       collectFrame({
         camera,
@@ -88,11 +91,14 @@ const fixture: Fixture<SphereReport> = (gl) => {
       }),
     )
   }
+
   const read = (x: number, y: number) => {
     const pixel = new Uint8Array(4)
+
     gl.readPixels(x, y, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixel)
     return [...pixel.slice(0, 3)]
   }
+
   const pixels: Record<string, number[]> = {}
   const third = Math.floor(width / 3)
   const mid = Math.floor(width / 2)
@@ -120,19 +126,25 @@ const fixture: Fixture<SphereReport> = (gl) => {
 
   const holes: Record<string, number> = {}
   const whole = new Uint8Array(width * height * 4)
+
   for (const level of [3, 4, 5, 6, 9]) {
     draw({ x: 2.5, y: 1.5, z: 3 }, level)
     gl.readPixels(0, 0, width, height, gl.RGBA, gl.UNSIGNED_BYTE, whole)
+
     // Radius 1 from about 4.2 is 20 pixels here, and level 3's facets sag by 8% at most.
     let count = 0
+
     for (let y = 0; y < height; y++)
       for (let x = 0; x < width; x++) {
         if (Math.hypot(x + 0.5 - width / 2, y + 0.5 - height / 2) > 17) continue
+
         const at = (y * width + x) * 4
         if (whole[at]! + whole[at + 1]! + whole[at + 2]! === 0) count++
       }
+
     holes[`${level}`] = count
   }
+
   // Radius 1, `Scale` 1.5, from 4: extent 1.5, shell 0.5, so k = 2.5 / 3 and k³ = 0.5787.
   const ramp: Texture = {
     type: 'image',
@@ -190,9 +202,12 @@ const fixture: Fixture<SphereReport> = (gl) => {
       },
     ],
   })
+
   renderer.render(frame)
+
   const shell = [0, 4, 8, 12].map((offset) => read(mid + offset, mid)[0]!)
   const shellRow = read(mid, mid)[1]!
+
   renderer.dispose()
   return { error: gl.getError(), pixels, holes, shell, shellRow, shellDraws: frame.draws.length }
 }

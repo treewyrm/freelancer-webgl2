@@ -9,11 +9,13 @@ let report: TextureReport
 
 before(async () => {
   browser = await launch()
+
   const { value } = await runFixture<TextureReport>(
     browser,
     new URL('./texture.fixture.ts', import.meta.url),
     { width: 4, height: 4 },
   )
+
   report = value
 })
 
@@ -61,6 +63,7 @@ test('a chain short of 1x1 is complete, with no blending between levels', () =>
 
 test('filters within a level, and each wrap acts past the edge', () => {
   const [red, green, blue] = report['bilinear']!
+
   assert.ok(
     Math.abs(red! - 128) <= 1 && green === 0 && Math.abs(blue! - 128) <= 1,
     `${red},${blue}`,

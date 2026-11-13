@@ -23,8 +23,10 @@ const ORIGIN: Vector3 = { x: 0, y: 0, z: 0 }
 const ownSphere = (part: RigidPart): Extent => {
   if (part.type === 'sphere') return { center: ORIGIN, radius: part.radius }
   if (part.type !== 'rigid' || !part.part) return { center: ORIGIN, radius: 0 }
+
   const source = part.part
   const reference = source.type === 'multilevel' ? source.levels[0]?.reference : source.reference
+
   return reference
     ? { center: reference.boundingSphere.center, radius: reference.boundingSphere.radius }
     : { center: ORIGIN, radius: 0 }
@@ -39,20 +41,25 @@ const extentOf = (own: Extent, world: Matrix4, children: Extent[]): Extent => {
   const axes = ['x', 'y', 'z'] as const
   const least = { x: center.x - own.radius, y: center.y - own.radius, z: center.z - own.radius }
   const most = { x: center.x + own.radius, y: center.y + own.radius, z: center.z + own.radius }
+
   for (const child of children)
     for (const axis of axes) {
       least[axis] = Math.min(least[axis], child.center[axis] - child.radius)
       most[axis] = Math.max(most[axis], child.center[axis] + child.radius)
     }
+
   const middle = {
     x: Math.fround((most.x + least.x) * 0.5),
     y: Math.fround((most.y + least.y) * 0.5),
     z: Math.fround((most.z + least.z) * 0.5),
   }
   let radius = Math.max(...axes.map((axis) => most[axis] - least[axis])) * 0.5
+
   radius = Math.max(radius, distance(middle, center) + own.radius)
+
   for (const child of children)
     radius = Math.max(radius, distance(child.center, middle) + child.radius)
+
   return { center: middle, radius: Math.fround(radius) }
 }
 

@@ -67,6 +67,7 @@ test('a joint takes its state, and has none by default', () => {
   const tip = arm.children[0]!
 
   const rest = origin(partTransforms(root, Matrix4.translation(zero)).get(tip))
+
   assert.ok(Math.abs(rest.x - 1) < 1e-9 && Math.abs(rest.y) < 1e-9)
 
   const turned = origin(
@@ -74,6 +75,7 @@ test('a joint takes its state, and has none by default', () => {
       node === arm ? { value: Math.PI / 2 } : undefined,
     ).get(tip),
   )
+
   assert.ok(Math.abs(turned.x) < 1e-9 && Math.abs(turned.y - 1) < 1e-9)
 })
 
@@ -90,10 +92,13 @@ const revolutePoint = (min: number, max: number, x = 0): Hardpoint => ({
 test('two revolute hardpoints join by the narrower range, a full turn or more opened to ±π', () => {
   const limits = (parent: Hardpoint, child: Hardpoint) => {
     const joint = attachJoint(parent, child)
+
     assert.equal(joint.type, 'revolute')
     return joint.type === 'revolute' ? [joint.min, joint.max] : []
   }
+
   const pi = Math.fround(Math.PI)
+
   // `space_order`'s turrets: `HpConnect` spans ±2π, so a platform's quarter turn wins.
   assert.deepEqual(
     limits(revolutePoint(-1.5708, 1.5708), revolutePoint(-2 * pi, 2 * pi)),
@@ -105,8 +110,10 @@ test('two revolute hardpoints join by the narrower range, a full turn or more op
     pi,
   ])
   assert.deepEqual(limits(revolutePoint(-1, 1), revolutePoint(-0.5, 0.5)), [-0.5, 0.5])
+
   // A fixed parent keeps the child's limits as written.
   const fixedParent: Hardpoint = { type: 'fixed', name: 'Hp', orientation: Matrix3.identity }
+
   assert.deepEqual(limits(fixedParent, revolutePoint(-2 * pi, 2 * pi)), [-2 * pi, 2 * pi])
 })
 
@@ -140,6 +147,7 @@ test("a fixed child lands its hardpoint's frame on the parent's: HpA · HpB⁻¹
     position: { x: 0, y: 2, z: 3 },
     orientation: ABOUT_X,
   }
+
   near(
     getJointMatrix(attachJoint(parent, child)),
     Matrix4.multiply(frameOf(parent), Matrix4.invert(frameOf(child))),
@@ -159,6 +167,7 @@ test("a revolute child turns about its own axis, carried by the parent's frame",
         Matrix4.invert(frameOf(child)),
       ),
     )
+
   near(getJointMatrix(joint), expected(0))
   near(getJointMatrix(joint, { value: 0.5 }), expected(0.5))
   // Asked for more than its limit of 1, it holds there.

@@ -208,36 +208,52 @@ export type Field = Extract<NodeDescriptor, { category: 'field' }>
 export const describeNode = (node: Node): NodeDescriptor | undefined => {
   // The DLL's reader sets each as it comes (`0x62291d1`), so of two the last stands (`effect_sprites`).
   const find = (name: PropertyName) => node.properties.filter((one) => one.name === name).at(-1)
+
   const flag = (name: PropertyName, fallback = false) => {
     const found = find(name)
+
     return found?.type === 'boolean' ? found.value : fallback
   }
+
   const scalar = (name: PropertyName, fallback: number) => {
     const found = find(name)
+
     return found?.type === 'float' || found?.type === 'integer' ? found.value : fallback
   }
+
   const text = (name: PropertyName) => {
     const found = find(name)
+
     return found?.type === 'string' ? found.value : undefined
   }
+
   const float = (name: PropertyName) => {
     const found = find(name)
+
     return found?.type === 'animatedFloat' ? found.value : undefined
   }
+
   const curve = (name: PropertyName) => {
     const found = find(name)
+
     return found?.type === 'animatedCurve' ? found.value : undefined
   }
+
   const color = () => {
     const found = find('BasicApp_Color')
+
     return found?.type === 'animatedColor' ? found.value : undefined
   }
+
   const blend = () => {
     const found = find('BasicApp_BlendInfo')
+
     return found?.type === 'blending' ? found.value : undefined
   }
+
   const transformOf = (name: PropertyName) => {
     const found = find(name)
+
     return found?.type === 'transform' ? found.value : undefined
   }
 

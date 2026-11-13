@@ -7,7 +7,7 @@ import {
   sampleObjectMap,
 } from '@treewyrm/freelancer/animation'
 import type { JointState } from '@treewyrm/freelancer/compound'
-import { readDeformableModel } from '@treewyrm/freelancer/deformable'
+import { readDeformableModel, type DeformableModel } from '@treewyrm/freelancer/deformable'
 import { getMaterial, readMaterialLibrary } from '@treewyrm/freelancer/material'
 import { Matrix3, Matrix4, Quat } from '@treewyrm/freelancer/math'
 import {
@@ -128,25 +128,53 @@ const loadCharacter = async (
   }: NonNullable<ReferenceScene['character']>,
   camera: Camera,
   read: ReadAsset,
+  pose?: Played['pose'],
 ): Promise<SceneModel[]> => {
   const roots = await Promise.all(parts.map(async (path) => Directory.read(await read(path))))
+
+  if (pose) {
+    const models = roots.map(readDeformableModel)
+    const { root, jointState } = pose(models)
+    const placed = placeCostume(models, root, {
+      jointState: ({ name }) => jointState(name),
+      ...(tables ? { lod: { camera, tables } } : {}),
+    })
+
+    return placed.map((part, at) => {
+      const materials = [...readMaterialLibrary(roots[at]!)]
+      const textures = [...readTextureLibrary(roots[at]!)]
+
+      return {
+        parts: [part],
+        mesh: () => undefined,
+        material: (id: number) => getMaterial(materials, id),
+        texture: (name: string) =>
+          textures.find((entry) => entry.name.toLowerCase() === name.toLowerCase()),
+      }
+    })
+  }
+
   const library = readAnimationLibrary(Directory.read(await read(animations)))
   const found = getScript(library, script)
   if (!found) throw new Error(`No script ${script}`)
 
   const states = new Map<string, JointState>()
   let motion: Matrix4 = Matrix4.identity
+
   for (const map of found.maps) {
     const end = getMapDuration(map)
+
     if (map.type === 'joint') states.set(map.child.toLowerCase(), sampleChannel(map.channel, end))
     else {
       const sample = sampleObjectMap(map, end)
+
       motion = Matrix4.fromRotationTranslation(
         Matrix3.fromQuaternion(sample.orientation),
         sample.position,
       )
     }
   }
+
   const start = Matrix4.multiply(
     Matrix4.translation({ x: position[0], y: found.height ?? 0, z: position[2] }),
     orientationMatrix(orientation),
@@ -157,6 +185,7 @@ const loadCharacter = async (
       jointState: ({ name }) => states.get(name.toLowerCase()),
       ...(tables ? { lod: { camera, tables } } : {}),
     })
+
   // `START_IK`'s solver is M8's. This turns the eye bone to the marker in its head's frame, which is
   // near enough where retail saturates at the bone's limits, as `character_eyes` does. The bone's Z
   // points out of the back of the head at rest, so -Z is what aims: measured, against `character_eyes`.
@@ -171,6 +200,8 @@ const loadCharacter = async (
     const away = { x: eye.x - target.x, y: eye.y - target.y, z: eye.z - target.z }
     const length = Math.hypot(away.x, away.y, away.z)
     const { z: rest } = Matrix4.fromRotationTranslation(joint.orientation!, { x: 0, y: 0, z: 0 })
+
+    // Shortest rotation taking the bone's rest Z onto the unit vector from the target to the eye.
     states.set(EYE_BONE.toLowerCase(), {
       orientation: Quat.fromTo(rest, {
         x: away.x / length,
@@ -179,10 +210,13 @@ const loadCharacter = async (
       }),
     })
   }
+
   const placed = place()
+
   return placed.map((part, at) => {
     const materials = [...readMaterialLibrary(roots[at]!)]
     const textures = [...readTextureLibrary(roots[at]!)]
+
     return {
       parts: [part],
       mesh: () => undefined,
@@ -202,15 +236,20 @@ const SKY_FOLDER = 'SOLAR/STARSPHERE'
 export const loadSky = async (
   file: string,
   read: ReadAsset,
-  { space = false }: { space?: boolean } = {},
+  {
+    space = false,
+    folder = SKY_FOLDER,
+    backdrop = false,
+  }: { space?: boolean; folder?: string; backdrop?: boolean } = {},
 ): Promise<SceneModel> => {
-  const root = Directory.read(await read(`${SKY_FOLDER}/${file}`))
+  const root = Directory.read(await read(`${folder}/${file}`))
   const meshes = readVMeshLibrary(root)
   const materials = [...readMaterialLibrary(root)]
   const textures = [...readTextureLibrary(root)]
   const model = readRigidModel(root)
+
   return {
-    sky: 'starsphere',
+    sky: backdrop ? 'backdrop' : 'starsphere',
     parts: placeParts(
       model,
       space ? Matrix4.translation(instanceExtent(model).center) : Matrix4.identity,
@@ -221,11 +260,27 @@ export const loadSky = async (
   }
 }
 
+/** What a THN reference scene's playback decides in place of the loader's own fixed reading. */
+export interface Played {
+  /** The character's pose: its root's world and each joint's state, by name. */
+  pose?: (models: readonly DeformableModel[]) => {
+    root: Matrix4
+    jointState: (name: string) => JointState | undefined
+  }
+  /** Steps the generated effect as the script's playback does, in place of the loader's loop. */
+  effect?: (instance: EffectInstance) => void
+}
+
 export const loadScene = async (
   definition: ReferenceScene,
   read: ReadAsset,
+  played: Played = {},
 ): Promise<LoadedScene> => {
-  const skies = await Promise.all((definition.sky ?? []).map(({ file }) => loadSky(file, read)))
+  const skies = await Promise.all(
+    (definition.sky ?? []).map(({ file, folder, backdrop }) =>
+      loadSky(file, read, { folder, backdrop }),
+    ),
+  )
   const shared = {
     camera: cameraOf(definition),
     aspect: 1024 / 768,
@@ -235,36 +290,46 @@ export const loadScene = async (
       direction: { x, y, z },
     })),
   }
+
   if (definition.character)
     return {
       scene: {
         ...shared,
-        models: await loadCharacter(definition.character, cameraOf(definition), read),
+        models: await loadCharacter(definition.character, cameraOf(definition), read, played.pose),
       },
     }
+
   if (definition.effect) {
     const { kind, seconds } = definition.effect
     const alchemy = GENERATED_EFFECTS[kind]()
     const nodes = new Map<number, Node>()
+
     for (const node of alchemy.nodes.nodes)
       nodes.set(getResourceId(getNodeName(node) ?? '', true), node)
+
     const resolve = (crc: number) => nodes.get(crc)
     const [effect] = alchemy.effects.effects
     const instance = new EffectInstance(buildEffect(effect!, resolve), {
       lookup: lookupOver(alchemy.effects.effects, resolve),
     })
     const view = viewMatrix(shared.camera)
+
+    if (played.effect) played.effect(instance)
     // As `Thorn_Psys` steps it: each tick, then the tick's pass at 0 ms (`0x453ff0`).
-    for (let step = 0; step < seconds * 60; step++) {
-      instance.advance(1 / 60, { view })
-      instance.advance(0, { view })
-    }
+    else
+      for (let step = 0; step < seconds * 60; step++) {
+        instance.advance(1 / 60, { view })
+        instance.advance(0, { view })
+      }
+
     const library = Directory.read(await read(EFFECT_TEXTURES.replaceAll('\\', '/')))
     const textures = [...readTextureLibrary(library)]
     const texture = (name: string) =>
       textures.find((entry) => entry.name.toLowerCase() === name.toLowerCase())
+
     return { scene: { ...shared, models: skies, effects: [{ instance, texture }] } }
   }
+
   const placedModel = definition.model
   if (!placedModel) return { scene: { ...shared, models: skies } }
 
@@ -292,6 +357,7 @@ export const loadScene = async (
   ]
 
   const model: RigidModel = readRigidModel(root)
+
   return {
     scene: {
       ...shared,

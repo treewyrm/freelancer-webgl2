@@ -63,7 +63,9 @@ const RUNS_COMPARED: Run[] = [
 
 const screenshot = (folder: string): Buffer | undefined => {
   if (!existsSync(folder)) return undefined
+
   const file = readdirSync(folder).find((entry) => entry.endsWith('.bmp'))
+
   return file ? readFileSync(join(folder, file)) : undefined
 }
 
@@ -76,6 +78,7 @@ after(() => browser?.close())
 
 const read = async (path: string) => {
   const file = readFileSync(join(data, path))
+
   return new Uint8Array(file.buffer, file.byteOffset, file.byteLength)
 }
 
@@ -86,11 +89,13 @@ const inside = (x: number, y: number, [left, top, right, bottom]: Box) =>
 const spinsOf = (captured: readonly CaptureDraw[], bits: readonly number[]) =>
   bits.flatMap((n) => {
     const vertices = captured[n]!.vertexData!
+
     return Array.from({ length: vertices.length / 4 }, (_, bit) => {
       const [a, b] = [0, 1].map((at) => vertices[bit * 4 + at]!.p)
       const c = vertices[bit * 4 + 2]!.p
       const up = [0, 1, 2].map((axis) => a![axis]! - b![axis]!)
       const length = Math.hypot(...up)
+
       return {
         centre: { x: (a![0]! + c[0]!) / 2, y: (a![1]! + c[1]!) / 2, z: (a![2]! + c[2]!) / 2 },
         up: { x: up[0]! / length, y: up[1]! / length, z: up[2]! / length },
@@ -100,11 +105,13 @@ const spinsOf = (captured: readonly CaptureDraw[], bits: readonly number[]) =>
 
 for (const { name, draws, effects, particles, bits = [], sunEffect } of RUNS_COMPARED) {
   const folder = join(references, name)
+
   test(
     `${name} matches retail's screenshot, outside its HUD and its random particles`,
     { skip: skipOf(folder) },
     async () => {
       browser ??= await launch()
+
       const system = systems.get(name)!
       const { options, draws: captured } = readSpaceRun(folder, system, RUNS[name])
       const { value, png } = await runFixture<SpaceReport>(
@@ -123,6 +130,7 @@ for (const { name, draws, effects, particles, bits = [], sunEffect } of RUNS_COM
           read,
         },
       )
+
       await saveArtifact(`space-${name}`, png)
 
       assert.equal(value.error, 0)
@@ -138,9 +146,11 @@ for (const { name, draws, effects, particles, bits = [], sunEffect } of RUNS_COM
       let difference = 0
       let oursOnly = 0
       let theirsOnly = 0
+
       for (let y = 0; y < HEIGHT; y++)
         for (let x = 0; x < WIDTH; x++) {
           if ([...HUD, ...particles].some((box) => inside(x, y, box))) continue
+
           const from = 54 + (HEIGHT - 1 - y) * stride + x * 3
           const at = (y * WIDTH + x) * 4
           const theirs = [shot[from + 2]!, shot[from + 1]!, shot[from]!]
@@ -148,7 +158,9 @@ for (const { name, draws, effects, particles, bits = [], sunEffect } of RUNS_COM
           const [hasMine, hasTheirs] = [mine, theirs].map((c) => c[0]! + c[1]! + c[2]! > 0)
           if (hasMine && !hasTheirs) oursOnly++
           if (hasTheirs && !hasMine) theirsOnly++
+
           const worst = Math.max(...mine.map((channel, c) => Math.abs(channel - theirs[c]!)))
+
           compared++
           difference += worst
           if (worst <= 2) close++
@@ -156,6 +168,7 @@ for (const { name, draws, effects, particles, bits = [], sunEffect } of RUNS_COM
 
       const mean = difference / compared
       const message = `${close} of ${compared} within 2, mean ${mean.toFixed(3)}, silhouette ${oursOnly}/${theirsOnly}`
+
       console.log(`${name}: ${message}`)
       // As the menu scenes: `space_order` measured 99.96% within 2 and a mean of 0.32.
       assert.ok(close / compared >= 0.995, message)

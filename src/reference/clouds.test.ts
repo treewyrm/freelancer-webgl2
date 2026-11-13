@@ -36,11 +36,14 @@ const skipOf = (name: string) =>
 const load = async (name: (typeof RUNS_COMPARED)[number]['name']) => {
   const read = async (path: string) => {
     const file = readFileSync(join(data, path))
+
     return new Uint8Array(file.buffer, file.byteOffset, file.byteLength)
   }
+
   const system = systems.get(name)!
   const { draws, options } = readSpaceRun(join(references, name), system, RUNS[name])
   const scene = await loadSystem(system, read, options)
+
   // Entering the system, a cut; then the game's frames, a few seconds of them.
   collectSpaceFrame({ ...scene, cut: true })
   for (let frame = 0; frame < 180; frame++) collectSpaceFrame({ ...scene, step: 1 / 60 })
@@ -51,6 +54,7 @@ for (const { name, scene, clouds } of RUNS_COMPARED) {
   test(`${name} is retail draw for draw, but its clouds`, { skip: skipOf(name) }, async () => {
     const { frame, captured } = await load(name)
     const retail = captured.slice(0, scene - 4)
+
     assert.deepEqual(frame.unsupported, ['texture envmapglass'])
     assert.equal(frame.draws.length, retail.length)
     assertFrameMatches(
@@ -68,8 +72,11 @@ for (const { name, scene, clouds } of RUNS_COMPARED) {
       const { frame, captured, scene: loaded } = await load(name)
       const theirs = captured[clouds]!
       const ours = frame.draws[clouds]!
+
       assert.equal(ours.materialName, 'clouds')
+
       const { states, world } = theirs
+
       assert.deepEqual(
         ['ZENABLE', 'ZWRITEENABLE', 'ZFUNC', 'CULLMODE', 'LIGHTING', 'SRCBLEND', 'DESTBLEND'].map(
           (key) => states[key],
@@ -85,7 +92,9 @@ for (const { name, scene, clouds } of RUNS_COMPARED) {
         [states['FOGENABLE'], states['FOGTABLEMODE'], states['FOGSTART'], states['FOGEND']],
         [1, 3, ours.fog!.start, ours.fog!.end],
       )
+
       const colour = states['FOGCOLOR']!
+
       assert.deepEqual(
         [ours.fog!.color.x, ours.fog!.color.y, ours.fog!.color.z].map((c) => Math.round(c * 255)),
         [(colour >> 16) & 0xff, (colour >> 8) & 0xff, colour & 0xff],
@@ -93,7 +102,9 @@ for (const { name, scene, clouds } of RUNS_COMPARED) {
       assert.equal(ours.cull, 'none')
       // In view space under an identity modelview.
       assert.deepEqual(world, [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, -1, 0, 0, 0, 0, 1])
+
       const identity = Matrix4.multiply(frame.view, ours.world)
+
       for (const axis of ['x', 'y', 'z', 'w'] as const)
         for (const cell of ['x', 'y', 'z', 'w'] as const)
           assert.ok(Math.abs(identity[axis][cell] - (axis[0] === cell[0] ? 1 : 0)) < 1e-6)
@@ -108,15 +119,18 @@ for (const { name, scene, clouds } of RUNS_COMPARED) {
         puffCount,
         maxAlpha = 0.75,
       } = sim.settings
+
       const quadsOf = (corners: { p: readonly number[]; d: number }[]) =>
         Array.from({ length: corners.length / 6 }, (_, at) => {
           const [a, c] = [corners[at * 6]!, corners[at * 6 + 2]!]
+
           return {
             centre: [(a.p[0]! + c.p[0]!) / 2, (a.p[1]! + c.p[1]!) / 2, a.p[2]!],
             half: Math.hypot(c.p[0]! - a.p[0]!, c.p[1]! - a.p[1]!) / 2 / Math.SQRT2,
             colour: a.d,
           }
         })
+
       const vertices = new Float32Array(ours.mesh.vertices.buffer)
       const bytes = ours.mesh.vertices
       const ourCorners = Array.from({ length: ours.count }, (_, at) => ({
@@ -129,6 +143,7 @@ for (const { name, scene, clouds } of RUNS_COMPARED) {
           0,
       }))
       const theirCorners = theirs.vertexData!.map(({ p, d }) => ({ p, d: Number(d) }))
+
       for (const [who, quads] of [
         ['retail', quadsOf(theirCorners)],
         ['ours', quadsOf(ourCorners)],
@@ -141,19 +156,24 @@ for (const { name, scene, clouds } of RUNS_COMPARED) {
         quads.forEach(({ centre, half, colour }, at) => {
           const what = `${who}, puff ${at}`
           const depth = -centre[2]!
+
           assert.ok(depth >= nearFade[0], what)
           assert.ok(
             half >= puffRadius * 0.8 - 0.1 && half <= puffRadius * 1.2 + 0.1,
             `${what}: ${half}`,
           )
+
           const distance = Math.hypot(centre[0]!, centre[1]!, depth - ahead)
+
           assert.ok(distance <= sim.radius * Math.sqrt(1.02), `${what}: ${distance}`)
           if (at) assert.ok(depth <= -quads[at - 1]!.centre[2]! + 1e-3, what)
           // No more opaque than puff_max_alpha, a nebula fully in.
           assert.ok(colour >>> 24 <= Math.trunc(maxAlpha * 255) + 1, `${what}: ${colour >>> 24}`)
+
           // Between A and B the same way along each channel, read off blue's span, the widest.
           const [r, g, b] = [(colour >>> 16) & 0xff, (colour >>> 8) & 0xff, colour & 0xff]
           const t = (b - colorA!.z * 255) / ((colorB!.z - colorA!.z) * 255)
+
           assert.ok(t >= -0.05 && t <= 1.05, `${what}: ${t}`)
           assert.ok(Math.abs(r - (colorA!.x + (colorB!.x - colorA!.x) * t) * 255) <= 2, what)
           assert.ok(Math.abs(g - (colorA!.y + (colorB!.y - colorA!.y) * t) * 255) <= 2, what)

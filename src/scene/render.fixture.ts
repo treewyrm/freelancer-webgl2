@@ -31,6 +31,11 @@ export interface RenderReport {
   liveAfterDispose: { buffers: number; textures: number }
   disposedThrows: boolean
   otherRendererStillDraws: boolean
+  /**
+   * A 1.85-style band, 32 × 16 at y 8 of the 32 × 32 target, drawn at aspect 2 over blue: whether every
+   * pixel outside it kept the blue, and the red square's extent in pixels across and down its middle.
+   */
+  letterboxed: { outsideKept: boolean; across: number; down: number }
 }
 
 // FVF 0x112. A square at z, facing +Z, whose normal is lit by `shade`.
@@ -41,6 +46,7 @@ const square = (z: number): Float32Array => {
     [1, 1],
     [-1, 1],
   ]
+
   return new Float32Array(corners.flatMap(([x, y]) => [x!, y!, z, 0, 0, 1, 0, 0]))
 }
 
@@ -101,6 +107,7 @@ const sceneOf = (models: SceneModel[]): Scene => ({
 
 const pixels = (gl: WebGL2RenderingContext): Uint8Array => {
   const out = new Uint8Array(gl.drawingBufferWidth * gl.drawingBufferHeight * 4)
+
   gl.readPixels(0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight, gl.RGBA, gl.UNSIGNED_BYTE, out)
   return out
 }
@@ -109,6 +116,7 @@ const same = (a: Uint8Array, b: Uint8Array) => a.every((value, at) => value === 
 
 const centre = (gl: WebGL2RenderingContext): number[] => {
   const pixel = new Uint8Array(4)
+
   gl.readPixels(
     gl.drawingBufferWidth >> 1,
     gl.drawingBufferHeight >> 1,
@@ -156,20 +164,28 @@ export default (async (gl) => {
   let arrays = 0
   const createBuffer = gl.createBuffer.bind(gl)
   const created: WebGLBuffer[] = []
+
   gl.createBuffer = () => {
     vertexBuffers++
+
     const buffer = createBuffer()
+
     created.push(buffer)
     return buffer
   }
+
   const createTexture = gl.createTexture.bind(gl)
   const textures: WebGLTexture[] = []
+
   gl.createTexture = () => {
     const texture = createTexture()
+
     textures.push(texture)
     return texture
   }
+
   const createArray = gl.createVertexArray.bind(gl)
+
   gl.createVertexArray = () => {
     arrays++
     return createArray()
@@ -183,15 +199,19 @@ export default (async (gl) => {
   const renderer = createRenderer(gl)
 
   renderer.render(frame)
+
   const plain = pixels(gl)
 
   renderer.render(frame, { begin: () => {}, opaque: () => {}, end: () => {} })
+
   const emptyHooksMatch = same(plain, pixels(gl))
 
   renderer.render(frame, { begin: trash, opaque: trash })
+
   const trashingHooksMatch = same(plain, pixels(gl))
 
   const hookOrder: string[] = []
+
   renderer.render(frame, {
     begin: () => hookOrder.push('begin'),
     opaque: () => hookOrder.push('opaque'),
@@ -203,12 +223,15 @@ export default (async (gl) => {
       gl.activeTexture(gl.TEXTURE0 + unit)
       return gl.getParameter(gl.SAMPLER_BINDING) !== null
     })
+
   let samplersInHook: boolean[] = []
+
   renderer.render(frame, {
     end: () => {
       samplersInHook = samplers()
     },
   })
+
   const samplersAfter = samplers()
 
   // The host's own full-screen triangle, at clip depth `z`.
@@ -226,6 +249,7 @@ out vec4 color;
 void main() { color = vec4(0.0, 0.0, 1.0, 1.0); }`,
     ['z'],
   )
+
   const fullScreen =
     (z: number): FrameHooks['end'] =>
     ({ gl }) => {
@@ -238,58 +262,79 @@ void main() { color = vec4(0.0, 0.0, 1.0, 1.0); }`,
   // At the far plane, behind the opaque square: the depth test leaves it out. Then the blended
   // square goes over the opaque one as ever, so the centre is unchanged.
   renderer.render(frame, { opaque: fullScreen(0.99999) })
+
   const opaqueHookSeesDepth = centre(gl)
 
   renderer.render(frame, { end: fullScreen(-0.99999) })
+
   const endHookDraws = centre(gl)
 
   // Two models on one mesh: one vertex buffer, and a vertex array for each reference.
   vertexBuffers = 0
   arrays = 0
+
   const sharing = createRenderer(gl)
   const shared = collectFrame(sceneOf([modelOf(opaqueMesh, OPAQUE), modelOf(opaqueMesh, OPAQUE)]))
+
   sharing.render(shared)
+
   // Each reference also has an index buffer, and the program its bone table: one, two, and one.
   const sharedBuffers = { vertexBuffers, arrays }
+
   sharing.dispose()
 
   // An edited mesh: moved far aside, so the opaque square leaves the centre.
   const editable = meshOf(0, 1)
   const editing = createRenderer(gl)
   const editFrame = collectFrame(sceneOf([modelOf(editable, OPAQUE)]))
+
   editing.render(editFrame)
+
   const before = centre(gl)
+
   editable.vertices.fill(0)
   editing.invalidate(editable)
   editing.render(editFrame)
+
   const after = centre(gl)
+
   editing.render(collectFrame(sceneOf([modelOf(opaqueMesh, OPAQUE)])))
+
   const untouched = centre(gl)[0] === 255
+
   editing.dispose()
 
   // Context loss, and coming back from nothing but the next frame.
   const loser = gl.getExtension('WEBGL_lose_context')!
+
   const nextEvent = (name: string) =>
     new Promise((done, fail) => {
       gl.canvas.addEventListener(name, done, { once: true })
       setTimeout(() => fail(new Error(`no ${name}`)), 10000)
     })
+
   const lost = nextEvent('webglcontextlost')
+
   loser.loseContext()
   await lost
   // Restoring is refused until the lost event's task has finished.
   await new Promise((done) => setTimeout(done))
+
   const whileLost = renderer.render(frame)
   const restored = nextEvent('webglcontextrestored')
+
   loser.restoreContext()
   await restored
+
   const drew = renderer.render(frame)
   const afterRestore = { drew, matches: same(plain, pixels(gl)) }
 
   // One renderer's disposal leaves another's alone.
   const other = createRenderer(gl)
   const otherFrame = collectFrame(sceneOf([modelOf(meshOf(0, 1), OPAQUE)]))
+
   other.render(otherFrame)
+
   const baseline = centre(gl)
 
   const countLive = () => created.filter((buffer) => gl.isBuffer(buffer)).length
@@ -313,16 +358,21 @@ void main() { color = vec4(0.0, 0.0, 1.0, 1.0); }`,
       },
     ]),
   )
+
   doomed.render(doomedFrame)
+
   const liveTextures = () => textures.filter((texture) => gl.isTexture(texture)).length
   const texturesWhileAlive = liveTextures()
+
   doomed.dispose()
+
   const liveAfterDispose = {
     buffers: countLive() - buffersBefore,
     textures: texturesWhileAlive - liveTextures(),
   }
 
   let disposedThrows = false
+
   try {
     doomed.render(doomedFrame)
   } catch {
@@ -330,7 +380,40 @@ void main() { color = vec4(0.0, 0.0, 1.0, 1.0); }`,
   }
 
   other.render(otherFrame)
+
   const otherRendererStillDraws = centre(gl).every((value, at) => value === baseline[at])
+
+  // The letterbox's picture: drawn and cleared in its band alone, its projection its own aspect.
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null)
+  gl.disable(gl.SCISSOR_TEST)
+  gl.colorMask(true, true, true, true)
+  gl.clearColor(0, 0, 1, 1)
+  gl.clear(gl.COLOR_BUFFER_BIT)
+
+  const boxed = createRenderer(gl)
+
+  boxed.render(
+    collectFrame({ ...sceneOf([modelOf(meshOf(0, 1), OPAQUE)]), aspect: 2 }),
+    {},
+    { viewport: { x: 0, y: 8, width: 32, height: 16 } },
+  )
+
+  const band = pixels(gl)
+  const at = (x: number, y: number) => band.subarray((y * 32 + x) * 4, (y * 32 + x) * 4 + 4)
+  const isRed = (x: number, y: number) => at(x, y)[0]! > 128 && at(x, y)[2]! < 64
+  let outsideKept = true
+
+  for (let y = 0; y < 32; y++)
+    for (let x = 0; x < 32; x++)
+      if ((y < 8 || y >= 24) && !(at(x, y)[0] === 0 && at(x, y)[2] === 255)) outsideKept = false
+
+  const letterboxed = {
+    outsideKept,
+    across: Array.from({ length: 32 }, (_, x) => isRed(x, 16)).filter(Boolean).length,
+    down: Array.from({ length: 32 }, (_, y) => isRed(16, y)).filter(Boolean).length,
+  }
+
+  boxed.dispose()
 
   return {
     error: gl.getError(),
@@ -348,5 +431,6 @@ void main() { color = vec4(0.0, 0.0, 1.0, 1.0); }`,
     liveAfterDispose,
     disposedThrows,
     otherRendererStillDraws,
+    letterboxed,
   }
 }) satisfies Fixture<RenderReport>

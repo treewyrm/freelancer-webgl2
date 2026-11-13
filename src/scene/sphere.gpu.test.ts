@@ -9,11 +9,13 @@ let report: SphereReport
 
 before(async () => {
   browser = await launch()
+
   const { value } = await runFixture<SphereReport>(
     browser,
     new URL('./sphere.fixture.ts', import.meta.url),
     { width: 64, height: 64, context: { antialias: false, alpha: false } },
   )
+
   report = value
 })
 
@@ -44,8 +46,10 @@ test('every level closes: no missing cell, and no crack between faces', () => {
 test("a shell's UVs follow the camera in the vertex shader, as retail wrote them", () => {
   // At the point facing the camera `u` is `Fade × k³`, of 255. It falls to the rim.
   assert.ok(Math.abs(report.shell[0]! - 0.5787 * 255) < 4, `${report.shell}`)
+
   for (let at = 1; at < report.shell.length; at++)
     assert.ok(report.shell[at]! < report.shell[at - 1]!, `${report.shell}`)
+
   // `v` is `1 - Alpha`, of 255: with k³ past 0.5, no fade.
   assert.ok(Math.abs(report.shellRow - 0.5 * 255) < 3, `${report.shellRow}`)
   assert.equal(report.shellDraws, 5)

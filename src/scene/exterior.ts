@@ -20,6 +20,7 @@ import type { Draw } from './frame.js'
 import type { Random } from './lightning.js'
 import { fogOf, type NebulaState, type Zone } from './nebula.js'
 import type { TextureShape } from './ring.js'
+import { RAND_UNIT, TWO_PI, unitByteRounded } from './retail.js'
 
 const f = Math.fround
 
@@ -80,8 +81,6 @@ interface Bit {
   axis: Vector3
 }
 
-const RAND_UNIT = 3.0517578125e-5
-const TWO_PI = 6.2831854820251465
 const PI = f(Math.PI)
 
 // XYZ, D3DCOLOR and one UV set: Win3D's FVF 0x142, 24 bytes.
@@ -90,14 +89,15 @@ const STRIDE = 24
 const BLACK: Vector3 = { x: 0, y: 0, z: 0 }
 
 // `ScaleClampToByte`: times 255, truncated, held to a byte.
-const byte = (value: number): number => Math.min(Math.max(Math.trunc(f(value * 255)), 0), 255)
+const byte = unitByteRounded
 
 /**
  * Whether the game blends a texture by its alpha (`FUN_00552420`): DXT1 to DXT5 do, and so does any
- * format with alpha bits. A 24-bit Targa is narrowed to R5G6B5 (M1), so it doesn't.
+ * format whose descriptor has alpha bits (`DAT_00615ec8`). A 24-bit Targa is narrowed to R5G6B5 (M1)
+ * and a 16-bit one is X1R5G5B5 (`GetTgaSourceFormat`), so neither does.
  */
 export const textureHasAlpha = ({ format }: Texture): boolean =>
-  format !== 'rgb24_888' && format !== 'rgb16_565' && format !== 'none'
+  format !== 'rgb24_888' && format !== 'rgb16_565' && format !== 'rgb16_555' && format !== 'none'
 
 export class NebulaExterior {
   readonly settings: ExteriorSettings
@@ -123,7 +123,9 @@ export class NebulaExterior {
   ) {
     this.settings = settings
     this.zone = zone
+
     const opacity = f(settings.opacity ?? 0.75)
+
     this.#opacity = opacity
     if (detail < limits.leastDetail) return
 
@@ -131,7 +133,9 @@ export class NebulaExterior {
     const ease = 1 - less * less
     const scale = f((limits.leastSize * (1 - ease) + ease) * f(settings.bitRadius))
     const density = f(less * limits.leastCount + detail)
+
     this.#opacity = f(((1 - ease) * limits.leastOpacity + ease) * opacity)
+
     const middleCount = Math.trunc((settings.maxBits ?? 8) * density + 0.5)
     const endCount = Math.trunc((settings.minBits ?? 4) * density + 0.5)
     const slices = settings.planeSlices ?? 1
@@ -145,10 +149,13 @@ export class NebulaExterior {
     const mid = f((slices - 1) * 0.5)
     const inverseMid = f(1 / mid)
     let total = middleCount
+
     if (slices !== 1) {
       total = 0
+
       for (let slice = 0; slice < slices; slice++) {
         const w = slice > mid ? 1 - (slice - mid) * inverseMid : slice * inverseMid
+
         total += Math.floor((1 - w) * endCount + middleCount * w + 0.5)
       }
     }
@@ -157,6 +164,7 @@ export class NebulaExterior {
     const variation = Math.min(Math.max(settings.radiusVariation ?? 0, 0), f(0.9999))
     const low = f(1 - variation)
     const high = f(variation + 1)
+
     for (let index = 0; index < total + 2; index++) {
       const radius = f((random() * RAND_UNIT * (high - low) + low) * scale)
       const angle = random() * RAND_UNIT * TWO_PI
@@ -164,13 +172,16 @@ export class NebulaExterior {
       const pick = f(random() * RAND_UNIT)
       let running = 0
       let shape: TextureShape | undefined
+
       for (let at = 0; at < normal.length; at++) {
         running += normal[at]!
+
         if (pick < running) {
           shape = settings.shapes[at]
           break
         }
       }
+
       this.#bits.push({ position: BLACK, radius, shape, axis })
     }
 
@@ -178,6 +189,8 @@ export class NebulaExterior {
     const centre = zone.position
     const spread = f(1 - (settings.equatorBias ?? 1))
     const margin = f(settings.moveBitPercent ?? 0.75) * f(settings.bitRadius)
+
+    // The zone's surface point toward `point`, from its centre, pulled in by `margin` along that ray.
     const place = (index: number, point: Vector3) => {
       const surface = zone.surfacePoint(point)
       const offset = {
@@ -188,30 +201,42 @@ export class NebulaExterior {
       const length = Math.sqrt(offset.z * offset.z + offset.y * offset.y + offset.x * offset.x)
       const shrink = (length - margin) / length
       const bit = this.#bits[index]
+
       if (bit)
         bit.position = { x: f(shrink * offset.x), y: f(shrink * offset.y), z: f(shrink * offset.z) }
     }
+
     let index = 0
     let phase = 0
+
     for (let slice = 0; slice < slices; slice++) {
       let count = middleCount
+
       if (slices !== 1) {
         const w = slice > mid ? 1 - (slice - mid) / mid : slice / mid
+
         count = Math.floor((1 - w) * endCount + middleCount * w + 0.5)
         if (slice > mid) phase = f(PI / count)
       }
+
+      // The ring's polar angle: evenly spaced in cosine within ±`spread`, so 0 puts all on the equator.
       const latitude = Math.acos((((slice + 1) / (slices + 1)) * 2 - 1) * spread)
+
       if (count <= 0) continue
+
       const cos = f(Math.cos(latitude))
       const sin = Math.sin(latitude)
       const y = f(centre.y + cos)
+
       for (let bit = 0; bit < count; bit++, index++) {
         const angle = (bit * TWO_PI) / count + phase
         const x = Math.cos(angle) * sin
         const z = f(Math.sin(angle) * sin)
+
         place(index, { x: f(centre.x + x), y, z: f(centre.z + z) })
       }
     }
+
     place(index++, { x: centre.x, y: f(centre.y + 1), z: centre.z })
     place(index, { x: centre.x, y: f(centre.y - 1), z: centre.z })
   }
@@ -230,6 +255,7 @@ export class NebulaExterior {
       this.#turn(eye)
       this.#sinceTurned = 0
     }
+
     this.#lastDepth = depth
     this.#sinceTurned = f(step + this.#sinceTurned)
     this.#sinceSorted = f(step + this.#sinceSorted)
@@ -241,6 +267,9 @@ export class NebulaExterior {
     const rx = f(eye.x - centre.x)
     const ry = f(eye.y - centre.y)
     const rz = f(eye.z - centre.z)
+
+    // With `d` the unit way to the camera: `axis` = unit(`d` × `axis`) × `d`. Left alone when
+    // |`d` · `axis`| is over 0.25.
     for (const bit of this.#bits) {
       const a = rx - bit.position.x
       const b = ry - bit.position.y
@@ -253,6 +282,7 @@ export class NebulaExterior {
       const dz = f(dzExt)
       const o = bit.axis
       if (!(Math.abs(dzExt * o.z + dy * o.y + dx * o.x) > 0.25)) continue
+
       const cx = dy * o.z - dz * o.y
       const cy = dz * o.x - dx * o.z
       const cz = dx * o.y - dy * o.x
@@ -261,6 +291,7 @@ export class NebulaExterior {
       const nx = f(cx * inverseC)
       const ny = cy * inverseC
       const nz = czf * inverseC
+
       bit.axis = { x: f(ny * dz - nz * dy), y: f(nz * dx - dz * nx), z: f(dy * nx - ny * dx) }
     }
   }
@@ -281,30 +312,37 @@ export class NebulaExterior {
     projection: Matrix4,
   ): Draw | undefined {
     if (!this.#bits.length || !(depth < 1)) return undefined
+
     const centre = this.zone.position
     const eye = camera.position
     const inView = Matrix4.transformPoint(centre, view)
     if (classifySphere(inView, this.zone.radius, camera, aspect) < 3) return undefined
+
     if (this.#sinceSorted > f(1.15)) {
       this.#sort(eye)
       this.#sinceSorted = 0
     }
+
     const bound = this.settings.shapes[0]
     if (!bound) return undefined
+
     const alpha = textureHasAlpha(bound.texture)
 
     let base = this.#opacity
     if (depth > 0.5) base = f((1 - (depth - 0.5 + (depth - 0.5))) * base)
+
     let tx = f(eye.x - centre.x)
     let ty = f(eye.y - centre.y)
     let tz = f(eye.z - centre.z)
     const toCamera = f(1 / f(Math.sqrt(f(f(tx * tx + tz * tz) + ty * ty))))
+
     tx = f(tx * toCamera)
     ty = f(ty * toCamera)
     tz = f(tz * toCamera)
 
     const { color } = this.settings
     const corners: { at: number[]; uv: [number, number]; bytes: number[] }[] = []
+
     for (const { position: s, radius, shape, axis } of this.#bits) {
       const p = { x: f(centre.x + s.x), y: f(centre.y + s.y), z: f(centre.z + s.z) }
       const v = { x: f(p.x - eye.x), y: f(p.y - eye.y), z: f(p.z - eye.z) }
@@ -318,23 +356,29 @@ export class NebulaExterior {
       if (dot < 0) continue
       if (dot < 0.05) a = f(dot * base * 20)
 
+      // `q` = view × up scaled to the radius is the bit's right, `h` = `q` × view its up; the corners
+      // are `p ± q ± h`.
       let qx = f(v.y * axis.z - v.z * axis.y)
       let qy = f(v.z * axis.x - v.x * axis.z)
       let qz = f(v.x * axis.y - v.y * axis.x)
       const qs = f(radius / f(Math.sqrt(f(f(qx * qx + qz * qz) + qy * qy))))
+
       qx = f(qx * qs)
       qy = f(qy * qs)
       qz = f(qz * qs)
+
       let hx = f(qy * v.z - qz * v.y)
       let hy = f(qz * v.x - v.z * qx)
       let hz = f(v.y * qx - qy * v.x)
       const hs = f(radius / f(Math.sqrt(f(f(hz * hz + hy * hy) + hx * hx))))
+
       hx = f(hx * hs)
       hy = f(hy * hs)
       hz = f(hz * hs)
 
       if (ahead < radius) a = f(f(ahead / radius) * a)
       if (a < 0.01 || !shape) continue
+
       // With alpha, `Color4f`; without, added, `Color3f` of the colour times it.
       const bytes = alpha
         ? [byte(color.z), byte(color.y), byte(color.x), byte(a)]
@@ -349,20 +393,24 @@ export class NebulaExterior {
           uv,
           bytes,
         })
+
       corner(1, 1, [shape.u0, shape.v0])
       corner(1, -1, [shape.u1, shape.v0])
       corner(-1, -1, [shape.u1, shape.v1])
       corner(-1, 1, [shape.u0, shape.v1])
     }
+
     if (!corners.length) return undefined
 
     const vertices = new Uint8Array(corners.length * STRIDE)
     const floats = new Float32Array(vertices.buffer)
+
     corners.forEach(({ at, uv, bytes }, index) => {
       floats.set(at, (index * STRIDE) / 4)
       vertices.set(bytes, index * STRIDE + 12)
       floats.set(uv, (index * STRIDE + 16) / 4)
     })
+
     // `Win3DEnd` makes each quad (0, 1, 2) and (0, 2, 3).
     const indices = new Uint16Array(
       Array.from({ length: corners.length / 4 }, (_, quad) =>
@@ -401,6 +449,7 @@ export class NebulaExterior {
     const near = f(nebula.fog.near ?? 0)
     const reach = Math.max(((start - near) * 20) / fogDistance, 0)
     const end = f((reach + 1) * fogDistance + start)
+
     return {
       mesh,
       reference,
@@ -445,25 +494,34 @@ export class NebulaExterior {
   #sort(eye: Vector3): void {
     const bits = this.#bits
     const centre = this.zone.position
+
     const distance = ({ position: s }: Bit) => {
       const dx = f(f(centre.x + s.x) - eye.x)
       const dy = f(f(centre.y + s.y) - eye.y)
       const dz = f(f(centre.z + s.z) - eye.z)
+
       return dx * dx + dy * dy + dz * dz
     }
+
     let swapped: number
+
     do {
       swapped = 0
       if (bits.length <= 1) break
+
       let cached = false
       let previous = 0
+
       for (let at = 1; at < bits.length; at++) {
         if (!cached) previous = distance(bits[at - 1]!)
+
         const current = distance(bits[at]!)
+
         if (!(previous < current)) {
           cached = false
           continue
         }
+
         if (!(Math.abs(previous - current) > 10)) continue
         swapped++
         ;[bits[at - 1], bits[at]] = [bits[at]!, bits[at - 1]!]

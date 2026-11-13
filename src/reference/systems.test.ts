@@ -21,6 +21,7 @@ const sections = (text: string) =>
 test('puts one planet on the far list, and the rest inside the draw range', () => {
   assert.ok(near('Lab_far_planet') > range && near('Lab_far_planet') < farListPlane)
   assert.ok(near('Lab_near_planet') < range)
+
   // A small solar is looked for only this near the camera.
   for (const nickname of ['Lab_plant', 'Lab_station', 'Lab_platform'])
     assert.ok(near(nickname) < solarQueryRange, nickname)
@@ -33,6 +34,7 @@ test('places everything ahead of a ship facing -Z', () => {
 
 test('writes a system the game reads as text', () => {
   const names = sections(systemIni(order))
+
   assert.equal(names[0], 'SystemInfo')
   assert.equal(names.filter((name) => name === 'Object').length, order.objects.length)
   assert.equal(names.filter((name) => name === 'LightSource').length, order.lights.length)
@@ -41,7 +43,9 @@ test('writes a system the game reads as text', () => {
 
 test('names the system in the universe and in the save', () => {
   assert.ok(universeSection('space_order').includes(`nickname = ${systemNickname('space_order')}`))
+
   const save = saveText(order, '[Group]\r\nnickname = li_n_grp\r\n')
+
   assert.ok(save.includes(`system = ${systemNickname('space_order')}`))
   assert.ok(!/^base\s*=/m.test(save), 'a base would load it docked')
   assert.ok(save.includes('Mission = No_Mission'))
@@ -56,6 +60,7 @@ const onRing = (
 ) => {
   const [x, y, z] = [Math.sin(angle) * radius, 0, Math.cos(angle) * radius]
   const p = (pitch * Math.PI) / 180
+
   return [
     position[0]! + x,
     position[1]! + Math.cos(p) * y - Math.sin(p) * z,
@@ -66,20 +71,28 @@ const onRing = (
 test("rings: the near one's band within the main list's reach, the far one's across it", () => {
   const outside = systems.get('ring_outside')!
   const reach = range - RETAIL_SPACE_LIMITS.ringFarMargin
+
   const extent = (nickname: string) => {
     const zone = outside.zones!.find((entry) => entry.nickname === nickname)!
     const distances = Array.from({ length: 64 }, (_, at) =>
       distance(onRing(zone, zone.size[0]!, (at / 64) * 2 * Math.PI)),
     )
+
     return [Math.min(...distances), Math.max(...distances)]
   }
+
   assert.ok(extent('Lab_ring')[1]! < reach, `${extent('Lab_ring')}`)
+
   const [nearest, farthest] = extent('Lab_far_ring')
+
   assert.ok(nearest! < reach && farthest! > reach, `${nearest}, ${farthest}`)
+
   // Every ring's zone is its planet's, and each object names one that exists.
   for (const { ring } of outside.objects)
     if (ring) assert.ok(outside.zones!.some(({ nickname }) => nickname === ring.zone))
+
   const names = sections(systemIni(outside))
+
   assert.equal(names.filter((name) => name === 'zone').length, 2)
 })
 
@@ -95,6 +108,7 @@ test('ring_inside puts the ship in the near band, between its radii and within i
     Math.sin(p) * offset[1]! + Math.cos(p) * offset[2]!,
   ]
   const radial = Math.hypot(local[0]!, local[2]!)
+
   assert.ok(radial > zone.size[1]! && radial < zone.size[0]!, `${radial}`)
   assert.ok(Math.abs(local[1]!) < zone.size[2]! / 2, `${local[1]}`)
 })
@@ -102,38 +116,49 @@ test('ring_inside puts the ship in the near band, between its radii and within i
 test('asteroids: each save stands where it says, in or out of the field, the nebula and the hole', () => {
   const zoneOf = (name: string, nickname: string) =>
     systems.get(name)!.zones!.find((zone) => zone.nickname === nickname)!
+
   const inside = (name: string, nickname: string) => {
     const { position, size } = zoneOf(name, nickname)
     const { position: ship } = systems.get(name)!.player
+
     return distance(ship.map((c, at) => c - position[at]!)) < size[0]!
   }
+
   const where = (name: string) =>
     ['Lab_field', 'Lab_nebula', 'Lab_nebula_hole', 'Lab_station_exclusion'].map((zone) =>
       inside(name, zone),
     )
+
   assert.deepEqual(where('asteroid_inside'), [true, false, false, false])
   assert.deepEqual(where('asteroid_nebula'), [true, true, false, false])
   assert.deepEqual(where('asteroid_outside'), [false, false, false, false])
   // In the hole, which is in the nebula and the field: deep in it, and in its edge's last 20%.
   assert.deepEqual(where('asteroid_hole'), [true, true, true, false])
   assert.deepEqual(where('asteroid_hole_edge'), [true, true, true, false])
+
   const hole = zoneOf('asteroid_hole', 'Lab_nebula_hole')
   const fromHole = (name: string) =>
     distance(systems.get(name)!.player.position.map((c, at) => c - hole.position[at]!))
+
   assert.ok(fromHole('asteroid_hole') < 600 * 0.8)
   assert.ok(fromHole('asteroid_hole_edge') > 600 * 0.8 && fromHole('asteroid_hole_edge') < 600)
+
   // Outside, farther than the field's radius and its fill distance of 1650: no cube near enough.
   const { position } = zoneOf('asteroid_outside', 'Lab_field')
   const ship = systems.get('asteroid_outside')!.player.position
+
   assert.ok(distance(ship.map((c, at) => c - position[at]!)) > 5000 + 1650)
+
   // The station and the plant each stand in their exclusion zone.
   const system = systems.get('asteroid_inside')!
+
   for (const [object, zone] of [
     ['Lab_field_station', 'Lab_station_exclusion'],
     ['Lab_hole_plant', 'Lab_nebula_hole'],
   ] as const) {
     const at = system.objects.find(({ nickname }) => nickname === object)!.position
     const { position: centre, size } = zoneOf('asteroid_inside', zone)
+
     assert.ok(distance(at.map((c, i) => c - centre[i]!)) < size[0]!, object)
   }
 })
@@ -141,17 +166,23 @@ test('asteroids: each save stands where it says, in or out of the field, the neb
 test('asteroids: the system names its field and nebula, and writes files the game reads', () => {
   const system = systems.get('asteroid_inside')!
   const names = sections(systemIni(system))
+
   assert.equal(names.filter((name) => name === 'Asteroids').length, 1)
   assert.equal(names.filter((name) => name === 'Nebula').length, 1)
+
   for (const { path, text } of system.files!) {
     const read = sections(text)
+
     assert.ok(read.length > 3, path)
+
     // Nothing `rand()` drives.
     for (const random of ['DynamicAsteroids', 'AsteroidBillboards', 'Clouds'])
       assert.ok(!read.includes(random), `${path}: ${random}`)
+
     // A nebula's exterior builds no bits without slices.
     if (read.includes('Exterior')) assert.match(text, /^plane_slices = 0$/m, path)
   }
+
   // Every exclusion a file names is a zone of the system.
   for (const { text } of system.files!)
     for (const [, zone] of text.matchAll(/^exclusion = (\S+)/gm))
@@ -164,14 +195,17 @@ test('asteroids: the system names its field and nebula, and writes files the gam
 test("dust: the system's [Dust] and a zone's spacedust, the edge's point about half in", () => {
   const deep = systems.get('dust_zone')!
   const text = systemIni(deep)
+
   assert.ok(sections(text).includes('Dust'))
   assert.ok(text.includes('spacedust = Dust'))
   assert.ok(text.includes('spacedust = attractdust'))
   assert.ok(text.includes('spacedust_maxparticles = 250'))
+
   const edge = systems.get('dust_zone_edge')!.zones![0]!
   // The dust stands 60 ahead of a camera near the ship: about 1500 from the centre, of 2000.
   const out = distance([edge.position[0]!, edge.position[1]!, edge.position[2]! + 60]) / 2000
   const immersion = (1 - out) / edge.edgeFraction!
+
   assert.ok(Math.abs(immersion - 0.5) < 0.01)
 })
 
@@ -179,10 +213,12 @@ test('a zone nickname two systems share is one zone: the game keeps only the fir
   // `InsertZone` (`common_universe.cpp`): the universe's zone map takes no duplicate, and a zone it
   // drops isn't on its system's list, so a later system's differing zone is simply gone.
   const seen = new Map<string, { system: string; zone: unknown }>()
+
   for (const [name, { zones = [] }] of systems)
     for (const zone of zones) {
       const key = zone.nickname.toLowerCase()
       const first = seen.get(key)
+
       if (first) assert.deepEqual(zone, first.zone, `${name} and ${first.system} share ${key}`)
       else seen.set(key, { system: name, zone })
     }
@@ -197,8 +233,10 @@ test(
     const { objects } = systems.get('jump_hole')!
     const ini = systemIni(systems.get('jump_hole')!)
     const [{ jump, archetype }] = objects.filter(({ jump }) => jump) as [(typeof objects)[number]]
+
     assert.equal(archetype, 'jumphole')
     assert.ok(ini.includes(`goto = Li01, Li01_to_Li03_hole, gate_tunnel_bretonia`))
+
     // `goto`'s object is looked for in its system's file, as `Universe` loads it.
     const { system } = jump!
     const file = join(data, 'UNIVERSE/SYSTEMS', system.toUpperCase(), `${system.toLowerCase()}.ini`)
@@ -208,6 +246,7 @@ test(
         String(section.getValues('nickname')?.[0]?.value).toLowerCase() ===
           jump!.object.toLowerCase(),
     )
+
     assert.ok(target, jump!.object)
     assert.equal(String(target.getValues('archetype')?.[0]?.value), 'jumphole')
     assert.equal(String(target.getValues('jump_effect')?.[0]?.value), jump!.effect)
@@ -220,8 +259,10 @@ const skip = existsSync(data) ? false : 'no retail DATA'
 test("beam_shots' guns fit the hardpoints they're on, and each fires a beam", { skip }, () => {
   const read = (path: string) => {
     const file = readFileSync(join(data, path))
+
     return new Uint8Array(file.buffer, file.byteOffset, file.byteLength)
   }
+
   const properties = ({ entries }: Section) =>
     entries.filter((entry): entry is Property => typeof entry !== 'string')
   const first = (section: Section, key: string) =>
@@ -233,12 +274,16 @@ test("beam_shots' guns fit the hardpoints they're on, and each fires a beam", { 
   const weapons = [...Document.read(read('EQUIPMENT/weapon_equip.ini'))]
   const effects = [...Document.read(read('FX/effects.ini'))]
   const guns = equipment.filter((line) => line.includes(','))
+
   assert.equal(guns.length, 2)
+
   const fits = properties(arch!).filter(({ name }) => name === 'hp_type')
+
   for (const line of guns) {
     const [nickname, hardpoint] = line.split(', ')
     const gun = weapons.find((section) => first(section, 'nickname') === nickname)!
     const type = first(gun, 'hp_gun_type')
+
     assert.ok(
       fits.some(
         ({ values }) =>
@@ -246,12 +291,14 @@ test("beam_shots' guns fit the hardpoints they're on, and each fires a beam", { 
       ),
       `${nickname} on ${hardpoint}, ${type}`,
     )
+
     const ammo = weapons.find(
       (section) => first(section, 'nickname') === first(gun, 'projectile_archetype'),
     )!
     const effect = effects.find(
       (section) => first(section, 'nickname') === first(ammo, 'const_effect'),
     )!
+
     assert.ok(first(effect, 'vis_beam'), `${nickname} fires no beam`)
   }
 })
@@ -259,19 +306,27 @@ test("beam_shots' guns fit the hardpoints they're on, and each fires a beam", { 
 test('retail has 55 beams, which load, and `code_beam`', { skip }, async () => {
   const read = async (path: string) => {
     const file = readFileSync(join(data, path))
+
     return new Uint8Array(file.buffer, file.byteOffset, file.byteLength)
   }
+
   const { beams, texture } = await loadBeamEffects(read)
+
   assert.equal(beams.size, 55)
   assert.equal(texture.name.toLowerCase(), 'code_beam')
+
   const spear = beams.get('li_laser_01_beam')!
+
   assert.equal(spear.kind, 'spear')
+
   const bolt = beams.get('pi_particle_03_beam')!
+
   assert.equal(bolt.kind, 'bolt')
   assert.equal(bolt.coreLength, 55)
   assert.equal(bolt.ballHead, true)
   assert.equal(bolt.thinTrail, false)
   assert.equal(bolt.coreColor.x, Math.fround(245 * Math.fround(0.003921569)))
+
   for (const [nickname, { tipLength, tailLength, coreWidth, headWidth }] of beams) {
     assert.ok(tipLength >= coreWidth && headWidth >= coreWidth, nickname)
     assert.ok(Number.isFinite(tailLength), nickname)
@@ -281,9 +336,12 @@ test('retail has 55 beams, which load, and `code_beam`', { skip }, async () => {
 test("retail's one tractor loads, and `line`", { skip }, async () => {
   const read = async (path: string) => {
     const file = readFileSync(join(data, path))
+
     return new Uint8Array(file.buffer, file.byteOffset, file.byteLength)
   }
+
   const { tractors, texture } = await loadTractors(read)
+
   assert.deepEqual([...tractors.keys()], ['ge_s_tractor_01'])
   assert.deepEqual(tractors.get('ge_s_tractor_01'), {
     maxLength: 1500,

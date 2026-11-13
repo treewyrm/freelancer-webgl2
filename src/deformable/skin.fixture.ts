@@ -60,6 +60,7 @@ const fixture: Fixture<SkinReport> = (gl) => {
         root,
       ),
     }
+
     renderer.render(
       collectFrame({
         camera: {
@@ -83,14 +84,17 @@ const fixture: Fixture<SkinReport> = (gl) => {
       }),
     )
   }
+
   const middle = () => {
     gl.readPixels(0, height >> 1, width, 1, gl.RGBA, gl.UNSIGNED_BYTE, row)
     return Array.from({ length: width }, (_, x) => row[x * 4]!)
   }
+
   const span = () => {
     const lit = middle()
       .map((red, x) => (red > 0 ? x : -1))
       .filter((x) => x >= 0)
+
     return [lit[0] ?? -1, lit.at(-1) ?? -1]
   }
 
@@ -111,18 +115,22 @@ const fixture: Fixture<SkinReport> = (gl) => {
   // Half of it follows, half stays.
   draw(half, [Matrix4.identity, Matrix4.translation({ x: 3, y: 0, z: 0 })], Matrix4.identity, 1)
   rows['blended'] = span()
+
   // Root and bone moving as one are the same picture as the root alone.
   const root = Matrix4.translation({ x: -2, y: 0, z: 0 })
+
   draw(one, [root, root], root, 1)
   rows['root'] = span()
 
   // A bone turned 90° about Y takes the normal with it: lit head on, then edge on to the light.
   draw(one, [Matrix4.identity, Matrix4.identity], Matrix4.identity, 0, true)
   lit['faced'] = middle()[width >> 1]!
+
   const turned = Matrix4.fromRotationTranslation(
     { x: { x: 0.6, y: 0, z: 0.8 }, y: { x: 0, y: 1, z: 0 }, z: { x: -0.8, y: 0, z: 0.6 } },
     { x: 0, y: 0, z: 0 },
   )
+
   draw(one, [Matrix4.identity, turned], Matrix4.identity, 0, true)
   lit['turned'] = middle()[width >> 1]!
 

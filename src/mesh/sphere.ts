@@ -24,10 +24,12 @@ const MAXIMUM_LEVEL = 14
 const writeVertices = (radius: number, cells: number, odd: boolean): Float32Array => {
   const rows = odd ? 2 * cells + 1 : cells + 1
   const data: number[] = []
+
   for (let row = 0; row < rows; row++) {
     const t = row / (rows - 1)
     const shifted = odd && row % 2 === 1
     const columns = shifted ? cells : cells + 1
+
     for (let column = 0; column < columns; column++) {
       const s = (shifted ? column + 0.5 : column) / cells
       const x = 2 * s - 1
@@ -36,9 +38,11 @@ const writeVertices = (radius: number, cells: number, odd: boolean): Float32Arra
       const nx = Math.fround(x * scale)
       const ny = Math.fround(y * scale)
       const nz = Math.fround(scale)
+
       data.push(nx * radius, ny * radius, nz * radius, nx, ny, nz, s, t)
     }
   }
+
   return new Float32Array(data)
 }
 
@@ -46,13 +50,16 @@ const writeVertices = (radius: number, cells: number, odd: boolean): Float32Arra
 const evenIndices = (cells: number): number[] => {
   const width = cells + 1
   const indices: number[] = []
+
   for (let row = 0; row < cells; row++)
     for (let column = 0; column < cells; column++) {
       const p = row * width + column
       const q = p + width
+
       if ((row + column) % 2 !== 0) indices.push(p, p + 1, q, p + 1, q + 1, q)
       else indices.push(p, q + 1, q, p, p + 1, q + 1)
     }
+
   return indices
 }
 
@@ -61,13 +68,18 @@ const oddIndices = (cells: number): number[] => {
   const width = cells + 1
   const stride = 2 * cells + 1
   const indices: number[] = []
+
   for (let row = 0; row < cells; row++)
     for (let column = 0; column < cells; column++) {
+      // `a` and `c` are the cell's corners in this and the next corner row, `m` its centre between;
+      // a corner row and its centre row together hold `stride` vertices.
       const a = row * stride + column
       const m = a + width
       const c = a + stride
+
       indices.push(a, a + 1, m, a + 1, c + 1, m, c + 1, c, m, c, a, m)
     }
+
   return indices
 }
 
@@ -79,6 +91,7 @@ const buildPatch = (radius: number, level: number): SpherePatch => {
   const indices = odd ? oddIndices(cells) : evenIndices(cells)
   const vertexCount = vertices.length / STRIDE_FLOATS
   const corner = radius * Math.SQRT1_2
+
   return {
     mesh: {
       name: `sphere ${radius} ${level}`,
@@ -123,11 +136,14 @@ const patches = new Map<string, SpherePatch>()
 export const spherePatch = (radius: number, level: number): SpherePatch => {
   if (!Number.isInteger(level) || level < 0 || level > MAXIMUM_LEVEL)
     throw new RangeError(`Sphere level must be an integer in 0..${MAXIMUM_LEVEL}, not ${level}`)
+
   const key = `${radius}/${level}`
   let patch = patches.get(key)
+
   if (!patch) {
     patch = buildPatch(radius, level)
     patches.set(key, patch)
   }
+
   return patch
 }

@@ -6,6 +6,7 @@
 import { Matrix4, type Vector3 } from '@treewyrm/freelancer/math'
 import type { Camera } from './camera.js'
 import type { Random } from './lightning.js'
+import { inverseRoot } from './retail.js'
 
 const f = Math.fround
 
@@ -62,13 +63,40 @@ export class LightBlink {
     random: Random = () => Math.floor(Math.random() * 0x8000),
   ) {
     const period = (random() * RAND_UNIT * JITTER_SCALE + JITTER_BASE) * f(avgDelay)
+
     if (period > 0) {
       const rate = 1 / f(period)
+
       this.#rate = f(rate)
+
       const lit = f(blinkDuration) > f(period) ? f(period) : f(blinkDuration)
+
       this.#duty = f(rate * lit)
     }
+
     this.#phase = f(random() * RAND_UNIT)
+  }
+
+  /**
+   * A period and phase given, not drawn: `FFlashLight`'s second constructor (`FUN_00557630`), which a
+   * room's `[FlashlightSet]` makes its lights with. A phase below 0 stays dark until it's passed 0.
+   */
+  static timed(period: number, phase: number, blinkDuration: number): LightBlink {
+    const blink = new LightBlink({ avgDelay: 0, blinkDuration }, () => 0)
+
+    blink.#phase = f(phase)
+
+    if (f(period) > 0) {
+      const inverse = 1 / f(period)
+
+      blink.#rate = f(inverse)
+
+      const lit = f(period) < f(blinkDuration) ? f(period) : f(blinkDuration)
+
+      blink.#duty = f(inverse * lit)
+    }
+
+    return blink
   }
 
   /** Where in its period it is, 0 to 1. */
@@ -79,13 +107,18 @@ export class LightBlink {
   /** Advances by `step`, which the game holds to 0.1, only on a frame its object drew. */
   tick(step: number): void {
     if (this.#rate === 0) return
+
     const phase = f(step) * this.#rate + this.#phase
+
     this.#phase = f(phase >= 1 ? phase - Math.floor(phase) : phase)
+
     if (this.#phase > this.#duty) {
       this.brightness = 0
       return
     }
+
     const wave = (2 / this.#duty) * this.#phase
+
     this.brightness = f(wave > 1 ? 2 - wave : wave)
   }
 }
@@ -134,11 +167,14 @@ const clip = (
 ): boolean => {
   if (edges[1] < lo) return false
   if (edges[0] >= hi) return false
+
   const below = lo - edges[0]
+
   if (below > 0) {
     edges[0] = f(below + edges[0])
     attributes[0] = f((attributes[1] - attributes[0]) * (below / span) + attributes[0])
   }
+
   const above = hi - edges[1]
   if (!(above < 0)) return true
   edges[1] = f(above + edges[1])
@@ -159,13 +195,16 @@ const flareQuad = (
   rhw: number,
 ): ScreenQuad | undefined => {
   if (!(radiusX > 1)) return undefined
+
   // `ftol` truncates, and only each component's low byte is kept.
   const [r, g, b] = [color.x, color.y, color.z].map((c) => Math.trunc(c * 255))
   if ((r! + g! + b!) >>> 0 <= 1) return undefined
+
   const xs: [number, number] = [f(x - radiusX), f(x + radiusX)]
   const ys: [number, number] = [f(y - radiusY), f(y + radiusY)]
   const us: [number, number] = [frame[0], frame[2]]
   const vs: [number, number] = [frame[1], frame[3]]
+
   if (!clip(xs, us, rect[0], rect[2], radiusX + radiusX)) return undefined
   if (!clip(ys, vs, rect[1], rect[3], radiusY + radiusY)) return undefined
   return {
@@ -186,23 +225,17 @@ const flareQuad = (
 // `DAT_005c77f4`, the degrees-to-radians `flare_cone` is read with.
 const DEGREES = f(0.017453292)
 
-/** The fast inverse square root, one Newton step (`0x4fde1e`). */
-const inverseLength = (squared: number): number => {
-  const bits = new Float32Array([squared])
-  const view = new Int32Array(bits.buffer)
-  view[0] = 0x5f3759df - (view[0]! >> 1)
-  const guess = bits[0]!
-  return (1.5 - guess * guess * squared * 0.5) * guess
-}
-
 /** `CliEquipLightDrawFlare` (`0x4fdda0`): the glow's fade as the light faces away from the camera. */
 const fadeOf = ({ flareCone }: FlareLight, world: Matrix4, eye: Vector3): number => {
   if (!flareCone) return 1
+
   const full = f(Math.cos(flareCone[1] * DEGREES))
   const none = f(Math.cos(flareCone[0] * DEGREES))
   if (!(full > none)) return 1
+
   const d = [f(world.w.x - eye.x), f(world.w.y - eye.y), f(world.w.z - eye.z)] as const
-  const inverse = inverseLength(f(d[2] * d[2] + d[1] * d[1] + d[0] * d[0]))
+  // The fast inverse square root (`0x4fde1e`).
+  const inverse = inverseRoot(f(d[2] * d[2] + d[1] * d[1] + d[0] * d[0]))
   const [x, y, z] = d.map((c) => f(c * inverse)) as [number, number, number]
   // The rotation's third column: its forward axis, as `Matrix4` holds columns.
   const dot = f(z * world.z.z + y * world.z.y + x * world.z.x)
@@ -257,6 +290,8 @@ export const flareQuads = (
   const at = Matrix4.transformPoint({ x: world.w.x, y: world.w.y, z: world.w.z }, view)
   const depth = f(f(at.z) - f(at.z) * 0.001)
   if (depth - camera.near >= 0) return []
+
+  // `rhw` is 1 / the depth ahead; a size or offset in pixels is the view's times `scale` · `rhw`.
   const rhw = f(-1 / depth)
   const perX = f(scale.x) * rhw
   const perY = f(scale.y) * rhw
@@ -271,5 +306,6 @@ export const flareQuads = (
     flareQuad(rect, frame, bulb, f(bulbX), f(Math.abs(f(light.bulbSize) * perY)), x, y, z, rhw),
     flareQuad(rect, frame, faded, glowX, f(Math.abs(perY * f(light.glowSize))), x, y, z, rhw),
   ]
+
   return quads.filter((quad) => quad !== undefined)
 }

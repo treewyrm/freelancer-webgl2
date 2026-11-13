@@ -44,12 +44,15 @@ const skipOf = (name: string) =>
 const load = async (name: DustRun) => {
   const read = async (path: string) => {
     const file = readFileSync(join(data, path))
+
     return new Uint8Array(file.buffer, file.byteOffset, file.byteLength)
   }
+
   const system = systems.get(name)!
   const { draws, options } = readSpaceRun(join(references, name), system, RUNS[name])
   const scene = await loadSystem(system, read, options)
   const frame = collectSpaceFrame({ ...scene, step: 1 / 96 })
+
   return { frame, retail: draws }
 }
 
@@ -58,6 +61,7 @@ for (const { name, intensity } of RUNS_COMPARED) {
 
   test(`${name} is retail's scene draw for draw`, { skip }, async () => {
     const { frame, retail } = await load(name)
+
     assertFrameMatches(
       { ...frame, draws: frame.draws.slice(0, SCENE) },
       retail.slice(0, SCENE),
@@ -73,6 +77,7 @@ for (const { name, intensity } of RUNS_COMPARED) {
       const { frame, retail } = await load(name)
       const index = indexTextures(data)
       const theirs = DUST.map((n) => retail[n]!)
+
       for (const draw of theirs) {
         assert.ok(
           namesOf(index, draw.stages[0]!.texture!).some(({ name }) => name === 'small-flare'),
@@ -83,20 +88,24 @@ for (const { name, intensity } of RUNS_COMPARED) {
         assert.equal(draw.states['ZFUNC'], 4)
         assert.equal(draw.states['ZWRITEENABLE'], 0)
       }
+
       // Every emitter full, at the cap the intensity gives.
       const ours = (frame.effects as SpriteDraw[]).filter(
         (draw) => draw.type === 'sprite' && draw.texture?.name === 'small-flare' && draw.sparam > 0,
       )
+
       assert.ok(ours.every(({ sparam }) => intensity(sparam)))
       assert.deepEqual(
         ours.map(({ lane }) => lane.count),
         theirs.map(({ primitives }) => primitives / 2),
       )
+
       // Each quad's centre in view space, within the emitter's sphere about the point 60 ahead.
       for (const { vertexData } of theirs) {
         for (let at = 0; at < vertexData!.length; at += 4) {
           const [a, , , d] = vertexData!.slice(at, at + 4)
           const centre = [0, 1, 2].map((axis) => (a!.p[axis]! + d!.p[axis]!) / 2)
+
           assert.ok(Math.hypot(centre[0]!, centre[1]!, centre[2]! + 60) < 61)
         }
       }
@@ -111,11 +120,16 @@ for (const { name, intensity } of RUNS_COMPARED) {
       const index = indexTextures(data)
       // The engine's four, then the zone's three; the sun's `stripe_narrow` follows the effects.
       const effects = retail.slice(SCENE, DUST.at(-1)! + 1)
+
       assert.equal(effects.length, 7)
+
       const next = retail[DUST.at(-1)! + 1]!.stages[0]!.texture!
+
       assert.ok(namesOf(index, next).some(({ name }) => name === 'stripe_narrow'))
+
       const sprites = frame.effects as SpriteDraw[]
       const faded = sprites.filter(({ dust }) => dust)
+
       assert.deepEqual(
         faded.map(({ dust }) => dust!.fade),
         [0],

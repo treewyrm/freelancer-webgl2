@@ -9,11 +9,13 @@ let report: SkinReport
 
 before(async () => {
   browser = await launch()
+
   const { value } = await runFixture<SkinReport>(
     browser,
     new URL('./skin.fixture.ts', import.meta.url),
     { width: 128, height: 128, context: { antialias: false, alpha: false } },
   )
+
   report = value
 })
 
@@ -21,6 +23,7 @@ after(() => browser.close())
 
 const shift = (from: string, to: string) => {
   const [a, b] = [report.rows[from]!, report.rows[to]!]
+
   return [b[0]! - a[0]!, b[1]! - a[1]!]
 }
 
@@ -29,6 +32,7 @@ test('raises no GL error', () => assert.equal(report.error, 0))
 test('at bind the quad stands where its points say', () => {
   // 2 across at 10, under tan 45°: 128 × 2 / 20.
   const [left, right] = report.rows['bind']!
+
   assert.ok(Math.abs(right! - left! + 1 - 12.8) <= 1, `${report.rows['bind']}`)
 })
 

@@ -48,6 +48,7 @@ uniform float lightRange[${MAX_LIGHTS}];
 uniform vec3 lightAttenuation[${MAX_LIGHTS}];
 // A spot's cos(theta / 2), cos(phi / 2) and falloff. A falloff of 0 is no spot.
 uniform vec3 lightSpot[${MAX_LIGHTS}];
+uniform vec3 lightAmbient[${MAX_LIGHTS}];
 
 uniform bool colorVertex;
 uniform bool nomad;
@@ -70,18 +71,27 @@ out vec2 uv;
 out vec2 secondUv;
 out vec3 reflection;
 
+// The fast inverse root and one Newton step, which always lands a little short of unit length
+// (\`deformable2!0x65f6fc3\`–\`0x65f7031\`).
+vec3 renormalized(vec3 v) {
+  float squared = dot(v, v);
+  float guess = uintBitsToFloat(0x5f3759dfu - (floatBitsToUint(squared) >> 1));
+  return v * ((1.5 - 0.5 * squared * guess * guess) * guess);
+}
+
 void main() {
   mat4 modelView = view * world;
   vec3 place = position;
   vec3 facing = normal;
   // What FMeshArchetype::Skin writes to locked memory when a bone moves. A lone influence is not
   // renormalized, and a blend is.
-  if (skinned) {
+  // A point with no influence is in no bone's list, and keeps its stored position.
+  if (skinned && boneWeight != vec4(0.0)) {
     mat4 skin = bones[int(boneIndex.x)] * boneWeight.x + bones[int(boneIndex.y)] * boneWeight.y
               + bones[int(boneIndex.z)] * boneWeight.z + bones[int(boneIndex.w)] * boneWeight.w;
     place = (skin * vec4(position, 1.0)).xyz;
     facing = (skin * vec4(normal, 0.0)).xyz;
-    if (boneWeight != vec4(1.0, 0.0, 0.0, 0.0)) facing = normalize(facing);
+    if (boneWeight != vec4(1.0, 0.0, 0.0, 0.0)) facing = renormalized(facing);
   }
   vec4 eyePosition = modelView * vec4(place, 1.0);
   gl_Position = projection * eyePosition;
@@ -136,6 +146,9 @@ void main() {
         if (rho <= spot.x) attenuation *= pow((rho - spot.y) / (spot.x - spot.y), spot.z);
       }
     }
+    // D3D8 adds each light's own ambient whichever way the surface faces. Specular is never on:
+    // nothing sets SPECULARENABLE (\`ShadingInternal.h\` names it; RP8's default is 0).
+    sum += materialAmbient * lightAmbient[i] * attenuation;
     sum += source.rgb * lightColor[i] * attenuation * max(dot(eyeNormal, toLight), 0.0);
   }
   // Saturated here, per vertex, before it is interpolated or meets a texture.
@@ -211,6 +224,7 @@ const UNIFORMS = [
   'lightRange',
   'lightAttenuation',
   'lightSpot',
+  'lightAmbient',
   'colorVertex',
   'nomad',
   'unlit',
@@ -247,6 +261,7 @@ export const SECOND_UNIT = 2
 
 export const createDcDtProgram = (gl: WebGL2RenderingContext): DcDtProgram => {
   const program = createProgram(gl, VERTEX, FRAGMENT, UNIFORMS)
+
   gl.useProgram(program.handle)
   gl.uniform1i(program.uniforms.diffuseMap, DIFFUSE_UNIT)
   gl.uniform1i(program.uniforms.environmentMap, ENVIRONMENT_UNIT)
@@ -257,7 +272,9 @@ export const createDcDtProgram = (gl: WebGL2RenderingContext): DcDtProgram => {
     gl.getUniformBlockIndex(program.handle, 'Bones'),
     BONES_BINDING,
   )
+
   const boneBuffer = gl.createBuffer()
+
   gl.bindBuffer(gl.UNIFORM_BUFFER, boneBuffer)
   gl.bufferData(gl.UNIFORM_BUFFER, MAX_BONES * 64, gl.DYNAMIC_DRAW)
   gl.bindBuffer(gl.UNIFORM_BUFFER, null)
@@ -299,6 +316,7 @@ export const setLights = (
     new Float32Array(
       lights.flatMap(({ position }) => {
         const { x, y, z } = position ?? ORIGIN
+
         return [x, y, z, position ? 1 : 0]
       }),
     ),
@@ -308,6 +326,7 @@ export const setLights = (
     uniforms.lightAttenuation,
     vectors(lights.map(({ attenuation }) => attenuation ?? ORIGIN)),
   )
+  gl.uniform3fv(uniforms.lightAmbient, vectors(lights.map(({ ambient }) => ambient ?? ORIGIN)))
   // The cosines of half of each cone, and the falloff. A zero falloff marks no spot.
   gl.uniform3fv(
     uniforms.lightSpot,
@@ -351,10 +370,13 @@ export const setDrawUniforms = (
   gl.uniform4fv(uniforms.materialDiffuse, draw.diffuse)
   gl.uniform3f(uniforms.materialAmbient, draw.ambient.x, draw.ambient.y, draw.ambient.z)
   gl.uniform3f(uniforms.materialEmissive, draw.emissive.x, draw.emissive.y, draw.emissive.z)
+
   if (draw.sceneAmbient) {
     const { x, y, z } = draw.sceneAmbient
+
     gl.uniform3f(uniforms.sceneAmbient, x, y, z)
   }
+
   gl.uniform1i(uniforms.colorVertex, draw.colorVertex ? 1 : 0)
   gl.uniform1i(uniforms.nomad, draw.nomad ? 1 : 0)
   gl.uniform1i(uniforms.unlit, draw.unlit ? 1 : 0)
@@ -364,14 +386,19 @@ export const setDrawUniforms = (
   gl.uniform1i(uniforms.alphaFunction, ALPHA_FUNCTION[draw.alphaFunction])
   gl.uniform1i(uniforms.skinned, draw.skin ? 1 : 0)
   gl.uniform1i(uniforms.atmosphere, draw.atmosphere ? 1 : 0)
+
   if (draw.atmosphere) {
     const { direction, threshold, gain, v } = draw.atmosphere
+
     gl.uniform4f(uniforms.atmosphereView, direction.x, direction.y, direction.z, threshold)
     gl.uniform2f(uniforms.atmosphereFade, gain, v)
   }
+
   gl.uniform1i(uniforms.textured, draw.texture ? 1 : 0)
   gl.uniform1i(uniforms.uvSet, draw.texture?.uvSet ?? 0)
+
   const { offset, scale } = draw.uvTransform ?? { offset: [0, 0], scale: [1, 1] }
+
   gl.uniform4f(uniforms.uvTransform, offset[0]!, offset[1]!, scale[0]!, scale[1]!)
   gl.uniform1i(uniforms.reflecting, draw.environment ? 1 : 0)
   gl.uniform1i(uniforms.secondStage, SECOND_STAGE[draw.second?.operation ?? 'none'])

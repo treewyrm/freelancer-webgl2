@@ -76,6 +76,7 @@ import {
   type SceneLight,
   type SceneModel,
 } from './frame.js'
+import { inverseRoot } from './retail.js'
 
 export interface SpaceObject {
   /** Not drawn for a sun: its `star` is. */
@@ -151,6 +152,8 @@ export interface SpaceFrame extends Frame {
    * would. The host steps it with `lod` next, by no more than `effectMaxStep`. Undefined for one with no position, which draws.
    */
   effectViews: (EffectView | undefined)[]
+  /** Each of the scene's `asteroids`, in order: its cubes drawn, and the centres `fieldCubes` tested. */
+  asteroidCubes: { drawn: number; tested: number }[]
 }
 
 /** `EffectTypeInfoByIndex`, from `[EffectType]`: the game's walk is by type. */
@@ -222,6 +225,12 @@ export interface SpaceScene {
    * blink, held to 0.1. 0 when absent.
    */
   step?: number
+  /**
+   * Seconds the camera has had since the last frame, for what answers it rather than the world: the
+   * suns' fades and the nebulae's turning and sorting. `step` when absent, as in the game, where
+   * they're one. A host that stops its world's clock and lets the camera fly passes 0 as `step`.
+   */
+  cameraStep?: number
   /** The camera cut to this frame, as it does entering a system: clouds are placed afresh. */
   cut?: boolean
   /** The player's ship is in a trade lane: no dynamic asteroid is placed (`0x525da9`). */
@@ -384,6 +393,7 @@ const pick = (
   const center = Matrix4.transformPoint(sphere.center, view)
   const rank = classifySphere(center, sphere.radius, camera, aspect)
   if (rank === 1) return undefined
+
   const squared = center.x * center.x + center.y * center.y + center.z * center.z
   if (distanceRender > 0 && squared < distanceRender * distanceRender) return { rank, tier: 0 }
   if (lodRange > 0 && squared > lodRange * lodRange) return undefined
@@ -401,16 +411,23 @@ const fieldList = (
   otherFieldDepth: number,
 ): number | undefined => {
   if (!field) return MAIN
+
   const own = within?.state === field.state
   const value = within?.factor ?? 0
   if (!own && value > otherFieldDepth) return undefined
+
+  // Hidden: from a core, what isn't in it; from outside, what's fully in it; from its edge, what's
+  // fully in it past the fog's end.
   const enclosure = own ? value : 0
   if (field.enclosure === 2 && enclosure <= 0) return undefined
   if (field.enclosure === 0 && enclosure >= 1) return undefined
+
   // `G_FieldRadiusSq`, from the fog's end.
   const radius = field.state.end
+
   if (field.enclosure === 1 && enclosure >= 1 && squared > Math.fround(radius * radius))
     return undefined
+
   return enclosure > 0 ? FIELD : MAIN
 }
 
@@ -454,9 +471,12 @@ interface NebulaClock {
   /** `+0x58`, from the constructor's 0.2, restarted as the bits turn. */
   sinceTurned: number
 }
+
 const clocks = new WeakMap<SpaceNebula, NebulaClock>()
+
 const nebulaClock = (nebula: SpaceNebula): NebulaClock => {
   let clock = clocks.get(nebula)
+
   if (!clock) {
     clock = {
       order: new ExclusionOrder(nebula.exclusions ?? []),
@@ -466,6 +486,7 @@ const nebulaClock = (nebula: SpaceNebula): NebulaClock => {
     }
     clocks.set(nebula, clock)
   }
+
   return clock
 }
 
@@ -479,14 +500,11 @@ const bandSurfaceKey = (zone: Zone, eye: Vector3, nearSquared: number): number =
   const dy = f(zone.position.y - eye.y)
   const dz = f(zone.position.z - eye.z)
   const sum = dy * dy + dz * dz + dx * dx
-  const bits = new DataView(new ArrayBuffer(4))
-  bits.setFloat32(0, sum, true)
-  bits.setInt32(0, 0x5f3759df - (bits.getInt32(0, true) >> 1), true)
-  const estimate = bits.getFloat32(0, true)
-  const length = f((1.5 - estimate * estimate * sum * 0.5) * estimate * sum)
+  const length = f(inverseRoot(sum) * sum)
   const inverse = 1 / length
   const surface = zone.radiusAlong({ x: f(dx * inverse), y: f(dy * inverse), z: f(dz * inverse) })
   const key = length <= surface ? nearSquared : f((length - surface) * (length - surface))
+
   return key < nearSquared ? nearSquared : key
 }
 
@@ -501,7 +519,9 @@ const underOwn =
   ({ environment: _, ...model }: SceneModel): SceneModel => {
     const { environment } = owner
     if (!environment) return model
+
     const folded = environment.toLowerCase()
+
     return {
       ...model,
       environment,
@@ -541,6 +561,7 @@ export const viewSpaceEffects = ({
   const states = nebulae.map((nebula) => nebulaState(nebula, eye, resolved))
   const { field } = listNebulae(states, eye, systemFarOf(farClip, resolved) - resolved.rangeMargin)
   const frame = { camera, aspect, view: viewMatrix(camera), field, nebulae: states }
+
   return effects.map((effect) => viewOne(effect, frame, effectView))
 }
 
@@ -558,6 +579,7 @@ export const collectSpaceFrame = ({
   background,
   time = 0,
   step = 0,
+  cameraStep = step,
   effectView,
   viewport,
   shine,
@@ -594,6 +616,7 @@ export const collectSpaceFrame = ({
     ringFarMargin,
   } = resolved
   const systemFar = systemFarOf(farClip, resolved)
+
   if (jump)
     return collectJumpFrame(jump, { ...given, far: systemFar }, aspect, time, effects, {
       effectView,
@@ -604,6 +627,7 @@ export const collectSpaceFrame = ({
       firstPerson,
       cockpitLimits: { ...RETAIL_COCKPIT_LIMITS, ...cockpitLimits },
     })
+
   const range = systemFar - rangeMargin
   const { position: eye } = given
   const states = nebulae.map((nebula) => nebulaState(nebula, eye, resolved))
@@ -615,28 +639,36 @@ export const collectSpaceFrame = ({
     immersion(nebula.zone, nebula.edgeFraction ?? 0, point)
   const excludedOf = (nebula: SpaceNebula) => (point: Vector3) =>
     nebulaClock(nebula).order.at(point)?.immersion ?? 0
+
   // Each sun's own update, which the solar runs in the game's tick (`UpdateIntensity`).
-  for (const { star } of objects) if (star) updateStar(star, step)
+  for (const { star } of objects) if (star) updateStar(star, cameraStep)
+
   for (const { nebula, depth, surface } of states) {
-    nebula.exterior?.update(eye, step, depth, cut)
+    nebula.exterior?.update(eye, cameraStep, depth, cut)
+
     // `FNebulaEffect::Update`: the bits' turn restarts `+0x58`; then, if the camera was in it last
     // frame, its exclusion zones are sorted about it on a cut, or once `+0x50` passes 0.25 while
     // `+0x58` isn't 0.
     const clock = nebulaClock(nebula)
     if (clock.depth < 1 && (clock.sinceTurned > 1 || cut)) clock.sinceTurned = 0
+
     if (clock.depth > 0 && (cut || (clock.since > f(0.25) && clock.sinceTurned !== 0)))
       clock.order.sort(eye)
+
     // Within 300 of its surface, its clouds follow the camera, as many as its depth allows.
     if (surface < 300)
       for (const clouds of nebula.clouds ?? [])
         clouds.update(given, step, depth, holdsOf(nebula), excludedOf(nebula))
-    clock.since = f(step + clock.since)
-    clock.sinceTurned = f(step + clock.sinceTurned)
+
+    clock.since = f(cameraStep + clock.since)
+    clock.sinceTurned = f(cameraStep + clock.sinceTurned)
     clock.depth = depth
     nebula.lightning?.update(step, depth, eye)
+
     const light = nebula.lightning?.light
     if (light) flashes.push(light)
   }
+
   const inCore = field?.enclosure === 2
   const far = inCore ? Math.min(fogFar(field.state, resolved), systemFar) : systemFar
   const camera: Camera = { ...given, far }
@@ -648,6 +680,7 @@ export const collectSpaceFrame = ({
     { length: LIST_COUNT },
     (_, at) => (at === FAR ? deferred.map(({ state, key }) => ({ nebula: state, key })) : []),
   )
+
   for (const object of objects) {
     const dx = object.position.x - eye.x
     const dy = object.position.y - eye.y
@@ -664,9 +697,11 @@ export const collectSpaceFrame = ({
 
     const within =
       object.nebula === null ? undefined : findNebula(states, object.position, object.nebula)
+
     if (squared >= range * range) {
       // A far object in any nebula, or seen from a core, isn't drawn.
       if (!object.solar || inCore || within) continue
+
       const picked = pick(object, view, farCamera, aspect)
       if (picked) lists[FAR]!.push({ object, key: squared, picked })
       continue
@@ -676,38 +711,49 @@ export const collectSpaceFrame = ({
     const key = squared - radius * radius
     let list = fieldList(within, key, field, otherFieldDepth)
     if (list === undefined) continue
+
     const picked = pick(object, view, camera, aspect)
     if (!picked) continue
     if (key < nearDistance * nearDistance) list = field && field.enclosure !== 0 ? FIELD : MAIN
     lists[object.nomad ? list + NOMAD_OFFSET : list]!.push({ object, key, picked, within })
   }
+
   // `TexturePanelsUpdateAll`, in the system's tick: each ring's clouds by how far in the camera is.
   const ringVisibility = rings.map((ring) => {
     const visibility = Math.fround(ringImmersion(ring, eye))
+
     for (const clouds of ring.clouds ?? [])
       clouds.update(given, step, visibility, (point) => ringImmersion(ring, point))
+
     return visibility
   })
+
   // `EnqueueTexturePanelPieces` (`0x51be10`): each piece the view's sphere test keeps, near ones by
   // how far past their radius, far ones by distance. Retail makes eight pieces of every ring, so its
   // one-piece branch, keyed by the zone's surface, is never reached and isn't built. In a core,
   // neither rings nor bands are listed (`0x51c352`).
   const ringReach = Math.fround((range - ringFarMargin) * (range - ringFarMargin))
+
   for (const ring of inCore ? [] : rings)
     for (const piece of ring.pieces) {
       const center = Matrix4.transformPoint(piece.center, view)
       if (classifySphere(center, piece.radius, camera, aspect) < 3) continue
+
       const dx = piece.center.x - eye.x
       const dy = piece.center.y - eye.y
       const dz = piece.center.z - eye.z
       const squared = dx * dx + dz * dz + dy * dy
+
       if (squared > ringReach) {
         lists[FAR]!.push({ ring, piece, key: Math.fround(squared) })
         continue
       }
+
       const radius = piece.radius * piece.radius
+
       lists[MAIN]!.push({ ring, piece, key: Math.fround(squared < radius ? 0 : squared - radius) })
     }
+
   // `CliAsteroidUpdate` moves each band's fade to the camera, and the first frame bakes its light at
   // its own zone.
   // Then `SpaceObjDrawPass` (`0x51ba40`) lists its pieces: one keyed by the zone's surface, or each
@@ -716,50 +762,63 @@ export const collectSpaceFrame = ({
   const rangeSquared = Math.fround(range * range)
   const quarter = range * 0.25
   const nearSquared = Math.fround(quarter * quarter)
+
   for (const asteroid of asteroids) {
     const { band, exclusionBands = [], zone } = asteroid
     if (band) band.update(eye)
+
     // `CliAsteroidUpdate`: every exclusion band is held under how near the field the camera is.
     const fraction = exclusionBands.length ? nearFieldFraction(asteroid, eye, 1000) : 0
     for (const exclusion of exclusionBands) exclusion.update(eye, fraction)
+
     // Then its dynamic asteroids, near the field or not (`0x5223a6`).
     for (const { rocks } of asteroid.dynamic ?? [])
       rocks.update(given, step, {
         blocked: lane,
         effectStep: Math.min(step, resolved.effectMaxStep),
       })
+
     // Its pieces numbered through, its own band's first (`FUN_00524740`, `FUN_00522850`).
     const numbered = [...(band ? [band] : []), ...exclusionBands].flatMap((owner) =>
       owner.pieces.map((piece, at) => ({ owner, piece, at })),
     )
+
     for (const { owner } of numbered)
       if (!owner.isBaked)
         owner.bake({ ambient, ...directionalLightsAt(lighting, owner.position, time) })
+
     if (inCore) continue
+
     if (numbered.length === 1) {
       const key = bandSurfaceKey(zone, eye, nearSquared)
+
       lists[key < rangeSquared ? MAIN : FAR]!.push({ band: numbered[0]!.owner, piece: 0, key })
       continue
     }
+
     for (const {
       owner,
       piece: { center, radius },
       at,
     } of numbered) {
       if (classifySphere(Matrix4.transformPoint(center, view), radius, camera, aspect) < 3) continue
+
       const dx = center.x - eye.x
       const dy = center.y - eye.y
       const dz = center.z - eye.z
       let squared = dz * dz + dx * dx + dy * dy
+
       if (rangeSquared < squared) {
         lists[FAR]!.push({ band: owner, piece: at, key: Math.fround(squared) })
         continue
       }
+
       // `DAT_005dc028`: 0.05f widened to a double.
       if (nearSquared > squared) squared = (nearSquared - squared) * Math.fround(0.05) + nearSquared
       lists[MAIN]!.push({ band: owner, piece: at, key: Math.fround(squared) })
     }
   }
+
   // Retail's sort isn't stable, but equal keys are left in an order the object database decides.
   for (const list of lists) list.sort((a, b) => b.key - a.key)
 
@@ -787,35 +846,53 @@ export const collectSpaceFrame = ({
     }
 
   const linked: SpaceFlare[] = []
+  const asteroidCubes = asteroids.map(() => ({ drawn: 0, tested: 0 }))
   const farProjection = projectionMatrix(farCamera, aspect)
+
   /**
    * `CliAsteroidTickOne`'s cubes. The field is lit once, at a point 100 behind the camera with a
    * radius of 250 (`CliAsteroidAmbientPass`), its ambient raised by `ambient_increase`; each cube
    * then sets only the material's colours and its fade, over the material's own stages, and is
    * drawn whole with no part test (`AsteroidUploadMesh`, `AsteroidDrawCube`).
    */
-  const drawField = (asteroid: SpaceAsteroidField) => {
-    const cubes = fieldCubes(asteroid, given, aspect)
+  const drawField = (asteroid: SpaceAsteroidField, index: number) => {
+    const counted = { tested: 0 }
+    const cubes = fieldCubes(asteroid, given, aspect, counted)
+
+    asteroidCubes[index] = { drawn: cubes.length, tested: counted.tested }
     const dynamic = (asteroid.dynamic ?? []).map(({ rocks, model }) => ({
       rocks,
       model,
       draws: rocks.draws(),
     }))
     if (!cubes.length && !asteroid.billboards && !dynamic.some(({ draws }) => draws.length)) return
+
     const frame = Matrix4.fromRotationTranslation(given.orientation, eye)
     const point = Matrix4.transformPoint({ x: 0, y: 0, z: 100 }, frame)
-    // Fogged and lit by the nebula only with `contains_fog_zone`, and the camera in its field.
-    const nebula =
-      asteroid.containsFogZone && field && field.enclosure !== 0 ? field.state : undefined
+    // `CliAsteroidAmbientPass` (`0x522700`): with `contains_fog_zone`, the camera's nebula at its
+    // depth, none outside one. Without, the nebula holding the zone's centre, kept from the first
+    // `CliAsteroidUpdate` (`0x522070`), at a factor of 1.
+    const fieldNebula = (): Within | undefined => {
+      if (asteroid.containsFogZone)
+        return field && field.enclosure !== 0
+          ? { state: field.state, factor: field.state.depth }
+          : undefined
+
+      const zoned = findNebula(states, asteroid.zone.position)
+      return zoned && { state: zoned.state, factor: 1 }
+    }
+    const own = fieldNebula()
+    const nebula = own?.state
     const lit = lightObject(
       lighting,
       { x: Math.fround(point.x), y: Math.fround(point.y), z: Math.fround(point.z) },
       250,
       ambient,
       time,
-      nebula?.nebula.ambient && { ambient: nebula.nebula.ambient, factor: nebula.depth },
+      own && nebula?.nebula.ambient && { ambient: nebula.nebula.ambient, factor: own.factor },
     )
     const raise = asteroid.ambientIncrease ?? { x: 0, y: 0, z: 0 }
+    // Ambient to a byte, plus the whole-byte increase, held to 255, back to 0 to 1.
     const byte = (value: number, increase: number) =>
       Math.min(Math.round(value * 255) + Math.trunc(increase), 255) / 255
     const sceneAmbient = {
@@ -824,6 +901,7 @@ export const collectSpaceFrame = ({
       z: byte(lit.ambient.z, raise.z),
     }
     const fog = nebula && fogOf(nebula.start, fogEnd(nebula, point), nebula.nebula.fog.color)
+
     // `CliAsteroidTickOne` (`0x5225fd`): its billboards before its cubes, lit at the camera under
     // the same pass's ambient.
     if (asteroid.billboards)
@@ -838,14 +916,17 @@ export const collectSpaceFrame = ({
           cut,
         ),
       )
+
     const fading = (asteroid.maxAlpha ?? 1) < 1
     const { diffuse, ambient: tint } = asteroid
+
     // A mesh drawn whole at a frame, with no part test; returns where its draws begin.
     const drawWhole = (
       { mesh, reference, ...lookups }: SpaceAsteroidField['cube'],
       world: Matrix4,
     ) => {
       const first = draws.length
+
       collectModel(
         { ...lookups, mesh: () => mesh, parts: [{ reference, world, mesh }] },
         camera,
@@ -861,11 +942,14 @@ export const collectSpaceFrame = ({
       )
       return first
     }
+
     for (const { position, orientation, alpha } of cubes) {
       const world = Matrix4.multiply(Matrix4.translation(position), orientation)
       const first = drawWhole(asteroid.cube, world)
+
       for (let index = first; index < draws.length; index++) {
         const blended = alpha < 1
+
         draws[index] = {
           ...draws[index]!,
           diffuse: [diffuse.x, diffuse.y, diffuse.z, alpha],
@@ -885,6 +969,7 @@ export const collectSpaceFrame = ({
         }
       }
     }
+
     /**
      * `CliDynamicAsteroidDraw`, each section's rocks after the cubes. A fading field's cubes undo
      * the pass, so the rocks run it again (`0x5226b9`): always lit. Each sets its tints and its
@@ -894,8 +979,10 @@ export const collectSpaceFrame = ({
     for (const { rocks, model, draws: placed } of dynamic)
       for (const { world, alpha } of placed) {
         const first = drawWhole(model, world)
+
         for (let index = first; index < draws.length; index++) {
           const blended = alpha < 1
+
           draws[index] = {
             ...draws[index]!,
             diffuse: [rocks.diffuse.x, rocks.diffuse.y, rocks.diffuse.z, alpha],
@@ -913,6 +1000,7 @@ export const collectSpaceFrame = ({
         }
       }
   }
+
   /**
    * `FNebulaEffect::DrawExclusionShell` (`0x508f20`): the shell of the exclusion zone the camera is
    * in, scaled to its radius times `shell_scalar` over 1000. Lit with no lights by a white ambient,
@@ -924,6 +1012,7 @@ export const collectSpaceFrame = ({
     const inside = state.inExclusion
     const shell = inside?.exclusion.shell
     if (!inside || !shell) return
+
     const fade = (inside.immersion - Math.fround(0.2)) * Math.fround(1.25)
     const alpha = Math.fround((fade < 0 ? 0 : fade > 1 ? 1 : fade) * (shell.maxAlpha ?? 1))
     const scale = Math.fround(
@@ -931,6 +1020,7 @@ export const collectSpaceFrame = ({
     )
     const world = Matrix4.multiply(shell.transform, Matrix4.scaling(scale))
     const first = draws.length
+
     collectModel(
       shell.place(world),
       camera,
@@ -944,8 +1034,10 @@ export const collectSpaceFrame = ({
       resolved,
     )
     flushQueued(queued, draws)
+
     for (let index = first; index < draws.length; index++) {
       const draw = draws[index]!
+
       draws[index] = {
         ...draw,
         diffuse: [draw.diffuse[0], draw.diffuse[1], draw.diffuse[2], alpha],
@@ -962,22 +1054,27 @@ export const collectSpaceFrame = ({
       }
     }
   }
+
   // `DrawBoltsPass`'s bits, on the far list's plane.
   const drawExterior = (state: NebulaState) => {
     const draw = state.nebula.exterior?.draw(state, farCamera, view, aspect, farProjection)
     if (draw) draws.push(draw)
   }
+
   for (const at of !field || field.enclosure === 0 ? OUTSIDE_ORDER : INSIDE_ORDER) {
     const onFarList = at === FAR
     const passCamera = onFarList ? farCamera : camera
+
     // `DrainMeshAndAsteroids` outside a field: the field's sheets, under the far list's plane, then
     // its own list (`0x51f9bc`).
     if (at === FIELD && field?.enclosure === 0) {
       const sheets = fillSheetsDraw(field.state, eye, farProjection)
       if (sheets) draws.push(sheets)
     }
+
     for (const listed of lists[at]!) {
       const first = draws.length
+
       // `ZItemNebula`: its sheets, then its exterior.
       if ('nebula' in listed) {
         const sheets = fillSheetsDraw(listed.nebula, eye, farProjection)
@@ -985,11 +1082,13 @@ export const collectSpaceFrame = ({
         drawExterior(listed.nebula)
         continue
       }
+
       if ('band' in listed) {
         const draw = listed.band.pieceDraw(listed.piece)
         if (draw) draws.push({ ...draw, projection: farProjection })
         continue
       }
+
       if ('ring' in listed) {
         const draw = ringPieceDraw(listed.ring, listed.piece)
         if (!draw) continue
@@ -1000,7 +1099,9 @@ export const collectSpaceFrame = ({
         )
         continue
       }
+
       const { object, picked, within } = listed
+
       // A sun's draw (`Slot188`, `0x548220`) is its glow, under the far list's plane wherever it's
       // listed, and returns before `GameobjSubmitDrawRetail` links lights or draws anything else.
       if (object.star)
@@ -1019,8 +1120,10 @@ export const collectSpaceFrame = ({
             unregistered,
             resolved,
           )
+
         // `GameobjSweepEffectList` links its lights at the first tier, each to the bucket's front.
         if (picked.tier === 0 && object.flares) linked.unshift(...[...object.flares].reverse())
+
         // `GameobjSubmitDrawRetail`: only the first tier arms the reflection. What's attached is
         // drawn in the same `RenderInstance`, under the same flags and the object's reflection.
         for (const model of [object.model, ...(object.attached ?? []).map(underOwn(object.model))])
@@ -1037,8 +1140,10 @@ export const collectSpaceFrame = ({
             resolved,
             picked.rank === 4 && picked.tier === 0,
           )
+
         flushQueued(queued, draws)
       }
+
       // `GameobjUpdateDrawLighting`, from where it stands and its sphere's radius. A draw with an
       // ambient of its own, an exclusion zone's, keeps it.
       const nebula = within?.state.nebula
@@ -1054,11 +1159,13 @@ export const collectSpaceFrame = ({
       const fog =
         within &&
         fogOf(within.state.start, fogEnd(within.state, object.position), nebula!.fog.color)
+
       // A sun's draw returns before it (`Slot188`): its glow keeps the frame's ambient, the sky's
       // white, and no fog, as `sun_ahead` and `sun_nebula` capture.
       if (!object.star)
         for (let index = first; index < draws.length; index++) {
           const draw = draws[index]!
+
           draws[index] = {
             ...draw,
             lights: lit.lights,
@@ -1066,12 +1173,14 @@ export const collectSpaceFrame = ({
             ...(fog && { fog }),
           }
         }
+
       // `DrainMeshAndAsteroids` (`0x51f956`) sets `ZFUNC` 4 for the near lists and leaves it, where
       // RP8's default is 2. No material sets 2, so what would have kept the default reads 4.
       if (!onFarList)
         for (let index = first; index < draws.length; index++)
           if (draws[index]!.depthFunc === 'less')
             draws[index] = { ...draws[index]!, depthFunc: 'lequal' }
+
       // `ZENABLE 0` around each node (`DrainBucket`), so it neither reads depth nor leaves any.
       if (onFarList)
         for (let index = first; index < draws.length; index++)
@@ -1082,24 +1191,29 @@ export const collectSpaceFrame = ({
             projection: farProjection,
           }
     }
+
     // `DrainMeshAndAsteroids` in a field: the main lists, in its edge its sheets (`0x51fa8a`), then the
     // fog overlay, then the field's own.
     if (at === NOMAD_OFFSET + MAIN && field?.enclosure === 1) {
       const sheets = fillSheetsDraw(field.state, eye, farProjection)
       if (sheets) draws.push(sheets)
     }
+
     if (at === NOMAD_OFFSET + MAIN && field && field.enclosure !== 0) {
       const overlay = fogOverlayDraw(field.state, view, viewport)
       if (overlay) draws.push(overlay)
+
       // Then every sun of the system, listed or not, in the order its solars were read, burning
       // through the fog: its glow at the field's depth times its `sun_burnthrough_intensity`, larger
       // by its `sun_burnthrough_scaler` (`0x51fad9`). Its fog is what the overlay left: **uncaptured**.
       const { burnthrough } = field.state.nebula
       const alpha = f(field.state.depth * f(burnthrough?.intensity ?? 0.5))
       const size = f(burnthrough?.scaler ?? 1.75)
+
       for (const { star, position } of objects)
         if (star) draws.push(...starGlowDraws(star, position, given, farProjection, alpha, size))
     }
+
     // `DrawBoltsPass`: outside a field after its list (`0x51fa10`), in its edge after the suns'
     // glows (`0x51fb3b`).
     if (
@@ -1107,17 +1221,21 @@ export const collectSpaceFrame = ({
       (at === NOMAD_OFFSET + MAIN && field?.enclosure === 1)
     )
       drawExterior(field.state)
+
     // `CliAsteroidTickFields`: outside a field after the main list and the rings' clouds, inside one
     // after its own list, and its nebula's exclusion shell before them (`0x51fb7e`).
     if (at === FIELD && field && field.enclosure !== 0) drawShell(field.state)
+
     if (
       (at === MAIN && (!field || field.enclosure === 0)) ||
       (at === FIELD && field && field.enclosure !== 0)
     )
-      for (const asteroid of asteroids) drawField(asteroid)
+      asteroids.forEach(drawField)
+
     // `DrawCloudsPanels`, last in a field (`0x51fbb4`): its clouds, fogged to its own range, unculled.
     if (at === NOMAD_OFFSET + FIELD && field && field.enclosure !== 0) {
       const { nebula, start, end } = field.state
+
       for (const clouds of nebula.clouds ?? []) {
         const draw = clouds.draw(given, {
           cut,
@@ -1127,11 +1245,13 @@ export const collectSpaceFrame = ({
         if (draw) draws.push({ ...draw, fog: fogOf(start, end, nebula.fog.color), cull: 'none' })
       }
     }
+
     // `DrainMeshAndAsteroids` outside a field: the main list, then every ring's clouds while the
     // camera is in it (`TexturePanelsDrawAll`, `DrawPanels`). In a field, no ring's clouds draw.
     if (at === MAIN && (!field || field.enclosure === 0))
       rings.forEach((ring, index) => {
         if (!(ringVisibility[index]! > 0)) return
+
         for (const clouds of ring.clouds ?? []) {
           const draw = clouds.draw(given, { cut, holds: (point) => ringImmersion(ring, point) })
           if (draw) draws.push(draw)
@@ -1142,10 +1262,14 @@ export const collectSpaceFrame = ({
   // Bucket `0x2e`'s walk, after the other effects: each light blinks, then queues its flare, and the
   // batch draws once they're all queued (`SpaceEffectsDrawFrame`, `ScreenQuadFlush`).
   const quads: ScreenQuad[] = []
+
   if (linked.length && viewport && !shine) unsupported.add('texture shine')
+
   const blinkStep = Math.min(Math.fround(step), Math.fround(0.1))
+
   for (const { light, world, blink } of linked) {
     blink?.tick(blinkStep)
+
     const brightness = blink?.brightness ?? 1
     if (brightness < 0 || !viewport || !shine) continue
     quads.push(
@@ -1180,17 +1304,21 @@ export const collectSpaceFrame = ({
   const castFrom: CoronaView['rayHits'] =
     rayHits ??
     (hitboxes.length ? (from, to, limit) => castRay(hitboxes, from, to, limit) : undefined)
+
   if (quality > 0 && viewport)
     for (const object of objects) {
       const { star, position } = object
       if (!star) continue
+
       if (field?.enclosure === 2) {
         hideStar(star)
         continue
       }
+
       // `FUN_00511b90`: the player in a lane, or any nebula's or field's zone across the line.
       const zones = [...nebulae.map(({ zone }) => zone), ...asteroids.map(({ zone }) => zone)]
       const zoneBlocked = lane || zones.some((zone) => zone.meets(eye, position))
+
       afterEffects.push(
         ...starCorona(star, position, zoneBlocked, {
           camera: given,
@@ -1203,6 +1331,7 @@ export const collectSpaceFrame = ({
         }),
       )
     }
+
   const litCockpit = () => {
     const { sphere, within } = cockpit!
     const nebula = within?.state.nebula
@@ -1218,6 +1347,7 @@ export const collectSpaceFrame = ({
       within &&
       nebula &&
       fogOf(within.state.start, fogEnd(within.state, sphere.center), nebula.fog.color)
+
     return cockpitDraws(
       cockpit!,
       camera,
@@ -1233,15 +1363,19 @@ export const collectSpaceFrame = ({
       { lights: lit.lights, ambient: lit.ambient, ...(fog && { fog }) },
     )
   }
+
   // `SpaceEnvFxEndCockpitPass` (`0x51c9e0`): then every sun's flare, from where the last draw left it.
   const flares: Draw[] = []
+
   if (quality > 0 && viewport)
     for (const { star } of objects) {
       const flare = star && starFlare(star, { view, ...viewport })
       if (flare) flares.push(flare)
     }
+
   // From the cockpit its mesh goes between them (`0x51848b`, `0x5185e5`), past the depth clear.
   const shownCockpit = firstPerson && cockpit ? litCockpit() : undefined
+
   afterEffects.push(...(shownCockpit?.drawn ?? []), ...flares)
 
   const effectDraws: EffectDraw[] = []
@@ -1255,21 +1389,28 @@ export const collectSpaceFrame = ({
     .flatMap(({ effects }) => effects)
     .sort((a, b) => b.serial - a.serial)
     .map(({ effect }) => effect)
+
   // The dust's, held ahead of the camera, after the rocks'.
   if (dust) {
     const types = effectView?.effectTypes ?? []
     const runTimes = RETAIL_EFFECT_TYPES.map((row, at) => types[at]?.runTime ?? row.runTime)
+
     dust.update(given, step, dustZones, { ...dustOptions, runTimes })
   }
+
   const dustEffects = dust ? dust.effects().map(({ effect }) => effect) : []
   const all = [...effects, ...rockEffects, ...dustEffects]
   const effectFrame = { camera, aspect, view, field, nebulae: states }
   const viewsOf = all.map((effect) => viewOne(effect, effectFrame, effectView))
   const views = viewsOf.slice(0, effects.length)
   const viewOf = new Map(rockEffects.map((effect, at) => [effect, viewsOf[effects.length + at]]))
+
   for (const { rocks, effects: theirs } of carried)
     rocks.viewed(theirs.map(({ effect }) => viewOf.get(effect)))
+
   dust?.viewed(viewsOf.slice(effects.length + rockEffects.length))
+
+  // The walk is by type bucket, each in list order.
   const walked = all
     .map((effect, at) => ({ effect, at }))
     .filter(
@@ -1277,6 +1418,7 @@ export const collectSpaceFrame = ({
         effect.type !== SKIPPED_EFFECT_TYPE && (viewsOf[at]?.fate ?? 'draw') === 'draw',
     )
     .sort((a, b) => a.effect.type - b.effect.type || a.at - b.at)
+
   for (const { effect } of walked)
     collectEffect(effect.instance, view, effect.texture, effectDraws, unsupported, effect.visible)
 
@@ -1285,17 +1427,22 @@ export const collectSpaceFrame = ({
     field && field.enclosure !== 0
       ? fogOf(field.state.start, fogEnd(field.state, eye), BLACK)
       : undefined
+
   // `SpaceEffectsDrawFrame` walks the shots after every other effect, in their own bucket, and draws
   // them as one once the walk is done (`0x4f76cd`). No `code_beam` and retail starts none.
   if (beams.length && !beamTexture) unsupported.add('texture code_beam')
+
   const shots = beamBatch(firstPerson)
+
   if (beamTexture) {
     const seen = beamView(camera, aspect, view, effectView)
     for (const beam of beams) beam.walk(blinkStep, seen, shots)
   }
+
   // Its bucket after the shots' draws as it's walked, ahead of their flush. No `line` and retail
   // starts none (`CliTractorBeamInit`).
   if (tractors.length && !lineTexture) unsupported.add('texture line')
+
   const tractorsDrawn = lineTexture
     ? tractorDraws(
         tractors,
@@ -1330,6 +1477,7 @@ export const collectSpaceFrame = ({
     // `SpaceEffectsDrawFrame` (`0x4f7480`) sets `ZFUNC` 4 around every effect.
     effectDepthFunc: 'lequal',
     effectViews: views,
+    asteroidCubes,
     ...(tractorsDrawn.length && { tractors: tractorsDrawn }),
     ...(beamsDraw && { beams: beamsDraw }),
     ...(quads.length && shine && { screenQuads: [{ texture: shine.texture, quads }] }),
@@ -1368,9 +1516,12 @@ const cockpitDraws = (
   const projection = projectionMatrix(camera, aspect)
   const drawn: Draw[] = []
   const queued: Queued[] | undefined = effectsOff ? [] : undefined
+
   collectModel(model, camera, aspect, view, time, drawn, queued, unsupported, unregistered, limits)
+
   const atEnd: Draw[] = []
   if (queued) flushQueued(queued, atEnd)
+
   // `ZFUNC` is still the 4 the near lists, or the tunnel, left (`cockpit_li`).
   const litDraw = (draw: Draw): Draw => ({
     ...draw,
@@ -1379,6 +1530,7 @@ const cockpitDraws = (
     ...(lit.fog && { fog: lit.fog }),
     ...(draw.depthFunc === 'less' && { depthFunc: 'lequal' as const }),
   })
+
   return {
     drawn: drawn.map((draw) => ({ ...litDraw(draw), projection, depthRange })),
     atEnd: atEnd.map((draw) => ({
@@ -1429,6 +1581,7 @@ const collectJumpFrame = (
   const unregistered = new Set<string>()
   const first = draws.length
   const models = [ship.model, ...(ship.attached ?? []).map(underOwn(ship.model))]
+
   for (const model of models)
     collectModel(
       model,
@@ -1442,13 +1595,17 @@ const collectJumpFrame = (
       unregistered,
       limits,
     )
+
   flushQueued(queued, draws)
+
   // `EngineLightClearRegisteredList`, `jump_ambient` into `D3DRS_AMBIENT`, then the tunnel's light.
   // `ZFUNC` is 4, as the last near list and the tunnel's `Win3DSetDepthWrite` leave it.
   const light = tunnel?.light
   const shipAmbient = systemAmbient(ambient)
+
   for (let index = first; index < draws.length; index++) {
     const draw = draws[index]!
+
     draws[index] = {
       ...draw,
       lights: light ? [light] : [],
@@ -1461,10 +1618,14 @@ const collectJumpFrame = (
   const views = effects.map((effect): EffectView | undefined => {
     if (!TUNNEL_EFFECT_TYPES.includes(effect.type)) return { fate: 'hold', lod: 1 }
     if (!effect.position) return undefined
+
     const placed = { ...effect, position: effect.position }
+
     return viewEffect(placed, { camera, aspect, view, nebulae: [] }, effectView)
   })
+
   const effectDraws: EffectDraw[] = []
+
   for (const type of TUNNEL_EFFECT_TYPES)
     effects.forEach((effect, at) => {
       if (effect.type !== type || (views[at]?.fate ?? 'draw') !== 'draw') return
@@ -1500,6 +1661,7 @@ const collectJumpFrame = (
     effects: effectDraws,
     effectDepthFunc: 'lequal',
     effectViews: views,
+    asteroidCubes: [],
     ...(firstPerson && (hud || cockpit) && { clearDepth: true }),
     ...(shownCockpit?.drawn.length && { afterEffects: shownCockpit.drawn }),
     ...(shownCockpit?.atEnd.length && { atEnd: shownCockpit.atEnd }),

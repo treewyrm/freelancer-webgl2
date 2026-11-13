@@ -9,11 +9,13 @@ let report: MeshReport
 
 before(async () => {
   browser = await launch()
+
   const { value } = await runFixture<MeshReport>(
     browser,
     new URL('./mesh.fixture.ts', import.meta.url),
     { width: 4, height: 4 },
   )
+
   report = value
 })
 

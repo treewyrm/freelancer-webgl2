@@ -15,6 +15,7 @@ import {
 import { DEFAULT_SAMPLER } from '#/texture/texture.js'
 import type { Draw } from './frame.js'
 import type { NebulaState, Zone } from './nebula.js'
+import { inverseRoot, unitByteRounded } from './retail.js'
 
 const f = Math.fround
 
@@ -24,19 +25,8 @@ const STRIDE = 24
 const BLACK: Vector3 = { x: 0, y: 0, z: 0 }
 const REACH = f(1.15)
 
-const floats = new Float32Array(1)
-const bits = new Int32Array(floats.buffer)
-
-// `FUN_00507e70`: one Newton step from `0x5f3759df`, left unrounded.
-const inverseRoot = (squared: number): number => {
-  floats[0] = squared
-  bits[0] = 0x5f3759df - (bits[0]! >> 1)
-  const estimate = floats[0]!
-  return (1.5 - estimate * estimate * squared * 0.5) * estimate
-}
-
 // `ScaleClampToByte`: times 255, truncated, held to a byte.
-const byte = (value: number): number => Math.min(Math.max(Math.trunc(f(value * 255)), 0), 255)
+const byte = unitByteRounded
 
 const dot = (a: Vector3, b: Vector3): number => a.y * b.y + a.x * b.x + a.z * b.z
 
@@ -56,6 +46,7 @@ const scale = ({ x, y, z }: Vector3, by: number): Vector3 => ({
 const edgeOf = (zone: Zone, edge: Vector3): Vector3 => {
   const unit = scale(edge, inverseRoot(f(edge.x * edge.x + edge.z * edge.z + edge.y * edge.y)))
   const reach = f(f(zone.radiusAlong(unit)) * REACH)
+
   return scale(unit, reach / Math.sqrt(unit.x * unit.x + unit.y * unit.y + unit.z * unit.z))
 }
 
@@ -84,6 +75,7 @@ export const fillSheetsDraw = (
 ): Draw | undefined => {
   const { fill, zone } = nebula
   if (!(depth < 1) || !fill) return undefined
+
   const { size, position: center } = zone
   const [x, y, z] = zone.axes
   const long = size.x > size.z
@@ -100,26 +92,33 @@ export const fillSheetsDraw = (
 
   const faceA = facing(axisA, look, 0.0001, 204.08163)
   const edgeA = edgeOf(zone, cross(look, axisA))
+
   axisA = scale(axisA, (long ? size.x : size.z) * REACH)
 
   let faceB = facing(y, look, 0.2, 5)
+
   // Only a sheet B that shows is refined by the other axis, and not held to 1 then.
   if (faceB > 0) {
     const refined = (1 - Math.abs(dot(axisB, look)) - f(0.2)) * faceB * 5
+
     faceB = refined < 0 ? 0 : f(refined)
   }
+
   const edgeB = edgeOf(zone, cross(look, y))
   const axisY = scale(y, f(size.y * REACH))
 
   const { color } = nebula.fog
   const { u0, v0, u1, v1 } = fill
   const corners: { at: [number, number, number]; uv: [number, number]; alpha: number }[] = []
+
+  // One quad: centre ± `edge` (across the view, `near`/`far`) ± `axis` (along the zone's axis).
   const sheet = (edge: Vector3, axis: Vector3, alpha: number, rounded: boolean) => {
     const near = { x: f(center.x + edge.x), y: f(center.y + edge.y), z: f(center.z + edge.z) }
     const far = { x: f(center.x - edge.x), y: f(center.y - edge.y), z: f(center.z - edge.z) }
     // Sheet B's last corner keeps x and y unrounded across both subtractions (`0x507dbf`).
     const lastX = rounded ? f(far.x - axis.x) : f(center.x - edge.x - axis.x)
     const lastY = rounded ? f(far.y - axis.y) : f(center.y - edge.y - axis.y)
+
     corners.push(
       { at: [f(near.x - axis.x), f(near.y - axis.y), f(near.z - axis.z)], uv: [u0, v0], alpha },
       { at: [f(near.x + axis.x), f(near.y + axis.y), f(near.z + axis.z)], uv: [u1, v0], alpha },
@@ -133,11 +132,13 @@ export const fillSheetsDraw = (
 
   const vertices = new Uint8Array(corners.length * STRIDE)
   const view = new Float32Array(vertices.buffer)
+
   corners.forEach(({ at, uv, alpha }, index) => {
     view.set(at, (index * STRIDE) / 4)
     vertices.set([byte(color.z), byte(color.y), byte(color.x), byte(alpha)], index * STRIDE + 12)
     view.set(uv, (index * STRIDE + 16) / 4)
   })
+
   // `Win3DEnd` makes each quad (0, 1, 2) and (0, 2, 3).
   const indices = new Uint16Array(
     Array.from({ length: corners.length / 4 }, (_, quad) =>
@@ -172,6 +173,7 @@ export const fillSheetsDraw = (
     boundingBox: { min: BLACK, max: BLACK },
     boundingSphere: { center: BLACK, radius: 0 },
   }
+
   return {
     mesh,
     reference,

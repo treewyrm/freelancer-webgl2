@@ -26,21 +26,26 @@ for (const name of ['starsphere_li01', 'starsphere_st03b', 'starsphere_ew05', 's
   test(`${name} is retail draw for draw, where the camera alone places it`, { skip }, async () => {
     const read = async (path: string) => {
       const file = readFileSync(join(data, path))
+
       return new Uint8Array(file.buffer, file.byteOffset, file.byteLength)
     }
+
     const { scene } = await loadScene(scenes.get(name)!, read)
     const frame = collectFrame(scene)
     const retail = readCapture(readFileSync(run, 'utf8')).frames.at(-1)!.draws
+
     assert.deepEqual(frame.unsupported, [])
     assertFrameMatches(frame, retail, indexTextures(data))
 
     frame.draws.forEach(({ world, materialName }, n) => {
       const modelView = Matrix4.multiply(frame.view, world)
       const columns = [modelView.x, modelView.y, modelView.z, modelView.w]
+
       // Retail's world is the modelview with Z flipped, written as rows for row vectors.
       columns.forEach((column, c) =>
         [column.x, column.y, -column.z].forEach((cell, r) => {
           const theirs = retail[n]!.world![c * 4 + r]!
+
           assert.ok(
             Math.abs(cell - theirs) < 0.01,
             `draw ${n}, ${materialName}: ${cell}, ${theirs}`,

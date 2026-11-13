@@ -35,12 +35,14 @@ const skipOf = (name: string) =>
 
 const read = async (path: string) => {
   const file = readFileSync(join(data, path))
+
   return new Uint8Array(file.buffer, file.byteOffset, file.byteLength)
 }
 
 /** D3D's row-vector matrix in its mirrored space, as ours: its third column negated. */
 const unmirror = (m: readonly number[]): Matrix4 => {
   const row = (at: number, w: number) => ({ x: m[at]!, y: m[at + 1]!, z: -m[at + 2]!, w })
+
   return { x: row(0, 0), y: row(4, 0), z: row(8, 0), w: row(12, 1) }
 }
 
@@ -84,11 +86,13 @@ const load = async (name: string) => {
       sphere: { center: Matrix4.transformPoint(sphere.center, world), radius: sphere.radius },
     },
   })
+
   return { frame, pass, after: draws[end]!, camera }
 }
 
 const nearFar = (projection: readonly number[]) => {
   const near = -projection[14]! / projection[10]!
+
   return [near, (projection[10]! * near) / (projection[10]! - 1)]
 }
 
@@ -96,6 +100,7 @@ for (const { name, blended } of RUNS) {
   test(`${name}: the mesh's pass is retail's, draw for draw`, { skip: skipOf(name) }, async () => {
     const { frame, pass, after } = await load(name)
     const ours = frame.afterEffects ?? []
+
     assert.deepEqual(
       ours.map(({ blend }) => blend),
       blended,
@@ -110,12 +115,18 @@ for (const { name, blended } of RUNS) {
     { skip: skipOf(name) },
     async () => {
       const { frame, pass } = await load(name)
+
       for (const [at, draw] of (frame.afterEffects ?? []).entries()) {
         const retail = pass[at]!
+
         assert.deepEqual(draw.depthRange, retail.viewport!.slice(4, 6))
+
         const [near, far] = nearFar(retail.projection!)
+
         assert.ok(Math.abs(near! - 0.05) < 1e-6 && Math.abs(far! - 500) < 0.1, `${near} ${far}`)
+
         const theirs = retail.projection!
+
         assert.ok(Math.abs(draw.projection!.x.x - theirs[0]!) < 1e-5)
         assert.ok(Math.abs(draw.projection!.y.y - theirs[5]!) < 1e-5)
       }
@@ -127,9 +138,12 @@ for (const { name, blended } of RUNS) {
     const view = Matrix4.invert(
       Matrix4.fromRotationTranslation(camera.orientation, camera.position),
     )
+
     for (const [at, draw] of (frame.afterEffects ?? []).entries()) {
       const [light] = pass[at]!.lights!
+
       assert.equal(draw.lights!.length, 1)
+
       const ours = draw.lights![0]!
       // Lights go in view space: retail's mirrored, ours not.
       const { x, y, z } = Matrix4.transformDirection(ours.direction, view)

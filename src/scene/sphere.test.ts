@@ -45,6 +45,7 @@ test('the level clamps, and what acos cannot take is the lowest', () => {
 test('a mod can change the level bounds and the bias', () => {
   assert.equal(sphereLevel(1000, 1e-6, { minimum: 3, maximum: 12 }), 12)
   assert.equal(sphereLevel(1000, 1500, { minimum: 1, maximum: 9 }), 1)
+
   const camera = {
     position: { x: 0, y: 0, z: 5000 },
     orientation: Matrix3.identity,
@@ -58,6 +59,7 @@ test('a mod can change the level bounds and the bias', () => {
       width: 512,
       ...(levels ? { levels } : {}),
     })[0]!.reference.vertexCount
+
   // A smaller bias asks for a finer patch, and a lower maximum caps it.
   assert.ok(levelOf({ bias: 0.1 }) > levelOf())
   assert.ok(levelOf({ bias: 0.1, maximum: 3 }) < levelOf({ bias: 0.1 }))
@@ -73,13 +75,17 @@ test('straight on, only that face draws, and each side has its own axis', () => 
     [4, [0, near, 0]],
     [5, [0, -near, 0]],
   ]
+
   for (const [face, position] of cases) {
     const parts = placeSphere(sphere(), Matrix4.identity, {
       camera: camera(...position),
       width: 1024,
     })
+
     assert.deepEqual(facesOf(parts), [face])
+
     const { z: normal } = parts[0]!.world
+
     assert.deepEqual(
       [normal.x, normal.y, normal.z],
       position.map((axis) => axis / near),
@@ -92,6 +98,7 @@ test('far away the corners of the nearest face show its neighbours, never its op
     camera: camera(0, 0, 100000),
     width: 1024,
   })
+
   assert.deepEqual(facesOf(parts), [0, 1, 3, 4, 5])
 })
 
@@ -104,8 +111,11 @@ test('a turned sphere culls by its own axes', () => {
     w: { x: 0, y: 0, z: 0, w: 1 },
   }
   const parts = placeSphere(sphere(), world, { camera: camera(0, 0, 110), width: 1024 })
+
   assert.deepEqual(facesOf(parts), [1])
+
   const { z: normal } = parts[0]!.world
+
   assert.deepEqual([normal.x, normal.y, normal.z], [0, 0, 1])
 })
 
@@ -115,6 +125,7 @@ test('sides repeat, and a seventh draws after the rest, as a shell of its own', 
     camera: camera(0, 0, 100000),
     width: 1024,
   })
+
   assert.deepEqual(facesOf(parts, one), [0, 0, 0, 0, 0])
 
   const seven = [...SIDES, 'shell']
@@ -122,6 +133,7 @@ test('sides repeat, and a seventh draws after the rest, as a shell of its own', 
     camera: camera(0, 0, 100000),
     width: 1024,
   })
+
   assert.deepEqual(facesOf(withShell, seven), [0, 1, 3, 4, 5, 6, 6, 6, 6, 6])
   assert.equal(withShell[0]!.extent, undefined)
   assert.equal(withShell[5]!.extent, 100)
@@ -134,12 +146,14 @@ test('a pinned level overrides the choice, and spheres alike share a patch', () 
     width: 1024,
     level: 6,
   })
+
   assert.equal(part!.mesh, spherePatch(100, 6).mesh)
   assert.equal(part!.reference, spherePatch(100, 6).reference)
 })
 
 test('the camera on the centre draws a face, rather than none or a NaN', () => {
   const parts = placeSphere(sphere(), Matrix4.identity, { camera: camera(0, 0, 0), width: 1024 })
+
   assert.deepEqual(facesOf(parts), [0])
   assert.equal(parts[0]!.mesh, spherePatch(100, 3).mesh)
 })
@@ -164,11 +178,13 @@ test('faces become draws, by their own materials, with no mesh library', () => {
     lights: [],
     models: [model],
   })
+
   assert.deepEqual(frame.unsupported, [])
   assert.deepEqual(
     frame.draws.map(({ materialName }) => materialName),
     ['m0', 'm1', 'm3', 'm4', 'm5'],
   )
+
   for (const draw of frame.draws) {
     assert.equal(draw.cull, 'back')
     assert.equal(draw.count, spherePatch(100, 3).mesh.indices.length)
@@ -191,6 +207,7 @@ test('a face whose material the host lacks is reported, by the name its file wri
       },
     ],
   })
+
   assert.deepEqual(frame.draws, [])
   assert.deepEqual(frame.unsupported, ['material m0'])
 })

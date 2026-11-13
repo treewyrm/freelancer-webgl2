@@ -1,6 +1,6 @@
 /** Writes a reference scene as a `.thn`, for the game to play in place of its menu room. */
 import { Matrix4, type Vector3 } from '@treewyrm/freelancer/math'
-import { value } from '@treewyrm/freelancer/thn'
+import { value, type Value } from '@treewyrm/freelancer/thn'
 import { write } from '@treewyrm/freelancer/thn/text'
 import type { Camera } from '#/scene/camera.js'
 import type { SwitchTable } from '#/deformable/level.js'
@@ -16,7 +16,15 @@ export interface ReferenceScene {
    * A sky, drawn first, in this order. `Prop` is `petaldb.ini`'s. `Solar` adds a lab-only archetype
    * for a file no retail table names.
    */
-  sky?: { archetype: string; category: 'Prop' | 'Solar'; file: string }[]
+  sky?: {
+    archetype: string
+    category: 'Prop' | 'Solar'
+    file: string
+    /** `usr_flg` 2, `BackdropMaterial`'s path, rather than 1. */
+    backdrop?: boolean
+    /** Where `file` is under DATA. `SOLAR/STARSPHERE` when absent. */
+    folder?: string
+  }[]
   /** A `costumes.ini` costume, playing one script through to its end, where it holds. */
   character?: {
     costume: string
@@ -71,6 +79,12 @@ export interface ReferenceScene {
     /** Carries camera and effect along together, at a steady speed, for the dust. */
     travel?: { by: Vector; duration: number }
   }
+  /**
+   * Playback to check: entities and events written after the rest, as a THN writes them, which may
+   * name `Model_Reference`, `Camera_Reference` and `Monitor_Reference`. Every motion ends by `settle`
+   * seconds and holds, so F9 any time after captures the state `settled` computes.
+   */
+  thorn?: { entities: Value[]; events: Value[]; settle: number }
   /** 0 to 255, given to the model through `LIT_AMBIENT`. */
   ambient: Vector
   /** `range` is 2000 unless a scene is too large for that. */
@@ -89,6 +103,7 @@ export const rotation = (yaw: number, pitch: number): Rows => {
   const [sp, cp] = [Math.sin((pitch * Math.PI) / 180), Math.cos((pitch * Math.PI) / 180)]
   const round = (rows: number[][]) =>
     rows.map((row) => row.map((cell) => Number(cell.toFixed(6)))) as unknown as Rows
+
   return round([
     [cy, sy * sp, sy * cp],
     [0, cp, -sp],
@@ -138,11 +153,11 @@ export const sceneScript = (scene: ReferenceScene): string => {
     }),
     value.table(common('Monitor_Reference', 'MONITOR', '', 0)),
     // `usr_flg` 1 is the starsphere path, and `srt_grp` orders a room's groups, signed.
-    ...(sky ?? []).map(({ archetype, category }, index) =>
+    ...(sky ?? []).map(({ archetype, category, backdrop }, index) =>
       value.table({
         ...common(`Sky_Reference_${index + 1}`, 'COMPOUND', archetype, 0),
         srt_grp: index - (sky?.length ?? 0),
-        usr_flg: 1,
+        usr_flg: backdrop ? 2 : 1,
         flags: value.identifier('LIT_DYNAMIC', 'LIT_AMBIENT'),
         spatialprops: spatial([0, 0, 0], IDENTITY),
         userprops: value.table({ category }),
@@ -214,6 +229,7 @@ export const sceneScript = (scene: ReferenceScene): string => {
         }),
       }),
     ),
+    ...(scene.thorn?.entities ?? []),
   ]
 
   const events = [
@@ -297,6 +313,7 @@ export const sceneScript = (scene: ReferenceScene): string => {
           ),
         ]
       : []),
+    ...(scene.thorn?.events ?? []),
   ]
 
   return write([
@@ -309,7 +326,7 @@ export const sceneScript = (scene: ReferenceScene): string => {
 type Rowed = { x: Vector3; y: Vector3; z: Vector3 }
 
 /** THN triples are columns (library `THORN.md`); a `Matrix3` holds rows. */
-const toRows = ([a, b, c]: Rows): Rowed => ({
+export const toRows = ([a, b, c]: Rows): Rowed => ({
   x: { x: a[0], y: b[0], z: c[0] },
   y: { x: a[1], y: b[1], z: c[1] },
   z: { x: a[2], y: b[2], z: c[2] },

@@ -5,7 +5,7 @@
  * x, y and z, the radius, a rotation nothing reads, three colour offsets and a brightness, scrolled
  * on as the ship nears the end. Pure, no GL.
  */
-import { Matrix4, type Vector3 } from '@treewyrm/freelancer/math'
+import { cubicAt, Matrix4, type CubicSegment, type Vector3 } from '@treewyrm/freelancer/math'
 import type { Texture } from '@treewyrm/freelancer/texture'
 import {
   Primitive,
@@ -17,6 +17,7 @@ import {
 import { DEFAULT_SAMPLER } from '#/texture/texture.js'
 import type { Draw, SceneLight } from './frame.js'
 import type { Random } from './lightning.js'
+import { clampByte, unitByte } from './retail.js'
 
 const f = Math.fround
 
@@ -133,25 +134,25 @@ export const RETAIL_TUNNEL: Readonly<TunnelSettings> = {
 /** `SetState`: 0 idle, 1 built for the jump out, 2 in the tunnel, 3 jumping in. */
 export type TunnelState = 0 | 1 | 2 | 3
 
-// One cubic segment: `((c3 t + c2) t + c1) t + c0`.
-interface Segment {
-  c0: number
-  c1: number
-  c2: number
-  c3: number
-}
-
-/** `GateTunnelSolveSpline` (`FUN_005018a0`): the natural-end cubic through `y[0..n]`. */
-export const solveSpline = (y: readonly number[], n: number): Segment[] => {
+/**
+ * `GateTunnelSolveSpline` (`FUN_005018a0`): the natural-end cubic through `y[0..n]`, as
+ * `naturalSpline` solves it but rounded to a float at every step.
+ */
+export const solveSpline = (y: readonly number[], n: number): CubicSegment[] => {
   const gamma = new Array<number>(n + 1).fill(0)
   const delta = new Array<number>(n + 1).fill(0)
   const d = new Array<number>(n + 1).fill(0)
+
+  // Forward sweep of the tridiagonal system for the knot derivatives `d`, then back-substitution;
+  // `c0..c3` are each segment's power-basis cubic over t in [0, 1].
   gamma[0] = 0.5
   for (let i = 1; i < n; i++) gamma[i] = f(1 / (4 - gamma[i - 1]!))
   gamma[n] = f(1 / (2 - gamma[n - 1]!))
   delta[0] = f((y[1]! - y[0]!) * gamma[0]! * 3)
+
   for (let i = 1; i < n; i++)
     delta[i] = f(((y[i + 1]! - y[i - 1]!) * 3 - delta[i - 1]!) * gamma[i]!)
+
   delta[n] = f(((y[n]! - y[n - 1]!) * 3 - delta[n - 1]!) * gamma[n]!)
   d[n] = delta[n]!
   for (let i = n - 1; i >= 0; i--) d[i] = f(delta[i]! - d[i + 1]! * gamma[i]!)
@@ -166,7 +167,7 @@ export const solveSpline = (y: readonly number[], n: number): Segment[] => {
 /** `FGateTunnelCurve`: control values and their spline, and the range new values are drawn from. */
 export class TunnelCurve {
   samples: number[] = []
-  segments: Segment[] = []
+  segments: CubicSegment[] = []
   minimum = 0
   maximum = 1
 
@@ -181,28 +182,29 @@ export class TunnelCurve {
   sample(t: number): number {
     const count = this.segments.length
     if (t === 1) return this.samples[count]!
+
     const scaled = count * t
     const whole = Math.trunc(scaled)
-    const s = this.segments[whole]!
-    const x = scaled - whole
-    return ((x * s.c3 + s.c2) * x + s.c1) * x + s.c0
+
+    return cubicAt(this.segments[whole]!, scaled - whole)
   }
 
   /** `EmitLayer`'s inlined brightness sample: the same, its fraction rounded to a float. */
   sampleRounded(t: number): number {
     const count = this.segments.length
     if (t === 1) return this.samples[count]!
+
     const scaled = count * t
     const whole = Math.trunc(scaled)
-    const s = this.segments[whole]!
-    const x = f(scaled - whole)
-    return ((x * s.c3 + s.c2) * x + s.c1) * x + s.c0
+
+    return cubicAt(this.segments[whole]!, f(scaled - whole))
   }
 
   /** `FUN_005012e0`: `count` values drawn from the range, the first `head` and last `tail` 0. */
   randomize(count: number, minimum: number, maximum: number, head: number, tail: number): void {
     this.minimum = minimum
     this.maximum = maximum
+
     const values = Array.from({ length: count }, () => this.draw())
     for (let i = 0; i < head && i < count; i++) values[i] = 0
     for (let i = Math.max(count - tail, 0); i < count; i++) values[i] = 0
@@ -213,6 +215,7 @@ export class TunnelCurve {
   scroll(shift: number): void {
     const count = this.samples.length
     if (shift < 8 || count < 8) return
+
     const values = this.samples
     for (let i = 0; i < shift; i++) values[i] = values[count - shift + i]!
     for (let i = shift; i < count; i++) values[i] = this.draw()
@@ -237,11 +240,12 @@ const round = ({ x, y, z }: Vector3): Vector3 => ({ x: f(x), y: f(y), z: f(z) })
 const length = ({ x, y, z }: Vector3): number => Math.sqrt(x * x + y * y + z * z)
 
 /** `ScaleClampToByte`: times 255, truncated, held to a byte. */
-const byte = (value: number): number => Math.min(Math.max(Math.trunc(value * 255), 0), 255)
+const byte = unitByte
 
 // `NormalizeInPlace`, over the sum as given.
 const normalize = (v: Vector3, squared: number): Vector3 => {
   const inverse = 1 / Math.sqrt(squared)
+
   return { x: f(inverse * v.x), y: f(inverse * v.y), z: f(inverse * v.z) }
 }
 
@@ -283,7 +287,9 @@ export class GateTunnel {
     // Each layer's offsets scroll, so it's this tunnel's own.
     this.layers = this.settings.layers.slice(0, 2).map((layer) => ({ ...layer }))
     this.random = random
+
     const curve = () => new TunnelCurve(random)
+
     this.pathX = curve()
     this.pathY = curve()
     this.pathZ = curve()
@@ -304,13 +310,16 @@ export class GateTunnel {
    */
   get light(): SceneLight | undefined {
     if (!this.lit) return undefined
+
     const { color, direction } = this.lit
+
     return { color: { x: color.x / 255, y: color.y / 255, z: color.z / 255 }, direction }
   }
 
   /** `SetState` (`FUN_004ff360`). */
   setState(state: TunnelState): void {
     this.state = state
+
     if (state === 0) {
       this.segment = 0
       this.phase = 0
@@ -327,18 +336,26 @@ export class GateTunnel {
   /** `Update` (`FUN_004ff3c0`), each step of the jump's states 2 and 3. */
   update(step: number): void {
     if (this.state === 0) return
+
     const { controlPoints, minSpeed, maxSpeed, timeToMaxSpeed } = this.settings
+
     if (this.state === 2 || this.state === 3) {
       const clock = step + this.speedClock
+
       this.speedClock = f(clock)
+
       let ratio = clock / timeToMaxSpeed
       if (1 < ratio) ratio = 1
+
+      // Speed ramps linearly from `minSpeed` to `maxSpeed` over `timeToMaxSpeed`; phase is path fraction.
       const phase = (ratio * (maxSpeed - minSpeed) + minSpeed) * step + this.phase
+
       this.phase = f(phase)
       this.segment = Math.trunc((controlPoints - 1) * phase)
 
       // Near the path's end every curve scrolls on, and the ship moves back as far.
       const limit = controlPoints - SCROLL_PAD - SCROLL_HEAD - 1
+
       if (this.segment >= limit) {
         this.pathX.scroll(SCROLL)
         this.pathY.scroll(SCROLL)
@@ -348,7 +365,10 @@ export class GateTunnel {
         this.offsetG.scroll(SCROLL)
         this.offsetB.scroll(SCROLL)
         this.brightness.scroll(SCROLL)
+
+        // The samples moved back `limit - 3` control points, so the phase does, in 1/segments units.
         const segments = controlPoints - 1
+
         this.segment = 3
         this.phase = f(this.phase - limit / segments + 3 / segments)
       }
@@ -365,22 +385,27 @@ export class GateTunnel {
         y: back.z * right.x - right.z * back.x,
         z: right.y * back.x - back.y * right.x,
       })
+
       const axis = (v: Vector3) => {
         const by = 1 / length(v)
+
         return { x: f(v.x * by), y: f(v.y * by), z: f(v.z * by), w: 0 }
       }
+
       this.ship = { x: axis(right), y: axis(up), z: axis(back), w: { ...here, w: 1 } }
     }
 
     // A light a draw switched on flickers, in brightness and about its direction.
     const lit = this.lit
+
     if (lit?.enabled) {
       const a = f(this.random() * RAND_HALF_UNIT)
       const dim = 1 - this.random() * a * RAND_HALF_UNIT
       // `ScaleVec3` by 255, truncated and held to a byte.
-      const scaled = (value: number) =>
-        Math.min(Math.max(Math.trunc(f(f(value * dim) * 255)), 0), 255)
+      const scaled = (value: number) => clampByte(f(f(value * dim) * 255))
+
       lit.color = { x: scaled(f(0.8)), y: scaled(f(0.8)), z: scaled(1) }
+
       const d = lit.direction
       const weighted = {
         x: f(LIGHT_WEIGHT * d.x),
@@ -395,6 +420,7 @@ export class GateTunnel {
         y: f(randY * 2 - 1 + weighted.y),
         z: f(f(randZ * 2 - 1) + weighted.z),
       }
+
       lit.direction = normalize(
         jittered,
         jittered.x * jittered.x + jittered.y * jittered.y + jittered.z * jittered.z,
@@ -419,7 +445,9 @@ export class GateTunnel {
   draws(): Draw[] {
     if (this.state === 0) return []
     if (this.lit) this.lit.enabled = true
+
     const draws: Draw[] = []
+
     this.layers.forEach((layer, index) => this.emitLayer(layer, index, draws))
     return draws
   }
@@ -435,10 +463,12 @@ export class GateTunnel {
       maxRotation,
     } = this.settings
     const { minRgb, maxRgb } = this.settings
+
     if (count < 2) return
     // `RebuildPath(0)`: x with its first three 0, y the same, and z falling away along -Z.
     this.pathX.minimum = f(range.x * -0.5)
     this.pathX.maximum = f(range.x * 0.5)
+
     const xs = Array.from({ length: count }, () => this.pathX.draw())
     for (let i = 0; i < 3 && i < count; i++) xs[i] = 0
     this.pathX.set(xs)
@@ -458,6 +488,7 @@ export class GateTunnel {
     const x = f(this.random() * RAND_HALF_UNIT * 2 - 1)
     const z = f(randZ * 2 - 1)
     const direction = normalize({ x, y: -5, z }, 25 + z * z + x * x)
+
     this.lit = { color: { x: 255, y: 255, z: 255 }, direction, enabled: false }
   }
 
@@ -468,6 +499,7 @@ export class GateTunnel {
       y: f(this.pathY.sample(t)),
       z: f(this.pathZ.sample(t)),
     }
+
     return round(Matrix4.transformPoint(local, this.frame))
   }
 
@@ -494,6 +526,7 @@ export class GateTunnel {
       y: forward.z * left.x - left.z * forward.x,
       z: left.y * forward.x - forward.y * left.x,
     })
+
     return { left, up, point }
   }
 
@@ -511,19 +544,27 @@ export class GateTunnel {
     const color = layer.color
 
     let t = start
+
     for (;;) {
       if (step > 0 ? !(t < end) : !(t > end)) break
+
       const grown = STEP_GROWTH * step
+
       step = f(grown)
+
       const unclamped = f(t + grown)
       let next = 0 > unclamped ? 0 : unclamped
       if (grown > 0 ? end < next : end > next) next = end
 
       const fraction = (at: number) => f(clamp(Math.abs(at - phase) / span))
+
+      // Radius lerps to `radius × farRadiusFactor` by how far `at` is from the ship, over the window.
       const size = (at: number) => {
         const radius = this.radius.sample(at) * layer.radiusFactor
+
         return f((radius * farRadiusFactor - radius) * fraction(at) + radius)
       }
+
       const size0 = size(t)
       const size1 = size(next)
       const frame0 = this.pathFrame(t)
@@ -532,10 +573,13 @@ export class GateTunnel {
       // Alpha from far to near, as the step runs backwards, cubed.
       const [from, to] =
         step < 0 ? [layer.farAlpha, layer.nearAlpha] : [layer.nearAlpha, layer.farAlpha]
+
       const progress = (at: number) => {
         const p = Math.abs(at - start) / span + ALPHA_BIAS
+
         return p < 1 ? p : 1
       }
+
       const alphaRange = to - from
       const base0 = f(alphaRange * progress(t) + from)
       const alpha0 = f(base0 * base0 * base0)
@@ -549,17 +593,21 @@ export class GateTunnel {
         const g = f(this.offsetG.sample(at))
         const b = last ? this.offsetR.sample(at) : f(this.offsetR.sample(at))
         const shade = this.brightness.sampleRounded(at)
+
         return [
           f(f(color.x + r) * shade),
           f(f(color.y + g) * shade),
           f(shade * f(color.z + b)),
         ] as const
       }
+
       const tint0 = tint(t, false)
       const tint1 = tint(next, true)
 
       const vertices: number[][] = []
       const colors: number[][] = []
+
+      // A ring vertex: path point + left · r cos + up · r sin.
       const place = ({ left, up, point }: PathFrame, radius: number, cos: number, sin: number) => {
         const x = f(radius * cos)
         const y = f(radius * sin)
@@ -568,14 +616,20 @@ export class GateTunnel {
           y: left.y * x + up.y * y,
           z: left.z * x + up.z * y,
         })
+
         return [f(point.x + turned.x), f(point.y + turned.y), f(point.z + turned.z)]
       }
+
+      // Around the ring in turns, a vertex on each end per angle (a strip); `sum <= 1` repeats the
+      // first angle at 1 to close it.
       let angle = 0
+
       for (;;) {
         const radians = angle * TWO_PI
         const cos = Math.cos(radians)
         const sin = Math.sin(radians)
         const u = f(angle + layer.uOffset)
+
         vertices.push([...place(frame0, size0, cos, sin), u, f(t * layer.vScale + layer.vOffset)])
         colors.push([...tint0, alpha0])
         vertices.push([
@@ -584,10 +638,13 @@ export class GateTunnel {
           f(next * layer.vScale + layer.vOffset),
         ])
         colors.push([...tint1, alpha1])
+
         const sum = angle + ringStep
+
         angle = f(sum)
         if (!(sum <= 1)) break
       }
+
       draws.push(stripDraw(layer, index, vertices, colors, writeDepth))
       t = unclamped
     }
@@ -604,12 +661,15 @@ const stripDraw = (
 ): Draw => {
   const vertices = new Uint8Array(corners.length * STRIDE)
   const view = new Float32Array(vertices.buffer)
+
   corners.forEach(([x, y, z, u, v], at) => {
     const [r, g, b, a] = colors[at]!
+
     view.set([x!, y!, z!], (at * STRIDE) / 4)
     vertices.set([byte(b!), byte(g!), byte(r!), byte(a!)], at * STRIDE + 12)
     view.set([u!, v!], (at * STRIDE + 16) / 4)
   })
+
   const mesh: VMeshData = {
     name: 'gate tunnel',
     version: 1,
@@ -639,6 +699,7 @@ const stripDraw = (
     boundingSphere: { center: BLACK, radius: 0 },
   }
   const { texture } = layer
+
   return {
     mesh,
     reference,

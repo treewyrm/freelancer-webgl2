@@ -22,6 +22,7 @@ void main() { color = vec4(0.0, 1.0, 0.0, 1.0); }
 
 const readPixel = (gl: WebGL2RenderingContext, x: number, y: number): number[] => {
   const pixel = new Uint8Array(4)
+
   gl.readPixels(x, y, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixel)
   return [...pixel]
 }

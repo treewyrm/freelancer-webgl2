@@ -9,11 +9,13 @@ let report: ScreenReport
 
 before(async () => {
   browser = await launch()
+
   const { value } = await runFixture<ScreenReport>(
     browser,
     new URL('./screen.fixture.ts', import.meta.url),
     { width: 32, height: 32, context: { antialias: false, alpha: false } },
   )
+
   report = value
 })
 
@@ -23,6 +25,7 @@ test('raises no GL error', () => assert.equal(report.error, 0))
 
 test("a quad covers D3D's pixels from x0 up to x1, and its colour times the texture adds", () => {
   const { row } = report
+
   assert.deepEqual(row[3], [0, 0, 0])
   // 0x40 times (255, 128, 255): 64, 32, 64.
   for (const x of [4, 5, 6, 7]) assert.deepEqual(row[x], [64, 32, 64], `x ${x}`)

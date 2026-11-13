@@ -71,6 +71,7 @@ const typed = (name: string, value: unknown): Property => {
                   )
                 ? 'animatedFloat'
                 : 'animatedCurve'
+
   return { name, type, value } as unknown as Property
 }
 
@@ -96,10 +97,12 @@ export const sceneOf = (entries: Entry[]): { effect: Effect; scene: EffectScene 
   const nodes = new Map<number, Node>()
   let sort = 0
   const links: [NodeInstance, string[]][] = []
+
   const build = (entry: Entry): NodeInstance => {
     const name = entry.node?.properties[0]?.value as string | undefined
     const crc = entry.root ? 0xee223b51 | 0 : name ? getResourceId(name, true) : 0
     if (entry.node) nodes.set(crc, entry.node)
+
     const instance: NodeInstance = {
       crc,
       flags: entry.folder || entry.root ? 1 : 0,
@@ -112,7 +115,9 @@ export const sceneOf = (entries: Entry[]): { effect: Effect; scene: EffectScene 
     instance.children = (entry.children ?? []).map(build)
     return instance
   }
+
   const effect: Effect = { name: 'test', children: entries.map(build) }
+
   for (const [instance, names] of links) instance.targets = names.map((name) => byName.get(name)!)
   return { effect, scene: buildEffect(effect, (crc) => nodes.get(crc)) }
 }

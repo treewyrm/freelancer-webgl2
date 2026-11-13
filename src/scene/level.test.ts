@@ -28,18 +28,22 @@ test('with no list, the ends are the model`s own', () => {
 
 test('a list overwrites as far as it reaches, scaled by about tan 35', () => {
   const ends = levelEnds(source([0, 100, 1000, 10000]), 'Root', [{ ranges: [0, 40] }])
+
   assert.equal(ends[0], scaled(40))
   assert.deepEqual(ends.slice(1), [1000, 10000])
 })
 
 test('a list longer than the part stops at its levels, and a negative value ends it', () => {
   assert.equal(levelEnds(source([0, 100, 200]), 'Root', [{ ranges: [0, 1, 2, 3, 4] }]).length, 2)
+
   const ends = levelEnds(source([0, 100, 1000]), 'Root', [{ ranges: [0, 40, -1, 80] }])
+
   assert.equal(ends[1], 1000)
 })
 
 test('the first list for the part wins, by name in any case, or one with no obj', () => {
   const lists = [{ obj: 'Wing', ranges: [0, 10] }, { ranges: [0, 20] }]
+
   assert.equal(levelEnds(source([0, 100]), 'WING', lists)[0], scaled(10))
   assert.equal(levelEnds(source([0, 100]), 'Tail', lists)[0], scaled(20))
 })
@@ -54,6 +58,7 @@ test('the first end reaching the metric chooses, inclusively, and past the last 
   const multi = source([0, 100, 200, 300])
   const ends = [100, 200, 300]
   const idAt = (metric: number) => levelAt(multi, metric, ends)?.reference.meshId
+
   assert.deepEqual(
     [idAt(0), idAt(100), idAt(100.5), idAt(300), idAt(300.5)],
     [1, 1, 2, 3, undefined],
@@ -63,6 +68,7 @@ test('the first end reaching the metric chooses, inclusively, and past the last 
 test('a level ending under the one before it is never chosen', () => {
   const multi = source([0, 200, 100, 300])
   const idAt = (metric: number) => levelAt(multi, metric, [200, 100, 300])?.reference.meshId
+
   assert.deepEqual([idAt(150), idAt(250)], [1, 3])
 })
 
@@ -77,12 +83,15 @@ const camera: Camera = {
 test('the metric is view depth, not distance, of the centre, widened by the view', () => {
   const at = (x: number, z: number) => Matrix4.translation({ x, y: 0, z })
   const near = levelMetric(part(1), at(0, -100), at(0, 0), camera)
+
   assert.ok(Math.abs(near - 100) < 1e-9, `${near}`)
   // Far off to the side at the same depth, and behind, which takes the absolute depth.
   assert.ok(Math.abs(levelMetric(part(1), at(500, -100), at(0, 0), camera) - 100) < 1e-9)
   assert.ok(Math.abs(levelMetric(part(1), at(0, 100), at(0, 0), camera) - 100) < 1e-9)
+
   // The centre of the top level counts, in the part's space.
   const centred = part(1, { x: 0, y: 0, z: 10 })
+
   assert.ok(Math.abs(levelMetric(centred, at(0, -100), at(0, 0), camera) - 90) < 1e-9)
 })
 
@@ -94,6 +103,7 @@ test('the metric is over the largest axis of the transform given to the draw', (
     w: { x: 0, y: 0, z: 0, w: 1 },
   }
   const metric = levelMetric(part(1), Matrix4.translation({ x: 0, y: 0, z: -100 }), scaled, camera)
+
   assert.ok(Math.abs(metric - 25) < 1e-9, `${metric}`)
 })
 
@@ -110,6 +120,7 @@ test("an archetype's lod range is the largest any part walked, or -1", () => {
   ]
   // Each list, as far as its part has levels and its ranges stay positive.
   const lists = [{ obj: 'Wing', ranges: [0, 5000, 9000] }, { ranges: [0, 40, 400, -1, 9999] }]
+
   assert.equal(lodRange(parts, lists), 5000)
   assert.equal(lodRange(parts, [{ obj: 'Tail', ranges: [0, 1] }]), -1)
   assert.equal(lodRange(parts, []), -1)
@@ -118,6 +129,7 @@ test("an archetype's lod range is the largest any part walked, or -1", () => {
 test("low detail skips the first list's MinSpecLOD levels, which end at 0", () => {
   const four = source([0, 100, 1000, 10000])
   const lists = [{ ranges: [0, 40, 400, 4000], minSpecLod: 2 }]
+
   assert.deepEqual(levelEnds(four, 'Root', lists, { detail: 0.5 }), [0, 0, scaled(4000)])
   assert.equal(lodRange([{ source: four, name: 'Root' }], lists, { detail: 0.5 }), 4000)
   // 1 when absent, but 0 under three ranges.
@@ -136,6 +148,7 @@ test("low detail skips the first list's MinSpecLOD levels, which end at 0", () =
 test('at high detail a list ending short of 15000 is held there where its scale passes it', () => {
   const three = source([0, 100, 1000, 10000])
   const lists = [{ ranges: [0, 100, 5000, 9000] }]
+
   // At a scale of 2 only 9000 passes 15000, and is held at 15000 and its level.
   assert.deepEqual(levelEnds(three, 'Root', lists, { detail: 1 }), [
     scaled(100),

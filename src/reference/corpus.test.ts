@@ -21,27 +21,35 @@ const LIBRARIES = ['.mat', '.txm', '.vms', '.cmp', '.3db', '.sph', '.dfm', '.utf
 
 const load = () => {
   const files: string[] = []
+
   const walk = (directory: string) => {
     for (const entry of readdirSync(directory, { withFileTypes: true })) {
       const path = join(directory, entry.name)
+
       if (entry.isDirectory()) walk(path)
       else if (LIBRARIES.includes(extname(path).toLowerCase())) files.push(path)
     }
   }
+
   walk(data)
+
   const read = files.map((path) => [path, Directory.read(readFileSync(path))] as const)
 
   // One namespace, as the game's libraries are once loaded. A model's own meshes are looked at first.
   const materials = new Map<number, Material>()
   const textures = new Map<number, TextureEntry>()
   const meshes = new Map<number, VMeshData>()
+
   for (const [, directory] of read) {
     for (const material of readMaterialLibrary(directory))
       materials.set(getResourceId(material.name), material)
+
     for (const texture of readTextureLibrary(directory))
       textures.set(getResourceId(texture.name), texture)
+
     for (const mesh of readVMeshLibrary(directory)) meshes.set(getResourceId(mesh.name), mesh)
   }
+
   return { read, materials, textures, meshes }
 }
 
@@ -65,16 +73,21 @@ test('every retail model plans a frame, and what is left is known', { skip }, ()
 
   for (const [path, directory] of read) {
     if (!['.cmp', '.3db'].includes(extname(path).toLowerCase())) continue
+
     let root: RigidModel
+
     try {
       root = readRigidModel(directory)
     } catch {
       failed++
       continue
     }
+
     models++
+
     const own = new Map(readVMeshLibrary(directory).map((m) => [getResourceId(m.name), m]))
     const seen = new Set<string>()
+
     // Every level, since the types can differ between them. The deepest any retail part has is under 8.
     for (let level = 0; level < 8; level++) {
       const model: SceneModel = {
@@ -95,13 +108,17 @@ test('every retail model plans a frame, and what is left is known', { skip }, ()
       for (const name of frame.unregistered) unregistered.add(name)
       for (const entry of frame.unsupported) seen.add(entry)
     }
+
     for (const entry of seen) {
       const material = byName.get(entry)
+
       if (material) {
         const type = mapMaterialType(material)
+
         undrawn.set(type, (undrawn.get(type) ?? 0) + 1)
       } else {
         const kind = entry.replace(/ .*/, '')
+
         missing.set(kind, [...(missing.get(kind) ?? []), `${entry} in ${path.slice(data.length)}`])
       }
     }

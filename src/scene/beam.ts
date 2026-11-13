@@ -109,6 +109,7 @@ const brightness = (value: number): number =>
 export const beamArchetype = (section: BeamSection): BeamArchetype => {
   const coreWidth = f(section.coreWidth ?? 1)
   const secCoreWidth = f(section.secCoreWidth ?? 1)
+
   return {
     kind: section.kind,
     tipColor: unit(section.tipColor),
@@ -156,6 +157,8 @@ export const lookMatrix = ({ x, y, z }: Vector3): Matrix3 => {
   const c0n = c0 * scale
   const c1n = c1 * scale
   const c2n = f(c2 * scale)
+
+  // Columns: `look × c`, `c` (normalised, from look and the quirky side) and `look`.
   return {
     x: {
       x: f(lookZ * c1n - c2n * lookY),
@@ -237,26 +240,34 @@ export class BeamEffect {
    */
   walk(step: number, seen: BeamSeen, batch: BeamBatch) {
     if (this.dead) return
+
     const { velocity, position } = this
+
     if (velocity)
       this.position = {
         x: f(position.x + step * velocity.x),
         y: f(position.y + step * velocity.y),
         z: f(position.z + step * velocity.z),
       }
+
     const fate = seen(this.position, this.limits.radius)
+
     if (fate === 'die') {
       this.dead = true
       return
     }
+
     this.age = this.age >= 0 ? f(this.age + step) : 0
+
     if (this.left > 0) {
       this.left = f(this.left - step)
+
       if (this.left <= 0) {
         this.dead = true
         return
       }
     }
+
     if (fate === 'draw') this.build(batch)
   }
 
@@ -266,6 +277,7 @@ export class BeamEffect {
     const { archetype, age, growth, left, limits, look } = this
     const t = age < growth ? f(age / growth) : 1
     const intensity = left > 0 ? f(left / limits.fade) : 1
+
     if (t === 0 || archetype.kind === 'spear')
       buildSpear(archetype, this, t, intensity, look && t === 0 && !batch.firstPerson, batch)
     else buildBolt(archetype, this, t, intensity, batch)
@@ -295,8 +307,10 @@ export const beamView = (
   const { near, far } = info.pbubble
   const reach = f(f(far - near) * f(1 - perf) + near)
   const unseen = info.existOffscreen ? 'run' : 'die'
+
   return (position, radius) => {
     if (!(info.priority >= perf)) return 'die'
+
     const at = Matrix4.transformPoint(position, view)
     const depth = f(-at.z)
     if (!(camera.near < f(depth + radius))) return unseen
@@ -348,6 +362,7 @@ const quad = (batch: BeamBatch, a: number, b: number, c: number, d: number) => {
   batch.indices.push(a, b, c, a, c, d)
 }
 
+// A local offset to world: the orientation's columns (`x`, `y`, `z`) weighted by it, plus `position`.
 const placed = ({ orientation: r, position: t }: Placed, x: number, y: number, z: number) => ({
   x: f(r.x.x * x + r.y.x * y + r.z.x * z + t.x),
   y: f(r.x.y * x + r.y.y * y + r.z.y * z + t.y),
@@ -408,6 +423,7 @@ const buildSpear = (
   triangle(batch, i0, i3, i2)
   triangle(batch, i0, i3, i4)
   triangle(batch, i0, i1, i4)
+
   for (const reach of [a1, a2])
     for (const side of [a3, a4, a5, a6]) triangle(batch, a0, reach, side)
 }

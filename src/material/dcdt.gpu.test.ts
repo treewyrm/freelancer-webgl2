@@ -9,11 +9,13 @@ let report: DcDtReport
 
 before(async () => {
   browser = await launch()
+
   const { value } = await runFixture<DcDtReport>(
     browser,
     new URL('./dcdt.fixture.ts', import.meta.url),
     { width: 8, height: 8 },
   )
+
   report = value
 })
 
@@ -22,6 +24,7 @@ after(() => browser.close())
 // Within one step of 255, for how a GPU rounds to 8 bits.
 const rgb = (name: string, expected: number[]) => {
   const actual = report[name]!
+
   expected.forEach((value, channel) =>
     assert.ok(
       Math.abs(actual[channel]! - value) <= 1,
@@ -36,6 +39,9 @@ test('ambient is material × scene, and emissive adds', () => {
   rgb('ambient', [51, 51, 102])
   rgb('emissive', [64, 0, 128])
 })
+
+test("each light adds the material's ambient times its own, whichever way the surface faces", () =>
+  rgb('lightAmbient', [64, 32, 128]))
 
 test('diffuse follows N·L, and goes no lower than nothing', () => {
   rgb('facing', [128, 64, 255])

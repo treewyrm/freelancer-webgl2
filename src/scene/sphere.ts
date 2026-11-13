@@ -43,6 +43,7 @@ export const RETAIL_SPHERE_LEVELS: Readonly<SphereLevels> = { minimum: 3, maximu
 export const solarSphereLevels = (detail: number): Pick<SphereLevels, 'maximum' | 'bias'> => {
   const { scale } = lodScale(detail)
   const t = Math.min(Math.max(scale + scale - 1, 0), 1)
+
   return { maximum: Math.trunc(3 * t + 7), bias: Math.trunc(3.5 - (t + t)) }
 }
 
@@ -104,6 +105,8 @@ export const sphereLevel = (
   metric: number,
   { minimum, maximum }: Pick<SphereLevels, 'minimum' | 'maximum'> = RETAIL_SPHERE_LEVELS,
 ): number => {
+  // `acos(1 - metric / radius)` is the angle whose sagitta `r(1 - cos)` is `metric`; the level is
+  // round(2 · log2(quarter turn ÷ that angle)).
   const ratio = Math.PI / 2 / Math.acos(1 - metric / radius)
   const level = Math.trunc(2 * Math.log2(ratio) + 0.5)
   if (!Number.isFinite(level)) return minimum
@@ -123,18 +126,22 @@ const visibleFaces = (radius: number, world: Matrix4, position: Vector3): number
 
   let best = 0
   let most = -1
+
   FACES.forEach(({ z: normal }, face) => {
     const facing = dot(toCamera, turn(normal))
+
     if (facing > most) {
       most = facing
       best = face
     }
   })
 
+  // A corner shows when its dot with the way to the camera passes the horizon, radius ÷ distance.
   const threshold = Math.min(radius / distance, K)
   const visible = FACE_CORNERS[best]!.filter(
     (corner) => dot(toCamera, turn(CORNERS[corner]!)) > threshold,
   )
+
   return FACES.flatMap((_, face) =>
     face === best || FACE_CORNERS[face]!.some((corner) => visible.includes(corner)) ? [face] : [],
   )
@@ -178,6 +185,7 @@ export const placeSphere = (
       ? (found.scale ?? DEFAULT_SHELL_SCALE)
       : 1
   const extent = radius * scale
+
   return [
     ...parts,
     ...visibleFaces(extent, world, camera.position).map((face) => ({

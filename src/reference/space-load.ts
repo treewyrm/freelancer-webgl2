@@ -106,30 +106,38 @@ const vector = ([x, y, z]: readonly number[]): Vector3 => ({ x: x!, y: y!, z: z!
 /** Each nicknamed section's `[LOD]` blocks, the sections that follow it, by nickname, folded. */
 const lodBlocksOf = async (read: ReadAsset, files: string[]): Promise<Map<string, LodList[]>> => {
   const found = new Map<string, LodList[]>()
+
   for (const file of files) {
     let owner: LodList[] | undefined
+
     for (const section of Document.read(await read(file))) {
       if (section.name.toLowerCase() === 'lod') {
         const obj = strings(section, 'obj')[0]
+
         owner?.push({ ...(obj ? { obj } : {}), ranges: numbers(section, 'LODranges') })
         continue
       }
+
       const nickname = section.getNickname()?.toLowerCase()
+
       owner = nickname && !found.has(nickname) ? [] : undefined
       if (owner) found.set(nickname!, owner)
     }
   }
+
   return found
 }
 
 /** Every section of these files, by nickname, folded. */
 const sectionsOf = async (read: ReadAsset, files: string[]): Promise<Map<string, Section>> => {
   const found = new Map<string, Section>()
+
   for (const file of files)
     for (const section of Document.read(await read(file))) {
       const nickname = section.getNickname()
       if (nickname && !found.has(nickname.toLowerCase())) found.set(nickname.toLowerCase(), section)
     }
+
   return found
 }
 
@@ -184,21 +192,26 @@ const loadArchetype = async (
     texture: (name) => textures.find((entry) => entry.name.toLowerCase() === name.toLowerCase()),
     ...(environment ? { environment } : {}),
   })
+
   return { section, model, lists, place }
 }
 
 /** The parts `lodRange` walks: each with geometry, by name, a `.3db`'s as `Root`. */
 const sources = (model: RigidModel) => {
   if (model.type === 'sphere') return []
+
   if (model.type !== 'compound')
     return model.type === 'rigid' && model.part ? [{ source: model.part, name: 'Root' }] : []
+
   const found: {
     source: NonNullable<Extract<RigidPart, { type: 'rigid' }>['part']>
     name: string
   }[] = []
+
   for (const node of partTransforms(model, Matrix4.identity).keys())
     if (node.part.type === 'rigid' && node.part.part)
       found.push({ source: node.part.part, name: node.name })
+
   return found
 }
 
@@ -214,11 +227,14 @@ const findHardpoint = (
           ([node, world]) => [node.part, world],
         )
       : [[model, Matrix4.identity]]
+
   for (const [part, world] of nodes) {
     if (part.type !== 'rigid') continue
+
     const point = part.hardpoints.find((entry) => entry.name.toLowerCase() === name.toLowerCase())
     if (point) return { point, part: world }
   }
+
   return undefined
 }
 
@@ -226,7 +242,9 @@ const findHardpoint = (
 const hardpoint = (model: RigidModel, name: string): Matrix4 | undefined => {
   const found = findHardpoint(model, name)
   if (!found) return undefined
+
   const { point, part } = found
+
   return Matrix4.multiply(
     part,
     Matrix4.fromRotationTranslation(point.orientation, point.position ?? { x: 0, y: 0, z: 0 }),
@@ -244,6 +262,7 @@ const SPHERE_TYPES = new Set(['PLANET', 'MOON'])
 const rootLevel = (model: RigidModel) => {
   const root = model.type === 'compound' ? model.part : model
   const source = root.type === 'rigid' ? root.part : undefined
+
   return source?.type === 'multilevel' ? source.levels[0] : source
 }
 
@@ -255,6 +274,7 @@ const bodySphere = async (
   const path = pathOf(strings(section, 'DA_archetype')[0]!).replace(/\.[^.]+$/, '.sur')
   const [root] = readSurfaceLibrary(BufferView.from(await read(path)))
   const { massCenter: c, radius } = root!
+
   return { center: { x: at.x + c.x, y: at.y + c.y, z: at.z + c.z }, radius }
 }
 
@@ -270,10 +290,13 @@ const hitboxOf = async (
   jointState?: PlaceOptions['jointState'],
 ): Promise<Hitbox | undefined> => {
   const archetype = pathOf(strings(section, 'DA_archetype')[0]!)
+
   if (/\.sph$/i.test(archetype)) {
     const radius = numbers(section, 'solar_radius')[0] ?? 0
+
     return radius > 0 ? { ball: radius } : undefined
   }
+
   const parts = readSurfaceLibrary(
     BufferView.from(await read(archetype.replace(/\.[^.]+$/, '.sur'))),
   )
@@ -286,11 +309,14 @@ const hitboxOf = async (
   const rootId = model.type === 'compound' ? getResourceId(model.name) : undefined
   const root = parts.find(({ id }) => id === rootId) ?? parts[0]!
   const surfaces: HitboxSurface[] = [{ surface: root, world }]
+
   for (const part of parts) {
     if (part === root || part.fixed) continue
+
     const frame = frameOf(part.id)
     if (frame) surfaces.push({ surface: part, world: frame })
   }
+
   return { surfaces }
 }
 
@@ -337,9 +363,11 @@ const effectViewOf = async (
   effectDetail: number | undefined,
 ): Promise<EffectViewOptions> => {
   const effectTypes: Partial<EffectType>[] = []
+
   for (const section of Document.read(await read('FX/effect_types.ini'))) {
     const index = effectTypeIndex(section.getNickname() ?? '')
     if (index === undefined) continue
+
     const value = (name: string, at = 0) => section.getValue(name, at)?.value
     const number = (name: string, at = 0) =>
       value(name, at) === undefined ? undefined : Number(value(name, at))
@@ -355,23 +383,33 @@ const effectViewOf = async (
       ...(value('visibility') !== undefined
         ? { existOffscreen: String(value('visibility')).toUpperCase() === 'EXIST_OFFSCREEN' }
         : {}),
+      ...(value('update') !== undefined
+        ? { updateOffscreen: String(value('update')).toUpperCase() === 'UPDATE_OFFSCREEN' }
+        : {}),
       ...(near !== undefined ? { pbubble: { near, far: number('pbubble', 1)! } } : {}),
       ...(number('run_time') !== undefined ? { runTime: number('run_time')! } : {}),
     }
+
     effectTypes[index] = row
   }
+
   const effectLods: EffectLodSizes[] = []
+
   for (const section of Document.read(await read('FX/effects.ini'))) {
     if (section.name.toLowerCase() !== 'effectlod') continue
+
     const row = effectLodRow(String(section.getValue('type')?.value ?? ''))
     if (row === undefined) continue
+
     const size = (name: string) => Number(section.getValue(name)?.value ?? -1)
+
     effectLods[row] = {
       maxLodScreenSize: size('max_lod_screen_size'),
       minLodScreenSize: size('min_lod_screen_size'),
       minScreenSize: size('min_screen_size'),
     }
   }
+
   return {
     ...(effectDetail !== undefined ? { effectDetail } : {}),
     effectTypes,
@@ -383,6 +421,7 @@ const effectViewOf = async (
 /** MSVC's `rand()` from its default seed of 1, so a run is the same each time. */
 const msvcRand = (): (() => number) => {
   let state = 1
+
   return () => {
     state = (Math.imul(state, 214013) + 2531011) >>> 0
     return (state >>> 16) & 0x7fff
@@ -393,12 +432,14 @@ const msvcRand = (): (() => number) => {
 const shapeOf = async (read: ReadAsset, name: string): Promise<Texture> => {
   for (const section of Document.read(await read('FX/effect_shapes.ini'))) {
     if (!strings(section, 'tex_shape').some((shape) => shape.toLowerCase() === name)) continue
+
     const library = readTextureLibrary(
       Directory.read(await read(pathOf(strings(section, 'file')[0]!))),
     )
     const found = [...library].find((entry) => entry.name.toLowerCase() === name)
     if (found?.type === 'image') return found
   }
+
   throw new Error(`no texture shape ${name}`)
 }
 
@@ -410,20 +451,27 @@ export const loadBeamEffects = async (
   read: ReadAsset,
 ): Promise<{ beams: Map<string, BeamArchetype>; texture: Texture }> => {
   const beams = new Map<string, BeamArchetype>()
+
   for (const section of Document.read(await read('FX/beam_effects.ini'))) {
     const header = section.name.toLowerCase()
     if (header !== 'beamspear' && header !== 'beambolt') continue
+
     const nickname = strings(section, 'nickname')[0]
     if (!nickname) continue
+
     const color = (key: string) => {
       const values = numbers(section, key)
+
       return values.length ? { color: vector(values) } : {}
     }
+
     const number = (key: string) => numbers(section, key)[0]
     const fields: Partial<BeamSection> = {}
+
     const set = <K extends keyof BeamSection>(key: K, value: BeamSection[K] | undefined) => {
       if (value !== undefined) fields[key] = value
     }
+
     set('tipColor', color('tip_color').color)
     set('tailColor', color('tail_color').color)
     set('coreColor', color('core_color').color)
@@ -446,6 +494,7 @@ export const loadBeamEffects = async (
       beamArchetype({ kind: header === 'beamspear' ? 'spear' : 'bolt', ...fields }),
     )
   }
+
   return { beams, texture: await shapeOf(read, 'code_beam') }
 }
 
@@ -461,16 +510,21 @@ export const loadTractors = async (
   texture: Texture
 }> => {
   const tractors = new Map<string, Pick<TractorBeam, 'maxLength' | 'color'>>()
+
   for (const section of Document.read(await read('EQUIPMENT/misc_equip.ini'))) {
     if (section.name.toLowerCase() !== 'tractor') continue
+
     const nickname = strings(section, 'nickname')[0]
     if (!nickname) continue
+
     const color = numbers(section, 'color')
+
     tractors.set(nickname.toLowerCase(), {
       maxLength: numbers(section, 'max_length')[0] ?? 0,
       color: color.length ? vector(color) : { x: 255, y: 255, z: 255 },
     })
   }
+
   return { tractors, texture: await shapeOf(read, 'line') }
 }
 
@@ -481,20 +535,28 @@ export const loadTractors = async (
 export const loadGateTunnels = async (read: ReadAsset): Promise<Map<string, TunnelSettings>> => {
   const tunnels = new Map<string, TunnelSettings>()
   const byte = (value: number) => Math.fround(Math.trunc(value) * Math.fround(1 / 255))
+
   const color = (section: Section, name: string, fallback: Vector3): Vector3 => {
     const values = numbers(section, name)
+
     return values.length ? vector(values.map(byte)) : fallback
   }
+
   let current: { nickname: string; settings: TunnelSettings; layers: TunnelLayer[] } | undefined
+
   for (const section of Document.read(await read('FX/gate_tunnel.ini'))) {
     const number = (name: string, fallback: number) => {
       const value = section.getValue(name)?.value
+
       return value === undefined ? fallback : Math.fround(Number(value))
     }
+
     const kind = section.name.toLowerCase()
+
     if (kind === 'gate_tunnel') {
       const base = RETAIL_TUNNEL
       const layers: TunnelLayer[] = []
+
       current = {
         nickname: (section.getNickname() ?? 'default').toLowerCase(),
         layers,
@@ -526,6 +588,7 @@ export const loadGateTunnels = async (read: ReadAsset): Promise<Map<string, Tunn
       const base = RETAIL_TUNNEL_LAYER
       const name = strings(section, 'texture')[0]
       const texture = name === undefined ? undefined : await shapeOf(read, name.toLowerCase())
+
       current.layers.push({
         ...(texture && { texture }),
         color: color(section, 'color', base.color),
@@ -540,6 +603,7 @@ export const loadGateTunnels = async (read: ReadAsset): Promise<Map<string, Tunn
       })
     }
   }
+
   return tunnels
 }
 
@@ -562,16 +626,21 @@ export const loadJumpEffects = async (read: ReadAsset): Promise<Map<string, Jump
   const byte = (value: number) => Math.trunc(value) & 0xff
   let ambient: Vector3 = { x: 0, y: 0, z: 0 }
   let background: Vector3 = { x: 0, y: 0, z: 0 }
+
   for (const section of Document.read(await read('FX/jumpeffect.ini'))) {
     if (section.name.toLowerCase() !== 'jumpgateeffect') continue
+
     const ambientValues = numbers(section, 'jump_ambient')
     if (ambientValues.length) ambient = vector(ambientValues.map(byte))
+
     const backgroundValues = numbers(section, 'jump_background_color')
     if (backgroundValues.length) background = vector(backgroundValues.map(byte))
+
     const tunnel = strings(section, 'jump_tunnel')[0]?.toLowerCase()
     const nickname = section.getNickname()?.toLowerCase()
     if (nickname) found.set(nickname, { ...(tunnel && { tunnel }), ambient, background })
   }
+
   return found
 }
 
@@ -590,6 +659,7 @@ export const jumpOutFrame = async (
     Directory.read(await read(pathOf(strings(section, 'DA_archetype')[0]!))),
   )
   const point = name === undefined ? undefined : hardpoint(model, name)
+
   return point ? Matrix4.multiply(Matrix4.translation(position), point) : Matrix4.identity
 }
 
@@ -635,8 +705,10 @@ const effectSource = async (
   const visual = tables.visuals.get(strings(section, 'vis_effect')[0]!.toLowerCase())!
   const alchemy = readAlchemy(Directory.read(await read(pathOf(strings(visual, 'alchemy')[0]!))))!
   const nodes = new Map<number, Node>()
+
   for (const node of alchemy.nodes.nodes)
     nodes.set(getResourceId(getNodeName(node) ?? '', true), node)
+
   const resolve = (crc: number) => nodes.get(crc)
   const crc = Number(visual.getValue('effect_crc')!.value) | 0
   const found = alchemy.effects.effects.find(({ name }) => (getResourceId(name, true) | 0) === crc)!
@@ -651,6 +723,7 @@ const effectSource = async (
   const type = effectTypeIndex(strings(section, 'effect_type')[0]!)!
   const texture = (name: string) =>
     textures.find((entry) => entry.name.toLowerCase() === name.toLowerCase())
+
   return () => ({
     instance: new EffectInstance(buildEffect(found, resolve), { lookup, pools: tables.pools }),
     texture,
@@ -670,6 +743,7 @@ const startEffect = async (
   const source = await effectSource(nickname, tables, read)
   const position = { x: world.w.x, y: world.w.y, z: world.w.z }
   const start = (): SpaceEffect => ({ ...source(), position, watched: { position: on } })
+
   return { effect: start(), world, on, sparam, ...(repeat && { repeat: start }) }
 }
 
@@ -687,43 +761,55 @@ const loadShapes = async (
   const library: Texture[] = []
   const find = (name: string) =>
     library.find((entry) => entry.name.toLowerCase() === name.toLowerCase())
+
   const add = (name: string, shape: TextureShape) => {
     if (!shapes.has(name.toLowerCase())) shapes.set(name.toLowerCase(), shape)
   }
+
   for (const path of paths) {
     let texture: Texture | undefined
     let current: string | undefined
+
     for (const part of Document.read(await read(pathOf(path)))) {
       const kind = part.name.toLowerCase()
+
       if (kind === 'texture')
         for (const { name, values } of part.properties) {
           const key = name.toLowerCase()
           const value = String(values[0]?.value ?? '')
+
           if (key === 'file')
             for (const entry of readTextureLibrary(Directory.read(await read(pathOf(value)))))
               if (entry.type === 'image') library.push(entry)
+
           if (key === 'name' || key === 'texture_name') {
             texture = find(value)
             current = undefined
           }
+
           if (key === 'shape_name' && texture) {
             current = shapes.has(value.toLowerCase()) ? undefined : value
             if (current) add(current, textureShape(texture, {}))
           }
+
           if (key === 'tex_shape') {
             texture = undefined
             current = undefined
+
             const found = find(value)
             if (found) add(value, textureShape(found, {}))
           }
+
           if (key === 'dim' && texture && current) {
             const [x, y, w, h] = values.map(({ value }) => Number(value))
+
             shapes.set(current.toLowerCase(), textureShape(texture, { x, y, w, h }))
           }
         }
       else if (kind === 'shape' && texture) {
         const value = (key: string) => Number(part.getValue(key)?.value ?? 0)
         const cut = strings(part, 'name')[0] ?? strings(part, 'shape_name')[0]
+
         if (cut)
           add(
             cut,
@@ -732,6 +818,7 @@ const loadShapes = async (
       }
     }
   }
+
   return shapes
 }
 
@@ -749,32 +836,41 @@ const loadStar = async (read: ReadAsset, nickname: string): Promise<Star> => {
         section.name.toLowerCase() === kind &&
         section.getNickname()?.toLowerCase() === name.toLowerCase(),
     )
+
   // `StarGlowLoadFromIni` (`0x50c950`): the shape by name, the colours as written.
   const glowOf = (name: string): StarGlow | undefined => {
     const section = named('star_glow', name)
     if (!section) return undefined
+
     const glow: StarGlow = {}
+
     for (const { name: key, numbers, strings } of linesOf(section)) {
       if (key === 'shape') {
         const shape = shapes.get(strings[0]!.toLowerCase())
         if (shape) glow.shape = shape
       }
+
       if (key === 'scale') glow.scale = numbers[0]!
       if (key === 'inner_color') glow.innerColor = vector(numbers)
       if (key === 'outer_color') glow.outerColor = vector(numbers)
     }
+
     return glow
   }
+
   // `LensGlowLoadFromIni` (`0x50d420`).
   const lensGlowOf = (name: string): LensGlow | undefined => {
     const section = named('lens_glow', name)
     if (!section) return undefined
+
     const glow: LensGlow = {}
+
     for (const { name: key, numbers, strings } of linesOf(section)) {
       if (key === 'shape') {
         const shape = shapes.get(strings[0]!.toLowerCase())
         if (shape) glow.shape = shape
       }
+
       if (key === 'radius_scale') glow.radiusScale = numbers[0]!
       if (key === 'inner_color') glow.innerColor = vector(numbers)
       if (key === 'outer_color') glow.outerColor = vector(numbers)
@@ -784,24 +880,31 @@ const loadStar = async (read: ReadAsset, nickname: string): Promise<Star> => {
       if (key === 'interior_ray_tween') glow.interiorRayTween = numbers[0]!
       if (key === 'max_lod') glow.maxLod = Math.trunc(numbers[0]!)
     }
+
     return glow
   }
+
   // `SpinesLoadFromIni` (`0x50fba0`): each `spine` its length, width, colours and alpha.
   const spinesOf = (name: string): StarSpines | undefined => {
     const section = named('spines', name)
     if (!section) return undefined
+
     const spines: StarSpines = { spines: [] }
     const list: StarSpine[] = []
+
     for (const { name: key, numbers, strings } of linesOf(section)) {
       if (key === 'shape') {
         const shape = shapes.get(strings[0]!.toLowerCase())
         if (shape) spines.shape = shape
       }
+
       if (key === 'radius_scale') spines.radiusScale = numbers[0]!
       if (key === 'min_radius') spines.minRadius = numbers[0]!
       if (key === 'max_radius') spines.maxRadius = numbers[0]!
+
       if (key === 'spine') {
         const [length, width, r0, g0, b0, r1, g1, b1, alpha] = numbers
+
         list.push({
           length: length!,
           width: width!,
@@ -811,68 +914,89 @@ const loadStar = async (read: ReadAsset, nickname: string): Promise<Star> => {
         })
       }
     }
+
     return { ...spines, spines: list }
   }
+
   // `LensFlareLoadFromIni` (`0x50f3a0`): each `bead` how far along, how big, its colour and alpha.
   const lensFlareOf = (name: string): StarLensFlare | undefined => {
     const section = named('lens_flare', name)
     if (!section) return undefined
+
     const flare: StarLensFlare = { beads: [] }
     const beads: FlareBead[] = []
+
     for (const { name: key, numbers, strings } of linesOf(section)) {
       if (key === 'shape') {
         const shape = shapes.get(strings[0]!.toLowerCase())
         if (shape) flare.shape = shape
       }
+
       if (key === 'min_radius') flare.minRadius = numbers[0]!
       if (key === 'max_radius') flare.maxRadius = numbers[0]!
+
       if (key === 'bead') {
         const [along, size, r, g, b, alpha] = numbers
+
         beads.push({ along: along!, size: size!, color: { x: r!, y: g!, z: b! }, alpha: alpha! })
       }
     }
+
     return { ...flare, beads }
   }
+
   const section = named('star', nickname)
   if (!section) throw new Error(`no star ${nickname}`)
+
   const star: Star = {}
   // An intensity fade of 0 is held to 1e-7; a zone occlusion fade lands there too, unheld.
   const tiny = Math.fround(1e-7)
+
   for (const { name: key, numbers, strings } of linesOf(section)) {
     const value = numbers[0]!
+
     if (key === 'intensity_fade_in' || key === 'zone_occlusion_fade_in')
       star.intensityFade = {
         ...star.intensityFade,
         fadeIn: key === 'intensity_fade_in' && value === 0 ? tiny : value,
       }
+
     if (key === 'intensity_fade_out' || key === 'zone_occlusion_fade_out')
       star.intensityFade = {
         ...star.intensityFade,
         fadeOut: key === 'intensity_fade_out' && value === 0 ? tiny : value,
       }
+
     if (key === 'spines' && !star.spines) {
       const spines = spinesOf(strings[0]!)
       if (spines) star.spines = spines
     }
+
     if (key === 'lens_flare' && !star.lensFlare) {
       const flare = lensFlareOf(strings[0]!)
       if (flare) star.lensFlare = flare
     }
+
     if (key === 'lens_glow' && !star.lensGlow) {
       const glow = lensGlowOf(strings[0]!)
       if (glow) star.lensGlow = glow
     }
+
     if (key === 'radius') star.radius = numbers[0]!
+
     if (key === 'star_glow' && !star.glow) {
       const glow = glowOf(strings[0]!)
       if (glow) star.glow = glow
     }
+
     if (key === 'star_center') {
       const center = glowOf(strings[0]!)
+
       if (center) star.center = center
       else delete star.center
     }
   }
+
   return star
 }
 
@@ -887,23 +1011,31 @@ const loadRing = async (
   const shapes = new Map<string, TextureShape>()
   const exterior: Record<string, number[] | string> = {}
   const clouds: Section[] = []
+
   for (const section of Document.read(await read(pathOf(file)))) {
     const name = section.name.toLowerCase()
+
     if (name === 'texturepanels')
       for (const [key, value] of await loadShapes(read, strings(section, 'file')))
         shapes.set(key, value)
+
     if (name === 'clouds') clouds.push(section)
+
     if (name === 'exterior')
       for (const { name: key, values } of section.properties)
         exterior[key.toLowerCase()] = key.toLowerCase().endsWith('shape')
           ? String(values[0]!.value)
           : values.map(({ value }) => Number(value))
   }
+
   const numbers = (key: string) => exterior[key] as number[] | undefined
+
   const shape = (key: string) => {
     const name = exterior[key] as string | undefined
+
     return name === undefined ? undefined : shapes.get(name.toLowerCase())
   }
+
   const color = numbers('color')
   const tile = numbers('detail_tile')
   const ring: RingExterior = {
@@ -924,6 +1056,7 @@ const loadRing = async (
     ...(numbers('transition_dist') ? { transitionDistance: numbers('transition_dist')![0]! } : {}),
   }
   const cloudsOf = (section: Section) => cloudsFrom(section, shapes, RING_CLOUD_VISIBILITY, random)
+
   return {
     ...buildRing(ring, zone, { highDetailTextures }),
     ...(clouds.length ? { clouds: clouds.map(cloudsOf) } : {}),
@@ -942,21 +1075,28 @@ const cloudsFrom = (
 ): Clouds => {
   const value = (key: string, at = 0) => {
     const found = section.getValue(key, at)
+
     return found === undefined ? undefined : Number(found.value)
   }
+
   const colorOf = (key: string) => {
     const found = section.getValues(key)
     if (!found) return undefined
+
     const [x, y, z] = found.map(({ value }) => Math.fround(Number(value) / 255))
+
     return { x: x!, y: y!, z: z! }
   }
+
   const colors = section.properties
     .filter(({ name }) => /^puff_color[ab]$/i.test(name))
     .slice(0, 2)
     .map(({ values }) => {
       const [x, y, z] = values.map(({ value }) => Math.fround(Number(value) / 255))
+
       return { x: x!, y: y!, z: z! }
     })
+
   const duration = value('lightning_duration')
   const settings: CloudSettings = {
     puffCount: Math.trunc(value('puff_count') ?? 0),
@@ -988,24 +1128,33 @@ const cloudsFrom = (
         }
       : {}),
   }
+
   return new Clouds(settings, { visibility, random })
 }
 
 /**
- * A zone's `EulerMatrix` (`0x63041a0`): Rz·Ry·Rx, X applied first, from `rotate`'s degrees, or its
- * pitch alone ([ENGINE.md](../freelancer/docs/refs/ENGINE.md)).
+ * `EulerMatrix` (`0x63041a0`): Rz·Ry·Rx, X applied first, from `rotate`'s degrees
+ * ([ENGINE.md](../freelancer/docs/refs/ENGINE.md)). A zone's and a solar's (`CSolar` reading `rotate`).
  */
-const zoneTurn = ({
-  pitch,
-  rotate = [pitch, 0, 0],
-}: NonNullable<ReferenceSystem['zones']>[number]) => {
+const eulerTurn = (rotate: readonly [number, number, number]) => {
   const about = (x: number, y: number, z: number, degrees: number) =>
     Quat.axisAngle({ axis: { x, y, z }, angle: (degrees * Math.PI) / 180 })
+
   return Quat.multiply(
     Quat.multiply(about(0, 0, 1, rotate[2]), about(0, 1, 0, rotate[1])),
     about(1, 0, 0, rotate[0]),
   )
 }
+
+/** A zone's `rotate`, or its pitch alone. */
+const zoneTurn = ({
+  pitch,
+  rotate = [pitch, 0, 0],
+}: NonNullable<ReferenceSystem['zones']>[number]) => eulerTurn(rotate)
+
+/** A solar's placement: its position, turned by its `rotate`. */
+const objectWorld = ({ position, rotate = [0, 0, 0] }: ReferenceSystem['objects'][number]) =>
+  Matrix4.fromRotationTranslation(Matrix3.fromQuaternion(eulerTurn(rotate)), vector(position))
 
 /** A system's zone as the scene's code reads one, and its `edge_fraction`. */
 const zoneFor = (
@@ -1032,6 +1181,7 @@ const zoneFor = (
         : found.shape === 'CYLINDER'
           ? zoneOf({ type: 'cylinder', center, orientation, radius: a, height: b }, written)
           : zoneOf({ type: 'ellipsoid', center, orientation, radii: { x: a, y: b, z: c } }, written)
+
   return { zone, edgeFraction: found.edgeFraction ?? 0 }
 }
 
@@ -1052,6 +1202,7 @@ const loadModelFile = async (read: ReadAsset, path: string, camera: Camera) => {
   const textures = [...readTextureLibrary(root)]
   const model = readRigidModel(root)
   const material = (id: number) => getMaterial(materials, id)
+
   return (world: Matrix4): SceneModel => ({
     parts: placeParts(model, world, { camera }),
     mesh: (id) => getMesh(meshes, id),
@@ -1066,6 +1217,7 @@ const zoneTransform = (system: ReferenceSystem, nickname: string): Matrix4 => {
     (entry) => entry.nickname.toLowerCase() === nickname.toLowerCase(),
   )!
   const [x, y, z] = found.position
+
   return Matrix4.fromRotationTranslation(Matrix3.fromQuaternion(zoneTurn(found)), { x, y, z })
 }
 
@@ -1100,68 +1252,93 @@ const loadNebula = async (
     shapes: [],
     numbers: {},
   }
+
   for (const section of Document.read(await read(pathOf(file)))) {
     const kind = section.name.toLowerCase()
+
     if (kind === 'texturepanels')
       for (const [key, value] of await loadShapes(read, strings(section, 'file')))
         shapes.set(key, value)
+
     if (kind === 'clouds') clouds.push(section)
+
     for (const { name, numbers, strings } of linesOf(section)) {
       if (kind === 'exterior' && name === 'fill_shape') fillName = strings[0]!.toLowerCase()
+
       if (kind === 'exterior' && name === 'shape' && exterior.shapes.length < 8)
         exterior.shapes.push(strings[0]!.toLowerCase())
       else if (kind === 'exterior') exterior.numbers[name] = numbers
+
       if (kind === 'fog') {
         if (name === 'near') fog = { ...fog, near: numbers[0]! }
         if (name === 'distance') fog = { ...fog, distance: numbers[0]! }
+
         if (name === 'color') {
           const [r, g, b] = numbers.map((c) => Math.fround(c / 255))
+
           fog = { ...fog, color: { x: r!, y: g!, z: b! } }
         }
       }
+
       if (kind === 'nebulalight' && name === 'ambient') {
         const [r, g, b] = numbers
+
         ambient = { x: r!, y: g!, z: b! }
       }
+
       if (kind === 'nebulalight' && name === 'sun_burnthrough_intensity')
         burnthrough = { ...burnthrough, intensity: numbers[0]! }
+
       if (kind === 'nebulalight' && name === 'sun_burnthrough_scaler')
         burnthrough = { ...burnthrough, scaler: numbers[0]! }
+
       if (kind === 'exclusion zones') {
         if (name === 'exclusion') {
           const found = zoneFor(system, strings[0]!)
+
           exclusions.push({ zone: found.zone, edgeFraction: found.edgeFraction })
           zoneNames.push(strings[0]!)
           shellNames.push(undefined)
         }
+
         if (name === 'fog_far' && exclusions.length)
           exclusions[exclusions.length - 1] = { ...exclusions.at(-1)!, fogFar: numbers[0]! }
+
         if (name === 'zone_shell') {
           shell = undefined
           if (!exclusions.length) continue
+
           const key = strings[0]!.toLowerCase()
+
           shellNames[shellNames.length - 1] = key
           shell = shells.get(key) ?? { path: strings[0]! }
           shells.set(key, shell as { path: string })
         }
+
         if (name === 'shell_scalar' && shell) shell.scalar = Math.max(numbers[0]!, 1)
         if (name === 'max_alpha' && shell) shell.maxAlpha = Math.min(numbers[0]!, 1)
+
         if (name === 'exclusion_tint' && shell) {
           const [r, g, b] = numbers.map((c) => Math.min(Math.fround(c / 255), 1))
+
           shell.tint = { x: r!, y: g!, z: b! }
         }
       }
+
       if (kind === 'backgroundlightning' && name === 'duration') background.duration = numbers[0]!
       if (kind === 'dynamiclightning' && name === 'duration') dynamic.duration = numbers[0]!
     }
   }
+
   const placed = new Map<string, (world: Matrix4) => SceneModel>()
   for (const [key, { path }] of shells) placed.set(key, await loadModelFile(read, path, camera))
   exclusions.forEach((exclusion, at) => {
     const key = shellNames[at]
     const found = key === undefined ? undefined : shells.get(key)
     if (!found || key === undefined) return
+
     const { scalar, maxAlpha, tint } = found
+
     exclusions[at] = {
       ...exclusion,
       shell: {
@@ -1174,6 +1351,7 @@ const loadNebula = async (
       },
     }
   })
+
   // A name the shapes don't hold finds nothing, as `FShapeDB::Find` warns and gives null.
   const fill = fillName === undefined ? undefined : shapes.get(fillName)
   const value = (key: string) => exterior.numbers[key]?.[0]
@@ -1203,6 +1381,7 @@ const loadNebula = async (
     ...(value('move_bit_percent') !== undefined && { moveBitPercent: value('move_bit_percent')! }),
     ...(value('opacity') !== undefined && { opacity: value('opacity')! }),
   }
+
   return {
     zone,
     fog,
@@ -1242,6 +1421,7 @@ const loadField = async (
   const lines: { name: string; numbers: number[] }[] = []
   const exclusions: CubeExclusion[] = []
   const shapes = new Map<string, TextureShape>()
+
   interface BandRecord {
     numbers: Record<string, number[]>
     shape?: string
@@ -1249,6 +1429,7 @@ const loadField = async (
     /** An `[ExclusionBand]`'s `zone`, the last one named. */
     zone?: string
   }
+
   let band: BandRecord | undefined
   const exclusionBands: BandRecord[] = []
   let billboards: BandRecord | undefined
@@ -1256,24 +1437,30 @@ const loadField = async (
   const dynamics: { numbers: Record<string, number[]>; asteroid?: string; zone?: string }[] = []
   /** Each exclusion's zone shape, as `exclude_dynamic_asteroids` reads it. */
   const exclusionShapes: string[] = []
+
   for (const section of Document.read(await read(pathOf(file)))) {
     const kind = section.name.toLowerCase()
+
     if (kind === 'texturepanels')
       for (const [key, value] of await loadShapes(read, strings(section, 'file')))
         shapes.set(key, value)
+
     const record: BandRecord | undefined =
       kind === 'band' || kind === 'exclusionband' ? { numbers: {} } : undefined
     if (kind === 'band') band = record
     if (kind === 'exclusionband') exclusionBands.push(record!)
     if (kind === 'asteroidbillboards') billboards = { numbers: {} }
     if (kind === 'dynamicasteroids') dynamics.push({ numbers: {} })
+
     for (const line of linesOf(section)) {
       if (kind === 'dynamicasteroids') {
         const dynamic = dynamics.at(-1)!
+
         dynamic.numbers[line.name] = line.numbers
         if (line.name === 'asteroid') dynamic.asteroid = line.strings[0]!
         if (line.name === 'zone') dynamic.zone = line.strings[0]!
       }
+
       if (record) {
         record.numbers[line.name] = line.numbers
         if (line.name === 'shape') record.shape = line.strings[0]!
@@ -1281,19 +1468,24 @@ const loadField = async (
         if (line.name === 'offset_percent') record.offset = { percent: line.numbers[0]! }
         if (line.name === 'zone') record.zone = line.strings[0]!
       }
+
       if (kind === 'asteroidbillboards') {
         billboards!.numbers[line.name] = line.numbers
         if (line.name === 'shape') billboards!.shape = line.strings[0]!
       }
+
       if (kind === 'field') keys[line.name] = line.numbers
+
       if (kind === 'cube') {
         const axis = ['xaxis_rotation', 'yaxis_rotation', 'zaxis_rotation'].indexOf(line.name)
         if (axis >= 0) degrees[axis] = line.numbers
         if (line.name === 'asteroid') lines.push({ name: line.strings[0]!, numbers: line.numbers })
       }
+
       if (kind === 'exclusion zones') {
         if (line.name === 'exclusion') {
           const found = zoneFor(system, line.strings[0]!)
+
           exclusions.push({ zone: found.zone, edgeFraction: found.edgeFraction })
           exclusionShapes.push(
             system.zones!.find(
@@ -1301,17 +1493,22 @@ const loadField = async (
             )!.shape,
           )
         }
+
         if (line.name === 'empty_cube_frequency' && exclusions.length)
           exclusions[exclusions.length - 1] = {
             ...exclusions.at(-1)!,
             emptyFrequency: line.numbers[0]!,
           }
+
         // Each truncated, and taken only above 0 (`062a4f0b`, `062a4f40`).
         const whole = Math.trunc(line.numbers[0] ?? 0)
+
         if (line.name === 'exclude_billboards' && exclusions.length && whole > 0)
           exclusions[exclusions.length - 1] = { ...exclusions.at(-1)!, excludeBillboards: true }
+
         if (line.name === 'billboard_count' && exclusions.length && whole > 0)
           exclusions[exclusions.length - 1] = { ...exclusions.at(-1)!, billboardCount: whole }
+
         // Only a sphere's or an ellipsoid's (`062a4f81`).
         if (
           line.name === 'exclude_dynamic_asteroids' &&
@@ -1326,31 +1523,42 @@ const loadField = async (
       }
     }
   }
+
   const cubeSize = Math.trunc(keys['cube_size']?.[0] ?? 400)
   const half = cubeSize * 0.5
   const clamp = (value: number) => Math.min(Math.max(value, -1), 1)
   const libraries: Directory[] = []
   const asteroids: CubeAsteroid[] = []
+
   /** An archetype's top level, its libraries kept for the field's lookups. */
   const topLevel = async (name: string) => {
     const section = asteroidArchetypes.get(name.toLowerCase())!
     const root = Directory.read(await read(pathOf(strings(section, 'DA_archetype')[0]!)))
+
     libraries.push(root)
+
     for (const path of strings(section, 'material_library'))
       libraries.push(Directory.read(await read(pathOf(path))))
+
     const model = readRigidModel(root)
     const source = model.type === 'rigid' ? model.part : undefined
     if (!source) return undefined
+
     const level = source.type === 'multilevel' ? source.levels[0]! : source
+
     return {
       mesh: getMesh(readVMeshLibrary(root), level.reference.meshId)!,
       reference: level.reference,
     }
   }
+
   for (const { name, numbers } of lines) {
     const found = await topLevel(name)
     if (!found) continue
+
     const [, x = 0, y = 0, z = 0, ax = 0, ay = 0, az = 0] = numbers
+
+    // An `asteroid` line's x, y, z are fractions of half the cube, clamped to [-1, 1]; float32 per step.
     asteroids.push({
       ...found,
       offset: {
@@ -1361,29 +1569,37 @@ const loadField = async (
       orientation: entryOrientation(ax, ay, az),
     })
   }
+
   const merged = mergeCube(asteroids)!
+
   // `CliDynamicAsteroidParseIni`: each section's archetype, its whole top level at its own frame.
   const rockModels = await Promise.all(
     dynamics.map(async ({ asteroid }) => {
       const found = asteroid === undefined ? undefined : await topLevel(asteroid)
+
       return (
         found &&
         mergeCube([{ ...found, offset: { x: 0, y: 0, z: 0 }, orientation: Matrix4.identity }])
       )
     }),
   )
+
   // Each archetype's `particle_effect`, which its rocks start as they're placed.
   const rockEffects = await Promise.all(
     dynamics.map(async ({ asteroid }) => {
       const section = asteroid && asteroidArchetypes.get(asteroid.toLowerCase())
       const nickname = section && strings(section, 'particle_effect')[0]
+
       return nickname ? await effectSource(nickname, tables, read) : undefined
     }),
   )
+
   const materials = libraries.flatMap((library) => [...readMaterialLibrary(library)])
   const textures = libraries.flatMap((library) => [...readTextureLibrary(library)])
+
   const color = (key: string) => {
     const value = keys[key]
+
     return (
       value && {
         x: Math.fround(value[0]! / 255),
@@ -1392,11 +1608,13 @@ const loadField = async (
       }
     )
   }
+
   const tint = color('tint_field')
   const increase = keys['ambient_increase']
   const diffuse = color('diffuse_color') ?? tint ?? { x: 0, y: 0, z: 0 }
   const ambient = color('ambient_color') ?? tint ?? { x: 0, y: 0, z: 0 }
   const ambientIncrease = increase && { x: increase[0]!, y: increase[1]!, z: increase[2]! }
+
   const bandOf = ({ numbers, shape, offset, zone: own = zoneName }: BandRecord) => {
     const zoneEntry = system.zones!.find(
       ({ nickname }) => nickname.toLowerCase() === own.toLowerCase(),
@@ -1422,6 +1640,7 @@ const loadField = async (
     }
     const [x, y, z] = zoneEntry.position
     const [a = 0, b = 0, c = 0] = zoneEntry.size
+
     return new AsteroidBand(settings, {
       position: { x, y, z },
       orientation: zoneTurn(zoneEntry),
@@ -1431,7 +1650,9 @@ const loadField = async (
       ...(ambientIncrease ? { ambientIncrease } : {}),
     })
   }
+
   const fillDistance = Math.trunc(keys['fill_dist']?.[0] ?? 1200)
+
   const billboardsOf = ({ numbers, shape }: BandRecord) => {
     const one = (key: string) => numbers[key]?.[0]
     const size = numbers['size']
@@ -1440,6 +1661,7 @@ const loadField = async (
     const settings: BillboardSettings = {
       ...(found && { shape: found }),
       ...(one('count') !== undefined && { count: Math.trunc(one('count')!) }),
+      // `size` ordered [min, max] whichever way it is written.
       ...(size && {
         size: (size[1]! < size[0]! ? [size[1]!, size[0]!] : [size[0]!, size[1]!]) as [
           number,
@@ -1453,20 +1675,24 @@ const loadField = async (
       }),
       ...(shift && { colorShift: { x: shift[0]!, y: shift[1]!, z: shift[2]! } }),
     }
+
     return new AsteroidBillboards(
       settings,
       { zone, edgeFraction, fillDistance, cubeSize, diffuse, ambient, exclusions },
       { random },
     )
   }
+
   const lookups = {
     material: (id: number) => getMaterial(materials, id),
     texture: (name: string) =>
       textures.find((entry) => entry.name.toLowerCase() === name.toLowerCase()),
   }
+
   const dynamic = dynamics.flatMap(({ numbers, zone: own }, at) => {
     const model = rockModels[at]
     if (!model) return []
+
     const one = (key: string) => numbers[key]?.[0]
     const shift = numbers['color_shift']
     const settings: DynamicSettings = {
@@ -1488,8 +1714,10 @@ const loadField = async (
       { ...placed, diffuse, ambient, exclusions },
       { random, ...(rockEffects[at] && { effect: rockEffects[at] }) },
     )
+
     return [{ rocks, model: { ...model, ...lookups } }]
   })
+
   return {
     zone,
     edgeFraction,
@@ -1530,6 +1758,7 @@ export const loadCockpit = async (read: ReadAsset, ship: string, camera: Camera)
   const mesh = strings(file.getSection('Cockpit')!, 'mesh')[0]!
   const place = await loadModelFile(read, mesh, camera)
   const { center, radius } = place(Matrix4.identity).parts[0]!.reference.boundingSphere
+
   return { place, sphere: { center, radius } }
 }
 
@@ -1554,10 +1783,13 @@ export const loadSystem = async (
   const own = new Map(
     (system.files ?? []).map(({ path, text }) => [pathOf(path).toLowerCase(), text]),
   )
+
   const read: ReadAsset = async (path) => {
     const text = own.get(path.toLowerCase())
+
     return text === undefined ? readData(path) : Uint8Array.from(text, (c) => c.charCodeAt(0))
   }
+
   const archetypes = await sectionsOf(read, ['SOLAR/solararch.ini', 'SHIPS/shiparch.ini'])
   const graphs = await sectionsOf(read, ['igraph.ini'])
   const graph = (name: string): Graph => ({
@@ -1578,6 +1810,7 @@ export const loadSystem = async (
     'SHIPS/loadouts.ini',
     'SHIPS/loadouts_special.ini',
   ])
+
   /**
    * A loadout's items, each with its hardpoint when it has one, in the order it lists them: the
    * object's own, or else its archetype's.
@@ -1589,6 +1822,7 @@ export const loadSystem = async (
       .filterProperties('equip')
       .map(({ values }) => {
         const [item, point] = values.map(({ value }) => String(value))
+
         return { item: equipment.get(item!.toLowerCase()), point }
       })
   }
@@ -1605,15 +1839,19 @@ export const loadSystem = async (
     loadout?: string,
   ) => {
     const attached: SceneModel[] = []
+
     for (const { item, point } of loadoutOf(section, loadout)) {
       if (!item || !point || !strings(item, 'DA_archetype').length) continue
+
       const parent = findHardpoint(model, point, jointState)!
       const nickname = item.getNickname()!.toLowerCase()
       const child = await loadArchetype(item, read, camera, detail, equipmentLods.get(nickname))
       const connect = findHardpoint(child.model, strings(item, 'HP_child')[0]!)!
       const joint = getJointMatrix(attachJoint(parent.point, connect.point))
+
       attached.push(child.place(Matrix4.multiply(world, Matrix4.multiply(parent.part, joint))))
     }
+
     return attached
   }
 
@@ -1623,12 +1861,17 @@ export const loadSystem = async (
    */
   const flareLightOf = (section: Section): FlareLight => {
     let light: FlareLight = { ...RETAIL_FLARE_LIGHT }
+
+    // Bytes 0-255 to 0-1, rounded to float32 after each step.
     const triple = (values: readonly { value: unknown }[]) => {
       const [x, y, z] = values.map(({ value }) => Math.fround(Math.fround(Number(value)) / 255))
+
       return { x: x!, y: y!, z: z! }
     }
+
     for (const { name, values } of section.properties) {
       const value = Number(values[0]?.value)
+
       switch (name.toLowerCase()) {
         case 'inherit':
           light = { ...flareLightOf(equipment.get(String(values[0]!.value).toLowerCase())!) }
@@ -1636,6 +1879,7 @@ export const loadSystem = async (
         case 'color': {
           const color = triple(values)
           const { glowColor: g } = light
+
           light = { ...light, color, ...(!g.x && !g.y && !g.z ? { glowColor: color } : {}) }
           break
         }
@@ -1662,6 +1906,7 @@ export const loadSystem = async (
           break
       }
     }
+
     return light
   }
 
@@ -1675,12 +1920,14 @@ export const loadSystem = async (
   ): SpaceFlare[] =>
     loadoutOf(section, loadout).flatMap(({ item, point }) => {
       if (item?.name.toLowerCase() !== 'light' || !point) return []
+
       const light = flareLightOf(item)
       const { point: hardpoint, part } = findHardpoint(model, point, jointState)!
       const frame = Matrix4.fromRotationTranslation(
         hardpoint.orientation,
         hardpoint.position ?? { x: 0, y: 0, z: 0 },
       )
+
       return [
         {
           light,
@@ -1702,24 +1949,31 @@ export const loadSystem = async (
       item?.name.toLowerCase() === 'internalfx' ? strings(item, 'use_animation') : [],
     )
     if (!names.length || animationSeconds === undefined) return undefined
+
     const library = readAnimationLibrary(
       Directory.read(await read(pathOf(strings(section, 'DA_archetype')[0]!))),
     )
     const maps = names.flatMap((name) => getScript(library, name)?.maps ?? [])
+
     return (part) => {
       const map = maps.find(
         (entry) => entry.type === 'joint' && entry.child.toLowerCase() === part.name.toLowerCase(),
       )
       if (!map) return undefined
+
       const time = getChannelTime(map.channel, animationSeconds, 'loop')
+
       return sampleChannel(map.channel, time, part.joint?.type === 'revolute')
     }
   }
 
   const objects: SpaceObject[] = []
-  for (const { archetype: nickname, position, star: starName, loadout } of system.objects) {
+
+  for (const object of system.objects) {
+    const { archetype: nickname, position, star: starName, loadout } = object
     const { section, model, lists, place } = await archetype(nickname)
     const at = vector(position)
+    const world = objectWorld(object)
     const type = String(section.getValue('type')!.value).toUpperCase()
     const star = starName === undefined ? undefined : await loadStar(read, starName)
     // A sun has no surface to sort by: `planet` is a sphere with no star (`TypeBits & 7`).
@@ -1740,11 +1994,12 @@ export const loadSystem = async (
         : (rootLevel(model)?.reference.boundingSphere.radius ?? radius)
     const range = lodRange(sources(model), lists, { detail })
     const jointState = await animate(section, loadout)
-    const attached = await attach(model, section, Matrix4.translation(at), jointState, loadout)
-    const flares = flaresOf(model, section, Matrix4.translation(at), jointState, loadout)
-    const hitbox = await hitboxOf(section, model, Matrix4.translation(at), read, jointState)
+    const attached = await attach(model, section, world, jointState, loadout)
+    const flares = flaresOf(model, section, world, jointState, loadout)
+    const hitbox = await hitboxOf(section, model, world, read, jointState)
+
     objects.push({
-      model: place(Matrix4.translation(at), jointState),
+      model: place(world, jointState),
       ...(attached.length ? { attached } : {}),
       ...(flares.length ? { flares } : {}),
       position: at,
@@ -1766,13 +2021,17 @@ export const loadSystem = async (
   const placed: Placed[] = []
 
   // A solar's loadout: each `[AttachedFX]` on its hardpoint, as the loadout lists them.
-  for (const { archetype: nickname, position, loadout } of system.objects) {
+  for (const object of system.objects) {
+    const { archetype: nickname, position, loadout } = object
     const section = archetypes.get(nickname.toLowerCase())!
     const { model } = await archetype(nickname)
+
     for (const { item: fx, point } of loadoutOf(section, loadout)) {
       if (fx?.name.toLowerCase() !== 'attachedfx' || !point) continue
+
       const at = vector(position)
-      const world = Matrix4.multiply(Matrix4.translation(at), hardpoint(model, point)!)
+      const world = Matrix4.multiply(objectWorld(object), hardpoint(model, point)!)
+
       placed.push(await startEffect(strings(fx, 'particles')[0]!, world, at, tables, read))
     }
   }
@@ -1793,6 +2052,7 @@ export const loadSystem = async (
     const world = Matrix4.translation(position)
     const pilotName = strings(hull.section, 'pilot_mesh')[0]
     let pilot: SceneModel | undefined
+
     if (pilotName) {
       const simple = await archetype(pilotName)
       // `AttachPilotMesh`: `HpPilot`'s orientation, and its position less `HpConnect`'s, unturned.
@@ -1802,23 +2062,30 @@ export const loadSystem = async (
         ...seat,
         w: { x: seat.w.x - connect.x, y: seat.w.y - connect.y, z: seat.w.z - connect.z, w: 1 },
       }
+
       pilot = simple.place(Matrix4.multiply(world, offset))
     }
+
     const engine = engineNickname ? equipment.get(engineNickname.toLowerCase()) : undefined
+
     const nozzles = ['HpEngine01', 'HpEngine02', 'HpEngine03', 'HpEngine04'].flatMap((name) => {
       const at = hardpoint(hull.model, name)
+
       return at ? [Matrix4.multiply(world, at)] : []
     })
+
     if (engine)
       for (const nozzle of nozzles)
         for (const key of ['flame_effect', trail]) {
           const effect = strings(engine, key)[0]
+
           if (effect)
             placed.push(await startEffect(effect, nozzle, position, tables, read, { sparam }))
         }
 
     const range = lodRange(sources(hull.model), hull.lists, { detail })
     const distanceRender = hull.section.getValue('distance_render')
+
     objects.push({
       model: hull.place(world),
       position,
@@ -1833,10 +2100,13 @@ export const loadSystem = async (
   const playerEngine = system.player.equipment.find(
     (nickname) => equipment.get(nickname.toLowerCase())?.name.toLowerCase() === 'engine',
   )
+
   // At rest: no throttle, so every `sparam` is 0 (`FCliEngineEquipFx::Update`).
   await addShip(system.player.ship, playerEngine, ship, 'trail_effect_player', 0)
+
   for (const other of ships ?? [])
     await addShip(other.ship, other.engine, vector(other.position), 'trail_effect', other.sparam)
+
   for (const { nickname, position } of extraEffects ?? [])
     placed.push(
       await startEffect(
@@ -1861,11 +2131,15 @@ export const loadSystem = async (
   }))
 
   const sky = await Promise.all(
-    skyLayers(starSphere).map((layer) =>
-      loadSky(pathOf(system.background[layer]).split('/').at(-1)!, read, { space: true }),
-    ),
+    // A system may name only some layers: EW01 and EW06 have `nebulae` alone.
+    skyLayers(starSphere)
+      .filter((layer) => system.background[layer])
+      .map((layer) =>
+        loadSky(pathOf(system.background[layer]).split('/').at(-1)!, read, { space: true }),
+      ),
   )
   const view = viewMatrix(camera)
+
   // Each at its view's `lod`, by no more than the walk steps one (`SpaceEffectsDrawFrame`).
   const stepEffects = (
     dt: number,
@@ -1875,9 +2149,12 @@ export const loadSystem = async (
     const view = viewMatrix(from)
     const step = Math.min(dt, RETAIL_SPACE_LIMITS.effectMaxStep)
     const lodOf = new Map(scene.effects!.map((effect, at) => [effect, views[at]?.lod]))
+
     for (const { effect, world: placement, sparam, repeat } of placed) {
       if (repeat && effect.instance.finished) effect.instance = repeat().instance
+
       const lod = lodOf.get(effect)
+
       effect.instance.advance(step, { placement, view, sparam, ...(lod !== undefined && { lod }) })
     }
   }
@@ -1885,6 +2162,7 @@ export const loadSystem = async (
   const rings: PlanetRing[] = await Promise.all(
     system.objects.flatMap(({ ring }) => {
       if (!ring) return []
+
       const zone = system.zones!.find(({ nickname }) => nickname === ring.zone)!
       const [x, y, z] = zone.position
       const shape: RingShape = {
@@ -1895,9 +2173,11 @@ export const loadSystem = async (
         innerRadius: zone.size[1]!,
         height: zone.size[2]!,
       }
+
       return [loadRing(read, ring.file, shape, highDetailTextures ?? 1, rand)]
     }),
   )
+
   // The dust's effects, read once: each zone's and the system's, by name without case.
   const dustNames = [
     ...(system.dust ? [system.dust] : []),
@@ -1911,9 +2191,12 @@ export const loadSystem = async (
     ),
   )
   const dust = new SpaceDust(system.dust, (name) => dustSources.get(name.toLowerCase())?.())
+
   const dustZones: DustZone[] = (system.zones ?? []).flatMap(({ nickname, spacedust }) => {
     if (!spacedust) return []
+
     const { zone, edgeFraction } = zoneFor(system, nickname)
+
     return [
       {
         zone,
@@ -1923,6 +2206,7 @@ export const loadSystem = async (
       },
     ]
   })
+
   // From entering the system, on the effects' clock: the camera at rest all along.
   for (let frame = 0; frame < (effectSeconds ?? 0) * effectRate; frame++)
     dust.update(camera, 1 / effectRate, dustZones)
@@ -1934,6 +2218,7 @@ export const loadSystem = async (
       for (let frame = 0; frame < (effectSeconds ?? 0) * effectRate; frame++) {
         const holds = (point: Vector3) => ringImmersion(ring, point)
         const visibility = Math.fround(ringImmersion(ring, camera.position))
+
         clouds.update(camera, 1 / effectRate, visibility, holds)
         if (visibility > 0) clouds.draw(camera, { cut: frame === 0, holds })
       }
@@ -1943,6 +2228,7 @@ export const loadSystem = async (
     camera,
     aspect: 1024 / 768,
     ambient: vector(system.ambient),
+    ...(system.spaceColor && { background: vector(system.spaceColor.map((c) => c / 255)) }),
     lights,
     objects,
     sky,
@@ -1966,7 +2252,9 @@ export const loadSystem = async (
   }
   // The camera stands still from entering the system, so each effect's view is the frame's.
   const views = viewSpaceEffects(scene)
+
   for (let step = 0; step < (effectSeconds ?? 0) * effectRate; step++)
     stepEffects(1 / effectRate, camera, views)
+
   return scene
 }

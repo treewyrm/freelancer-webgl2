@@ -40,13 +40,18 @@ export class CurveTable {
   #reserve(texels: number): number {
     const offset = this.length
     const needed = (offset + texels) * 4
+
     if (needed > this.texels.length) {
       let size = this.texels.length
+
       while (size < needed) size *= 2
+
       const grown = new Float32Array(size)
+
       grown.set(this.texels)
       this.texels = grown
     }
+
     this.length += texels
     this.version++
     return offset
@@ -55,15 +60,21 @@ export class CurveTable {
   float(list: EaseAnimation<FloatKeyframe>): number {
     const known = this.#floats.get(list)
     if (known !== undefined) return known
+
     const { keyframes, easing } = list
     const offset = this.#reserve(1 + Math.ceil(keyframes.length / 2))
     const t = this.texels
+
+    // A header texel `[count, easing, 0, 0]`, then two `(key, value)` pairs per texel.
     t.set([keyframes.length, easing, 0, 0], offset * 4)
+
     for (const [n, { key, value }] of keyframes.entries()) {
       const at = (offset + 1) * 4 + n * 2
+
       t[at] = key
       t[at + 1] = value
     }
+
     this.#floats.set(list, offset)
     return offset
   }
@@ -71,14 +82,20 @@ export class CurveTable {
   color(list: EaseAnimation<VectorKeyframe>): number {
     const known = this.#colors.get(list)
     if (known !== undefined) return known
+
     const { keyframes, easing } = list
     const offset = this.#reserve(1 + keyframes.length)
     const t = this.texels
+
     t.set([keyframes.length, easing, 1, 0], offset * 4)
+
     for (const [n, { key, value }] of keyframes.entries()) {
+      // Packed `0xXXYYZZ` by OR, so a channel over 1 spills into its neighbour, then split to bytes.
       const word = (((byte(value.y) | (byte(value.x) << 8)) << 8) | byte(value.z)) >>> 0
+
       t.set([key, (word >>> 16) & 0xff, (word >>> 8) & 0xff, word & 0xff], (offset + 1 + n) * 4)
     }
+
     this.#colors.set(list, offset)
     return offset
   }
@@ -86,7 +103,9 @@ export class CurveTable {
   constant(value: number): number {
     const known = this.#constants.get(value)
     if (known !== undefined) return known
+
     const offset = this.float({ easing: 1, keyframes: [{ key: 0, value }] })
+
     this.#constants.set(value, offset)
     return offset
   }
@@ -96,16 +115,21 @@ export class CurveTable {
     const name = `${current}:${rects.map(({ u1, v1, u2, v2 }) => `${u1},${v1},${u2},${v2}`).join(';')}`
     const known = this.#frames.get(name)
     if (known !== undefined) return known
+
     const offset = this.#reserve(1 + rects.length)
+
     this.texels.set([rects.length, current, 0, 0], offset * 4)
+
     for (const [n, { u1, v1, u2, v2 }] of rects.entries())
       this.texels.set([u1, v1, u2, v2], (offset + 1 + n) * 4)
+
     this.#frames.set(name, offset)
     return offset
   }
 
   floatSlot(property: AnimatedFloat | undefined, sparam: number, fallback: number): Slot {
     if (!property) return constantSlot(this.constant(fallback))
+
     const level = sparamLevel(property, sparam)
     if (!level) return constantSlot(this.constant(0))
     return [this.float(level.lower), this.float(level.upper), level.span, level.easing]
@@ -114,13 +138,16 @@ export class CurveTable {
   colorSlot(property: AnimatedColor | undefined, sparam: number, fallback: Vector3): Slot {
     const level = property && sparamLevel(property, sparam)
     if (level) return [this.color(level.lower), this.color(level.upper), level.span, level.easing]
+
     const value = property ? { x: 0, y: 0, z: 0 } : fallback
     const name = `${value.x},${value.y},${value.z}`
     let offset = this.#colorConstants.get(name)
+
     if (offset === undefined) {
       offset = this.color({ easing: 1, keyframes: [{ key: 0, value }] })
       this.#colorConstants.set(name, offset)
     }
+
     return constantSlot(offset)
   }
 }
@@ -159,6 +186,7 @@ float floatList(int header, float key) {
   if (count == 0) return 0.0;
   vec2 last = floatKey(header, count - 1);
   if (key >= last.x) return last.y;
+  // Brackets key by start and end: end is the first key at or past it, start < 0 before the first.
   int start = -1;
   int end = 0;
   for (int n = 0; n < count; n++) {
@@ -195,6 +223,7 @@ vec3 colorList(int header, float key) {
   ivec3 b = ivec3(to.yzw);
   float span = start < 0 ? 0.0 : clamp((key - from.x) / (to.x - from.x), 0.0, 1.0);
   bool rising = a.x * 65536 + a.y * 256 + a.z < b.x * 65536 + b.y * 256 + b.z;
+  // 8-bit fixed-point lerp per channel: a + ((b - a) * w >> 8), w in 0..255, wrapped to a byte.
   int w = int(easeWeight(easing, rising, span) * 255.0);
   return vec3((a + (((b - a) * w) >> 8)) & 0xff) * BYTE;
 }

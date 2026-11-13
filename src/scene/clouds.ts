@@ -17,6 +17,7 @@ import { viewMatrix, type Camera } from './camera.js'
 import type { Draw } from './frame.js'
 import type { Random } from './lightning.js'
 import type { TextureShape } from './ring.js'
+import { insideSphere, inverseRoot, onSphere, RAND_UNIT } from './retail.js'
 
 const f = Math.fround
 
@@ -87,38 +88,6 @@ interface Puff {
   depth: number
 }
 
-const RAND_UNIT = 3.0517578125e-5
-const TWO_PI = 6.2831854820251465
-
-/** `random_inside_sphere` (`0x631db20`). */
-const insideSphere = (random: Random, radius: number): Vector3 => {
-  const scaled = f(Math.pow(random() * RAND_UNIT, 1 / 3) * radius)
-  const cos = random() * RAND_UNIT * 2 - 1
-  const sin = f(Math.sin(Math.acos(cos)) * scaled)
-  const phi = random() * RAND_UNIT * TWO_PI
-  return { x: f(Math.sin(phi) * sin), y: f(f(cos) * scaled), z: f(Math.cos(phi) * sin) }
-}
-
-/** `random_on_unit_sphere` (`0x631da50`). */
-const onSphere = (random: Random): Vector3 => {
-  const u1 = f(random() * RAND_UNIT)
-  const u2 = f(random() * RAND_UNIT)
-  const cos = Math.min(Math.max(f(u1 + u1 - 1), -1), 1)
-  const theta = Math.acos(cos)
-  const phi = u2 * TWO_PI
-  const sin = Math.sin(theta)
-  return { x: f(Math.sin(phi) * sin), y: f(Math.cos(theta)), z: f(Math.cos(phi) * sin) }
-}
-
-/** The fast inverse square root, one Newton step (`FUN_00507e70`). */
-const inverseLength = (squared: number): number => {
-  const bits = new Float32Array([squared])
-  const view = new Int32Array(bits.buffer)
-  view[0] = 0x5f3759df - (view[0]! >> 1)
-  const guess = bits[0]!
-  return (1.5 - guess * guess * squared * 0.5) * guess
-}
-
 // XYZ, D3DCOLOR and one UV set: FVF 0x142, 24 bytes.
 const FORMAT = setMapCount(VertexFormat.Position | VertexFormat.Diffuse, 1)
 const STRIDE = 24
@@ -165,21 +134,28 @@ export class Clouds {
     this.settings = settings
     this.visibility = visibility
     this.random = random
+
     const n = 1 / Math.SQRT2
+
     this.#up = { x: f(n), y: f(n), z: 0 }
+
     const puffRadius = f(settings.puffRadius ?? 50)
     const maxDistance = f(settings.maxDistance ?? 1500)
+
     this.radius = f(maxDistance * 0.5 + puffRadius)
 
     // `FUN_00550a94`: how far ahead the sphere goes so the near fade's cone stays inside it.
     const [near] = settings.nearFade ?? [50, 100]
+
     if (near > 0) {
       const tan = Math.tan(0.6108652551968893)
       const a = f((this.radius * f(0.8)) / tan - near)
       const b = (tan * near + puffRadius * f(1.2)) * 1.25
       let x = b > this.radius ? a : Math.sqrt(this.radius * this.radius - b * b)
       if (x > a) x = a
+
       const result = x + near - this.radius
+
       this.reach = result < 0 ? 0 : f(result)
     } else this.reach = 0
 
@@ -194,6 +170,7 @@ export class Clouds {
     const weights = this.#weights()
     const colorA = settings.colorA ?? BLACK
     const colorB = settings.colorB ?? colorA
+
     for (let index = 0; index < count; index++) {
       const position = insideSphere(random, this.radius)
       const size = f(
@@ -205,22 +182,27 @@ export class Clouds {
         y: f(f(f(colorB.y - colorA.y) * t) + colorA.y),
         z: f(f(f(colorB.z - colorA.z) * t) + colorA.z),
       }
+      // Weighted pick by running sum of `weights`; the first draw is the fallback past rounding.
       let shape = Math.trunc((random() * weights.length) / 32768)
       const pick = f(random() * RAND_UNIT)
       let running = 0
+
       for (let at = 0; at < weights.length; at++) {
         running += weights[at]!
+
         if (pick < running) {
           shape = at
           break
         }
       }
+
       const velocity = insideSphere(random, f(settings.drift ?? 0))
       const lightning = settings.lightning
       const timer =
         lightning && lightning.duration > 0
           ? f((-0.800000011920929 - random() * RAND_UNIT * 0.699999988079071) * lightning.gap)
           : -1
+
       this.#puffs.push({
         position,
         size,
@@ -242,20 +224,25 @@ export class Clouds {
    */
   #regenerate(holds?: (point: Vector3) => number, excluded?: (point: Vector3) => number): void {
     const { random, settings } = this
+
     this.#puffs.forEach((puff, index) => {
       if (index >= this.#budget) {
         puff.active = false
         puff.hidden = true
         return
       }
+
       const sample = insideSphere(random, this.radius)
+
       puff.position = {
         x: f(this.#centre.x + sample.x),
         y: f(this.#centre.y + sample.y),
         z: f(this.#centre.z + sample.z),
       }
       puff.velocity = insideSphere(random, f(settings.drift ?? 0))
+
       const inside = holds !== undefined && holds(puff.position) > 0
+
       puff.active = inside
       puff.hidden = !inside || (excluded !== undefined && excluded(puff.position) > EXCLUDED)
     })
@@ -266,6 +253,7 @@ export class Clouds {
     const { shapes, weights = [] } = this.settings
     const raw = shapes.map((_, at) => weights[at] ?? 1)
     const sum = raw.reduce((total, weight) => total + weight, 0)
+
     return raw.map((weight) => f(weight / sum))
   }
 
@@ -276,6 +264,13 @@ export class Clouds {
 
   get puffs(): readonly Readonly<Puff>[] {
     return this.#puffs
+  }
+
+  /** The first shown puff's flash on the next step, for an editor: retail has no such call. */
+  fire(): void {
+    const puff = this.#puffs.find(({ active, hidden }) => active && !hidden)
+
+    if (puff) puff.timer = 0
   }
 
   /**
@@ -292,6 +287,7 @@ export class Clouds {
   ): void {
     const { settings, random } = this
     const count = this.#puffs.length
+
     this.#budget = Math.min(
       Math.max(Math.trunc((visibility / this.visibility.budget) * count), 0),
       count,
@@ -307,18 +303,23 @@ export class Clouds {
     const cull = f(this.radius * this.radius * f(1.02))
     const frame = Matrix4.fromRotationTranslation(camera.orientation, camera.position)
     const { x, y, z } = Matrix4.transformPoint({ x: 0, y: 0, z: -ahead }, frame)
+
     this.#centre = { x: f(x), y: f(y), z: f(z) }
 
     let active = 0
+
     for (const puff of this.#puffs) {
       if (this.#fade <= 0) {
         puff.active = false
         puff.hidden = true
       }
+
       if (!puff.active) continue
+
       const dx = this.#centre.x - puff.position.x
       const dy = this.#centre.y - puff.position.y
       const dz = this.#centre.z - puff.position.z
+
       if (dz * dz + dy * dy + dx * dx > cull) {
         puff.active = false
         puff.hidden = true
@@ -329,6 +330,7 @@ export class Clouds {
     this.#puffs.sort((a, b) => b.depth - a.depth)
 
     const lightning = settings.lightning
+
     for (const puff of this.#puffs) {
       if (!puff.active && active < this.#budget) {
         const on = onSphere(random)
@@ -337,19 +339,24 @@ export class Clouds {
           y: f(this.radius * on.y + this.#centre.y),
           z: f(f(this.radius * on.z) + this.#centre.z),
         }
+
         puff.position = position
         puff.velocity = insideSphere(random, f(settings.drift ?? 0))
+
         if (visibility >= this.visibility.spawn || (holds && holds(position) > 0)) {
           active++
           puff.active = true
           puff.hidden = excluded !== undefined && excluded(position) > EXCLUDED
         }
       }
+
       if (!puff.active || puff.hidden) continue
 
       if (lightning && lightning.duration > 0) {
         const old = puff.timer
+
         puff.timer = f(step + old)
+
         if (old >= 0) {
           if (puff.timer > lightning.duration)
             puff.timer = f(
@@ -361,19 +368,23 @@ export class Clouds {
           random()
           random()
         }
+
         if (puff.timer >= 0) {
           const a = f(random() * RAND_UNIT)
+
           puff.flash = f(random() * a * RAND_UNIT)
         }
       }
 
       const p = puff.position
+
       puff.position = {
         x: f(step * puff.velocity.x + p.x),
         y: f(step * puff.velocity.y + p.y),
         z: f(f(step * puff.velocity.z) + p.z),
       }
     }
+
     this.#active = active
   }
 
@@ -385,9 +396,12 @@ export class Clouds {
    */
   draw(camera: Camera, { cut = false, holds, excluded }: CloudDrawOptions = {}): Draw | undefined {
     const { settings } = this
+
     if (cut) this.#regenerate(holds, excluded)
+
     const first = settings.shapes[0]
     if (this.#active === 0 || !first) return undefined
+
     const view = viewMatrix(camera)
     const frame = Matrix4.invert(view)
 
@@ -404,14 +418,18 @@ export class Clouds {
       y: f(w.z * c1.x - w.x * c1.z),
       z: f(w.x * c1.y - w.y * c1.x),
     }
-    const inverse = inverseLength(f(up.x * up.x + up.y * up.y + up.z * up.z))
+    const inverse = inverseRoot(f(up.x * up.x + up.y * up.y + up.z * up.z))
+
     up = { x: f(inverse * up.x), y: f(inverse * up.y), z: f(inverse * up.z) }
     this.#up = up
+
+    // In view space: `p` is the up's direction on screen and `q` its perpendicular, both unit XY.
     const v = Matrix4.transformDirection(up, view)
-    const vi = inverseLength(f(v.x * v.x + v.y * v.y))
+    const vi = inverseRoot(f(v.x * v.x + v.y * v.y))
     const p = { x: f(v.x * vi), y: f(v.y * vi), z: 0 }
     let q = { x: p.y, y: -p.x, z: 0 }
-    const qi = inverseLength(f(q.y * q.y + q.z * q.z + q.x * q.x))
+    const qi = inverseRoot(f(q.y * q.y + q.z * q.z + q.x * q.x))
+
     q = { x: f(q.x * qi), y: f(q.y * qi), z: 0 }
 
     const radiusSquared = f(this.radius * this.radius)
@@ -427,13 +445,20 @@ export class Clouds {
 
     const corners: number[] = []
     const colours: number[] = []
+
     for (const puff of this.#puffs) {
       let alpha = f(f(settings.maxAlpha ?? 0.75) * this.#fade)
+
       if (!puff.active || puff.hidden) continue
+
       const at = Matrix4.transformPoint(puff.position, view)
       const depth = -at.z
+
       puff.depth = f(depth)
       if (depth < nearLow) continue
+
+      // Past `threshold` the alpha ramps linearly in squared distance from the sphere's centre,
+      // from 0.7 of its radius to the edge.
       if (depth > threshold) {
         const dx = 0 - at.x
         const dy = 0 - at.y
@@ -442,13 +467,17 @@ export class Clouds {
         if (squared > radiusSquared) continue
         if (f(squared) > innerSquared) alpha = f((radiusSquared - f(squared)) * alpha * ring)
       }
+
       if (alpha < 0.02) continue
+
       let near = alpha
+
       if (puff.depth <= nearLow) continue
       if (puff.depth < nearHigh) near = f((puff.depth - nearLow) * alpha * nearSpan)
       if (near < 0.02) continue
 
       let color = puff.color
+
       if (lightning && !settings.disableFlash && intensity > 0 && puff.timer >= 0) {
         const flash = (c: number) => f(f(c * puff.flash) * intensity)
         const sum = {
@@ -456,14 +485,18 @@ export class Clouds {
           y: f(color.y + flash(lightning.color.y)),
           z: f(color.z + flash(lightning.color.z)),
         }
+
         color = { x: Math.min(sum.x, 1), y: Math.min(sum.y, 1), z: Math.min(sum.z, 1) }
       }
+
       const shape = settings.shapes[puff.shape]
       if (!shape) continue
+
       // `_ftol` truncates, and only each low byte is kept: B, G, R, A in memory.
       const byte = (value: number) => Math.trunc(value * 255) & 0xff
       const diffuse = [byte(color.z), byte(color.y), byte(color.x), byte(near)]
 
+      // Corners at the centre ± `q` · size ± `p` · size, drawn as triangles c0 c1 c2 and c2 c3 c0.
       const sp = { x: f(p.x * puff.size), y: f(p.y * puff.size) }
       const sq = { x: f(q.x * puff.size), y: f(q.y * puff.size) }
       const z = f(at.z)
@@ -486,17 +519,21 @@ export class Clouds {
         colours.push(...diffuse)
       })
     }
+
     const vertexCount = corners.length / 5
     if (vertexCount === 0) return undefined
 
     const vertices = new Uint8Array(vertexCount * STRIDE)
     const floats = new Float32Array(vertices.buffer)
+
     for (let at = 0; at < vertexCount; at++) {
       const [x, y, z, u, v] = corners.slice(at * 5, at * 5 + 5)
+
       floats.set([x!, y!, z!], (at * STRIDE) / 4)
       vertices.set(colours.slice(at * 4, at * 4 + 4), at * STRIDE + 12)
       floats.set([u!, v!], (at * STRIDE + 16) / 4)
     }
+
     const mesh: VMeshData = {
       name: 'clouds',
       version: 1,
@@ -525,6 +562,7 @@ export class Clouds {
       boundingBox: { min: BLACK, max: BLACK },
       boundingSphere: { center: BLACK, radius: 0 },
     }
+
     return {
       mesh,
       reference,

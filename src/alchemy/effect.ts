@@ -64,9 +64,12 @@ const random = (pools: EffectPools): number => {
   const state = pools.rngState
   const mixed = (((state & 0xff) << 8) ^ (state & 0xff00)) | ((pools.rngCount ^ state) & 0xff)
   const bit = ((state >>> 14) & 1) ^ (state & 1)
+
   pools.rngCount = (pools.rngCount + 1) | 0
   pools.rngState = (bit + mixed * 2) | 0
+
   const next = pools.rngState
+
   return Math.fround(((next & 0xff) ^ ((next >>> 8) & 0xff)) * Math.fround(1 / 255))
 }
 
@@ -77,13 +80,16 @@ const INT = new Int32Array(FLOAT.buffer)
 const inverseLength = (squared: number): number => {
   FLOAT[0] = squared
   INT[0] = 0x5f3759df - (INT[0]! >> 1)
+
   const guess = FLOAT[0]!
+
   return (1.5 - 0.5 * squared * guess * guess) * guess
 }
 
 const curve = (c: AnimatedCurve | undefined, sparam: number, time: number, fallback: number) =>
   c ? curveAt(c, sparam, time) : fallback
 
+// The 3×3 part of `m` times a vector (columns x, y, z), translation dropped.
 const scaled = (m: Matrix4, { x, y, z }: Vector3): Vector3 => ({
   x: m.x.x * x + m.y.x * y + m.z.x * z,
   y: m.x.y * x + m.y.y * y + m.z.y * z,
@@ -117,8 +123,13 @@ export interface RunNode {
   /** Marked by `+0x5c`: it no longer updates or draws. */
   dead: boolean
   world: Matrix4
-  /** `+0xc(1, M)`: `parent · override · local`, how a placement reaches its node. */
+  /** `+0xc(1, M)`: `parent · override · local`, how a cutscene's placement reaches its node. */
   override?: Matrix4
+  /**
+   * `+0xc(0, M)`: the node's world for the next compose, outright, its parent and its own transform
+   * left out (`alchemy!0x624012a`, `0x62401b1`). How every in-flight effect is placed.
+   */
+  placed?: Matrix4
   update: (dt: number) => boolean
   died?: () => void
 }
@@ -213,16 +224,23 @@ const QUARTER_Z = Quat.axisAngle({ axis: { x: 0, y: 0, z: 1 }, angle: -Math.PI /
 const turnTo = (velocity: Vector3): Vector4 => {
   const length = Math.hypot(velocity.x, velocity.y, velocity.z)
   if (!(length > 0)) return Quat.identity
+
   const d = { x: velocity.x / length, y: velocity.y / length, z: velocity.z / length }
+
+  // Off the Y axis: about Y × d by acos(d.y). Near it that axis degenerates, so +Y is first turned to
+  // +X by `QUARTER_Z`, then +X onto d about X × d.
   if (Math.abs(d.y) < 0.99) {
     const s = Math.hypot(d.z, d.x)
+
     return Quat.axisAngle({ axis: { x: d.z / s, y: 0, z: -d.x / s }, angle: Math.acos(d.y) })
   }
+
   const s = Math.hypot(d.z, d.y)
   const first = Quat.axisAngle({
     axis: s > 0 ? { x: 0, y: -d.z / s, z: d.y / s } : { x: 0, y: 0, z: 1 },
     angle: Math.acos(Math.max(-1, Math.min(1, d.x))),
   })
+
   return Quat.multiply(first, QUARTER_Z)
 }
 
@@ -230,6 +248,7 @@ const insertChild = (parent: RunNode | undefined, top: RunNode[], node: RunNode)
   const list = parent ? parent.children : top
   // After the last whose key isn't greater, so ties keep entry order (`0x6201e00`).
   let at = list.length
+
   while (at > 0 && list[at - 1]!.key > node.key) at--
   list.splice(at, 0, node)
 }
@@ -250,7 +269,12 @@ const detach = (node: RunNode, top: RunNode[]) => {
 }
 
 /** `Slot11(7)`: nothing lives in it but its control root. */
+/** `+0x2c(7)`: no live node but the root, what a sub-effect is held to. */
 const runFinished = (run: EffectRun) => run.nodes.every((one) => one.dead || one === run.root)
+
+/** `+0x2c(4)`: no live appearance, emitters, fields and folders notwithstanding. */
+const appearancesDone = (run: EffectRun) =>
+  run.nodes.every((one) => one.dead || one.descriptor?.category !== 'appearance')
 
 /** `Slot13(1)`: its emitters go, and what they made lives out. */
 const stopRun = (run: EffectRun, top: RunNode[]) => {
@@ -268,15 +292,23 @@ export interface AdvanceOptions {
   lod?: number
   /** Where the host has the effect: reaches its control root, or else every top-level node. */
   placement?: Matrix4
+  /**
+   * How {@link placement} lands. `world`, every in-flight effect's (`ParticleEffect`,
+   * `Freelancer!0x4f8baa`), replaces the node's world outright, so a rootless effect's top-level
+   * transform is never applied. `override`, a cutscene's (`Thorn_Psys`), is `parent · M · local`.
+   */
+  placing?: 'world' | 'override'
   /** The camera's world to view, which the dust's streak and fade read. */
   view?: Matrix4
 }
 
 const applyField = (field: FieldNode, frame: Matrix4, world: Matrix4) => {
   const { state } = field
+
   switch (state.kind) {
     case 'gravity-field': {
       const change = scaled(frame, { x: 0, y: -state.change, z: 0 })
+
       return (s: Float32Array, o: number) => {
         s[o + VELOCITY]! += change.x
         s[o + VELOCITY + 1]! += change.y
@@ -286,6 +318,8 @@ const applyField = (field: FieldNode, frame: Matrix4, world: Matrix4) => {
     case 'air-field': {
       const target = scaled(frame, { x: 0, y: state.magnitude, z: 0 })
       const { blend } = state
+
+      // Per component v += (target − v) × blend, the easing turbulence and radial repeat.
       return (s: Float32Array, o: number) => {
         s[o + VELOCITY] = s[o + VELOCITY]! + (target.x - s[o + VELOCITY]!) * blend
         s[o + VELOCITY + 1] = s[o + VELOCITY + 1]! + (target.y - s[o + VELOCITY + 1]!) * blend
@@ -295,6 +329,7 @@ const applyField = (field: FieldNode, frame: Matrix4, world: Matrix4) => {
     case 'turbulence-field': {
       const pools = field.run.context.pools
       const { magnitude, blend } = state
+
       // `0x623e370`: three draws, y, x, z, and a fourth for strength. Not a noise field.
       return (s: Float32Array, o: number) => {
         const y = 2 * (random(pools) - 0.5)
@@ -302,6 +337,7 @@ const applyField = (field: FieldNode, frame: Matrix4, world: Matrix4) => {
         const z = 2 * (random(pools) - 0.5)
         const n = inverseLength(Math.fround(x * x + y * y + z * z))
         const push = random(pools) * magnitude
+
         s[o + VELOCITY] = s[o + VELOCITY]! + (x * n * push - s[o + VELOCITY]!) * blend
         s[o + VELOCITY + 1] = s[o + VELOCITY + 1]! + (y * n * push - s[o + VELOCITY + 1]!) * blend
         s[o + VELOCITY + 2] = s[o + VELOCITY + 2]! + (z * n * push - s[o + VELOCITY + 2]!) * blend
@@ -311,6 +347,7 @@ const applyField = (field: FieldNode, frame: Matrix4, world: Matrix4) => {
       const origin = frame.w
       const { magnitude, inverseRadius, attenuation, blend } = state
       const { sparam } = field.run.context
+
       // `0x6236610`: the displacement isn't normalized, and nothing is cut off at the radius.
       return (s: Float32Array, o: number) => {
         const dx = s[o]! - origin.x
@@ -318,6 +355,7 @@ const applyField = (field: FieldNode, frame: Matrix4, world: Matrix4) => {
         const dz = s[o + 2]! - origin.z
         const x = Math.min(1, Math.hypot(dx, dy, dz) * inverseRadius)
         const k = magnitude * (attenuation ? floatAt(attenuation, sparam, x) : 1)
+
         s[o + VELOCITY] = s[o + VELOCITY]! + (dx * k - s[o + VELOCITY]!) * blend
         s[o + VELOCITY + 1] = s[o + VELOCITY + 1]! + (dy * k - s[o + VELOCITY + 1]!) * blend
         s[o + VELOCITY + 2] = s[o + VELOCITY + 2]! + (dz * k - s[o + VELOCITY + 2]!) * blend
@@ -329,6 +367,7 @@ const applyField = (field: FieldNode, frame: Matrix4, world: Matrix4) => {
       const n = { x: axis.x * inverse, y: axis.y * inverse, z: axis.z * inverse }
       const point = Matrix4.transformPoint({ x: 1, y: 0, z: 1 }, frame)
       const { reflectivity, dt } = state
+
       // `0x621a0e0`: unbounded, and it acts only on a five-unit skin behind the plane.
       return (s: Float32Array, o: number) => {
         const v = o + VELOCITY
@@ -337,31 +376,39 @@ const applyField = (field: FieldNode, frame: Matrix4, world: Matrix4) => {
           (s[o + 1]! + 5 * n.y - point.y) * n.y +
           (s[o + 2]! + 5 * n.z - point.z) * n.z
         if (start < 0) return
+
         const sx = s[v]! * dt
         const sy = s[v + 1]! * dt
         const sz = s[v + 2]! * dt
         const along = sx * n.x + sy * n.y + sz * n.z
         if (along < 0) return
+
         const end =
           (s[o]! + sx - point.x) * n.x +
           (s[o + 1]! + sy - point.y) * n.y +
           (s[o + 2]! + sz - point.z) * n.z
         if (end > 0) return
+
+        // Signed plane distances of the skin-offset start and the step's end; t is the crossing fraction.
         const t = start / (start - end)
         const fromX = s[o]! + 5 * n.x
         const fromY = s[o + 1]! + 5 * n.y
         const fromZ = s[o + 2]! + 5 * n.z
+
         s[o] = fromX + t * (s[o]! + sx - fromX)
         s[o + 1] = fromY + t * (s[o + 1]! + sy - fromY)
         s[o + 2] = fromZ + t * (s[o + 2]! + sz - fromZ)
+
         // The position stands even when the speed is too small to reflect (`0x621a32f`).
         const speed = Math.hypot(s[v]!, s[v + 1]!, s[v + 2]!)
         if (!(speed > 0.001)) return
+
         const dot = 2 * (s[v]! * n.x + s[v + 1]! * n.y + s[v + 2]! * n.z)
         const rx = reflectivity * (s[v]! - dot * n.x)
         const ry = reflectivity * (s[v + 1]! - dot * n.y)
         const rz = reflectivity * (s[v + 2]! - dot * n.z)
         const back = (1 - t) * dt
+
         s[v] = rx
         s[v + 1] = ry
         s[v + 2] = rz
@@ -373,14 +420,19 @@ const applyField = (field: FieldNode, frame: Matrix4, world: Matrix4) => {
     case 'dust-field': {
       const { radius } = state
       const squared = Math.fround(radius * radius)
+
       // `0x6212c90`: the field's world, not `frame`, and it writes the age. A zero radius kills all.
       return (s: Float32Array, o: number) => {
         const q = transposeInto(world, { x: s[o]!, y: s[o + 1]!, z: s[o + 2]! })
         const d = q.x * q.x + q.y * q.y + q.z * q.z
+
         if (d > squared) {
           s[o + AGE] = 3.4028234663852886e38
           return
         }
+
+        // Age is 10 × fade × (z + r) / 2r, so depth through the sphere stands in for age; behind
+        // the centre, the outer fifth of r² fades out.
         let fade = 1
         const band = squared * 0.8
         if (q.z < 0 && d > band) fade = 1 - (d - band) / (squared - band)
@@ -399,7 +451,9 @@ const applyFields = (
 ) => {
   node.fields = node.fields.filter((field) => !field.dead)
   if (!node.fields.length) return
+
   const inverse = frameInverse(node.world)
+
   for (const field of node.fields) {
     const apply = applyField(field, Matrix4.multiply(inverse, field.world), field.world)
     if (apply) each(apply)
@@ -410,47 +464,61 @@ const applyFields = (
 const claim = ({ pools }: RunContext, node: AppearanceNode) => {
   const { kind } = node.descriptor
   let set = pools.held.get(kind)
+
   if (!set) {
     set = new Set()
     pools.held.set(kind, set)
   }
+
   set.add(node)
+
   let total = 0
   for (const one of set) total += held(one)
   if (total < pools.sizes[kind]) return
+
   let oldest: AppearanceNode | undefined
   let serial = Infinity
+
   for (const one of set) {
     const first = oldestSerial(one)
+
     if (first < serial) {
       serial = first
       oldest = one
     }
   }
+
   if (oldest) evict(oldest)
 }
 
 const oldestSerial = ({ lane, records }: AppearanceNode): number => {
   if (records) return records[0]?.state[SERIAL] ?? Infinity
   if (!lane) return Infinity
+
   for (let i = lane.tail; i < lane.head; i++) {
     const o = i * RECORD
     if (aliveAt(lane, o)) return lane.records[o + SERIAL]!
   }
+
   return Infinity
 }
 
 const evict = (node: AppearanceNode) => {
   const { lane, records } = node
+
   if (records) {
     const record = records.shift()
+
     if (record) {
       killRun(record.lifeRun, node)
       if (record.deathRun) killRun(record.deathRun, node)
     }
+
     return
   }
+
   if (!lane) return
+
   for (let i = lane.tail; i < lane.head; i++) {
     const o = i * RECORD
     if (!aliveAt(lane, o)) continue
@@ -464,6 +532,7 @@ const evict = (node: AppearanceNode) => {
 const killRun = (run: EffectRun, parent: AppearanceNode) => {
   for (const node of run.top) {
     kill(node)
+
     const at = parent.children.indexOf(node)
     if (at >= 0) parent.children.splice(at, 1)
   }
@@ -478,8 +547,10 @@ const appendRecord = (
   serial: number,
 ) => {
   if (lane.head >= lane.capacity) repack(lane)
+
   const o = lane.head++ * RECORD
   const r = lane.records
+
   r[o] = six[0]!.x
   r[o + 1] = six[0]!.y
   r[o + 2] = six[0]!.z
@@ -503,13 +574,17 @@ const repack = (lane: Lane) => {
   const room = Math.max(LANE_MIN, lane.count * 2)
   const into = room === lane.capacity ? records : new Float32Array(room * RECORD)
   let write = 0
+
   for (let read = lane.tail; read < lane.head; read++) {
     const o = read * RECORD
     if (!aliveAt(lane, o)) continue
+
     if (into !== records || write !== read)
       into.set(records.subarray(o, o + RECORD), write * RECORD)
+
     write++
   }
+
   lane.records = into
   lane.capacity = room
   lane.tail = 0
@@ -535,6 +610,7 @@ const carryAxis = (s: Float32Array, o: number) => {
   const az = s[o + AXIS + 2]!
   const squared = Math.fround(vx * vx + vy * vy + vz * vz)
   const length = squared * inverseLength(squared)
+
   if (length > 1e-6) {
     vx /= length
     vy /= length
@@ -546,10 +622,13 @@ const carryAxis = (s: Float32Array, o: number) => {
     vx = vz = 0
     vy = 1
   }
+
+  // n = a × v, and the new axis is v × n normalised: a with its part along v removed.
   const nx = vz * ay - vy * az
   const ny = az * vx - vz * ax
   const nz = vy * ax - ay * vx
   const i = inverseLength(Math.fround(nx * nx + ny * ny + nz * nz))
+
   s[o + AXIS] = vy * nz * i - vz * ny * i
   s[o + AXIS + 1] = vz * nx * i - vx * nz * i
   s[o + AXIS + 2] = vx * ny * i - vy * nx * i
@@ -576,9 +655,12 @@ export class EffectInstance {
     this.#run = this.#start(scene, undefined)
   }
 
-  /** Nothing left to show or make: what the game asks before dropping an effect (`+0x2c(7)`). */
+  /**
+   * No live appearance: what the game asks before dropping an effect (`+0x2c(4)`,
+   * `Freelancer!0x4f8a88`). An emitter, field or folder still alive doesn't keep it.
+   */
   get finished(): boolean {
-    return runFinished(this.#run)
+    return appearancesDone(this.#run)
   }
 
   /** Its emitters stop, and what they made lives out (`+0x34(1)`, `0x4f84d0`). */
@@ -586,29 +668,88 @@ export class EffectInstance {
     stopRun(this.#run, this.top)
   }
 
-  /** Every live particle, in sub-effects too: which appearance holds it, its age, and its span. */
-  eachParticle(visit: (node: EffectNode, age: number, life: number) => void): void {
+  /**
+   * Gone: every node dies at once, and what it held leaves the pools, as the game releases the Alchemy
+   * instance of an effect it destroys. One dropped without this keeps its share of the pools, and
+   * every later birth counts it.
+   */
+  release(): void {
+    for (const node of this.top) kill(node)
+    this.top.length = 0
+  }
+
+  /**
+   * Every live particle, in sub-effects too: which appearance holds it, its age and span, and where it
+   * stands and heads in the world, as the sprite's vertex stage carries a record to now.
+   */
+  eachParticle(
+    visit: (
+      node: EffectNode,
+      age: number,
+      life: number,
+      position: Vector3,
+      velocity: Vector3,
+    ) => void,
+  ): void {
     const walk = (node: RunNode) => {
       if (node.dead) return
+
       const { lane, records } = node as AppearanceNode
       const entry = node.run.scene.nodes[node.index]!
+      const { world } = node
+
+      const place = (
+        state: Float32Array,
+        o: number,
+        elapsed: number,
+        age: number,
+        life: number,
+      ) => {
+        const v = {
+          x: state[o + VELOCITY]!,
+          y: state[o + VELOCITY + 1]!,
+          z: state[o + VELOCITY + 2]!,
+        }
+        const p = {
+          x: state[o + POSITION]! + v.x * elapsed,
+          y: state[o + POSITION + 1]! + v.y * elapsed,
+          z: state[o + POSITION + 2]! + v.z * elapsed,
+        }
+
+        visit(
+          entry,
+          age,
+          life,
+          Matrix4.transformPoint(p, world),
+          Matrix4.transformDirection(v, world),
+        )
+      }
+
       if (lane)
         for (let i = lane.tail; i < lane.head; i++) {
           const o = i * RECORD
           if (!aliveAt(lane, o)) continue
-          const age = lane.records[o + AGE]! + (lane.clock - lane.records[o + BORN]!)
-          visit(entry, age, lane.records[o + LIFE]!)
+
+          const elapsed = lane.clock - lane.records[o + BORN]!
+
+          place(lane.records, o, elapsed, lane.records[o + AGE]! + elapsed, lane.records[o + LIFE]!)
         }
+
+      // A life effect's particle is moved on the CPU each step (`#placeLife`), so it stands as kept.
       if (records)
         for (const { state } of records)
-          if (state[AGE]! <= state[LIFE]!) visit(entry, state[AGE]!, state[LIFE]!)
+          if (state[AGE]! <= state[LIFE]!) place(state, 0, 0, state[AGE]!, state[LIFE]!)
+
       for (const child of node.children) walk(child)
     }
     for (const node of this.top) walk(node)
   }
 
   /** One of the game's frames, at the step the host chooses (`0x4f8a20`). */
-  advance(dt: number, { sparam, lod, placement, view }: AdvanceOptions = {}): void {
+  advance(
+    dt: number,
+    { sparam, lod, placement, placing = 'world', view }: AdvanceOptions = {},
+  ): void {
     const { context, top } = this
     if (sparam !== undefined) context.sparam = sparam
     if (lod !== undefined) context.lod = lod
@@ -616,47 +757,66 @@ export class EffectInstance {
     this.previousView = this.view
     this.view = view
     this.lastStep = dt
+
     if (view && this.previousView) {
       // The camera's travel in the world: the view's translation back through its rotation.
       const here = frameInverse(view).w
       const last = frameInverse(this.previousView).w
+
       this.previousTravel = this.cameraTravel
       this.cameraTravel = Math.hypot(here.x - last.x, here.y - last.y, here.z - last.z)
     }
+
     if (placement) {
       const { root } = this.#run
-      if (root) root.override = placement
-      else for (const node of this.#run.top) node.override = placement
+      const key = placing === 'world' ? 'placed' : 'override'
+
+      if (root) root[key] = placement
+      else for (const node of this.#run.top) node[key] = placement
     }
+
     for (const node of top.slice()) this.#compose(node, Matrix4.identity)
     for (const node of top.slice()) this.#walk(node, dt, top)
   }
 
   #compose(node: RunNode, parent: Matrix4): void {
     if (node.dead) return
+
     const { sparam } = this.context
     const { descriptor } = node
     if (descriptor?.kind === 'particle-appearance') this.#startDeaths(node as AppearanceNode)
-    const local = localMatrix(descriptor?.transform, sparam, node.age)
-    const placed = node.override ? Matrix4.multiply(parent, node.override) : parent
-    node.world = local ? Matrix4.multiply(placed, local) : placed
+
+    if (node.placed) {
+      // Flag 8: this compose keeps the world it was handed and clears the flag.
+      node.world = node.placed
+      node.placed = undefined
+    } else {
+      const local = localMatrix(descriptor?.transform, sparam, node.age)
+      const placed = node.override ? Matrix4.multiply(parent, node.override) : parent
+
+      node.world = local ? Matrix4.multiply(placed, local) : placed
+    }
+
     for (const child of node.children.slice()) this.#compose(child, node.world)
   }
 
   /** `0x6201810`. A node that says it's done dies here, with all that hangs from it. */
   #walk(node: RunNode, dt: number, top: RunNode[]): void {
     if (node.dead) return
+
     if (node.update(dt)) {
       kill(node)
       detach(node, top)
       return
     }
+
     for (const child of node.children.slice()) this.#walk(child, dt, top)
   }
 
   /** Builds a run's nodes, links them in entry order, then applies its `Pair` records in order. */
   #start(scene: EffectScene, parent: AppearanceNode | undefined): EffectRun {
     const run: EffectRun = { context: this.context, scene, nodes: [], top: [] }
+
     scene.nodes.forEach((entry, index) => {
       const node: RunNode = {
         run,
@@ -672,22 +832,29 @@ export class EffectInstance {
         world: Matrix4.identity,
         update: () => false,
       }
+
       run.nodes.push(node)
     })
+
     // A flagged entry takes the longest lifespan below it, 0 with none (`0x621f526`). Top level first.
     const order = [...scene.top, ...scene.nodes.keys()].filter((v, i, a) => a.indexOf(v) === i)
+
     for (const index of order) {
       const entry = scene.nodes[index]!
       if (entry.descriptor?.category !== 'folder') continue
+
       const longest = (of: number): number =>
         scene.nodes[of]!.children.reduce(
           (most, child) => Math.max(most, run.nodes[child]!.lifeSpan, longest(child)),
           0,
         )
+
       run.nodes[index]!.lifeSpan = longest(index)
     }
+
     scene.nodes.forEach((entry, index) => {
       const node = run.nodes[index]!
+
       node.parent = entry.parent >= 0 ? run.nodes[entry.parent] : parent
       this.#behave(node)
     })
@@ -696,8 +863,10 @@ export class EffectInstance {
     if (scene.root !== undefined) run.root = run.nodes[scene.root]
     scene.nodes.forEach((entry, index) => {
       const node = run.nodes[index]!
+
       for (const target of entry.targets) {
         const other = run.nodes[target]!
+
         if (node.descriptor?.category === 'emitter') this.#associate(node, other)
         else if (
           node.descriptor?.category === 'appearance' &&
@@ -712,10 +881,12 @@ export class EffectInstance {
   /** An emitter has one slot (`+0x98`), so a later link replaces it, and the old count stays. */
   #associate(node: RunNode, other: RunNode): void {
     const emitter = node as EmitterNode
+
     if (other.descriptor?.category !== 'appearance') {
       emitter.target = undefined
       return
     }
+
     emitter.target = other as AppearanceNode
     emitter.fresh = true
     emitter.target.refs++
@@ -723,6 +894,7 @@ export class EffectInstance {
 
   #behave(node: RunNode): void {
     const { descriptor } = node
+
     switch (descriptor?.category) {
       case 'emitter':
         return this.#behaveEmitter(node as EmitterNode, descriptor)
@@ -740,12 +912,16 @@ export class EffectInstance {
 
   #behaveField(node: FieldNode, descriptor: Field): void {
     node.state = { kind: 'beam-field' }
+
     const { context } = this
     const blendOf = (approach: number, dt: number) => Math.min(1, dt * approach * 4)
+
     node.update = (dt) => {
       node.age += dt
+
       const at = (c: AnimatedCurve | undefined, fallback: number) =>
         curve(c, context.sparam, node.age, fallback)
+
       switch (descriptor.kind) {
         case 'gravity-field':
           node.state = { kind: descriptor.kind, change: at(descriptor.gravity, 9.8) * dt }
@@ -786,6 +962,7 @@ export class EffectInstance {
         case 'beam-field':
           break
       }
+
       return node.age > node.lifeSpan
     }
   }
@@ -796,32 +973,44 @@ export class EffectInstance {
     node.died = () => {
       this.context.pools.held.get(descriptor.kind)?.delete(node)
     }
+
     if (descriptor.kind === 'particle-appearance') {
       node.records = []
       node.update = (dt) => this.#updateSpawner(node, descriptor, dt)
       return
     }
+
     const entry = node.run.scene.nodes[node.index]!
+
     const stepped = entry.targets.some((target) => {
       const linked = node.run.scene.nodes[target]!.descriptor
+
       return linked?.category === 'field' && linked.kind !== 'beam-field'
     })
+
     const lane = createLane(stepped)
+
     node.lane = lane
+
     const perp = descriptor.kind === 'perp-appearance'
+
     node.update = (dt) => {
       node.age += dt
+
       const empty = node.refs === 0 && lane.count === 0
+
       if (lane.stepped) this.#stepLane(node, lane, dt, perp)
       else {
         lane.clock += dt
         rebase(lane)
+
         let count = 0
         const { head } = lane
         for (let i = lane.tail; i < head; i++) if (aliveAt(lane, i * RECORD)) count++
         lane.count = count
         while (lane.tail < head && !aliveAt(lane, lane.tail * RECORD)) lane.tail++
       }
+
       // It never checks its own clock: an appearance's `Node_LifeSpan` alone doesn't stop it (`0x6216441`).
       return empty
     }
@@ -830,14 +1019,19 @@ export class EffectInstance {
   /** The list appearance's update: fields over every record, then age and move (`0x62188c0`). */
   #stepLane(node: AppearanceNode, lane: Lane, dt: number, perp: boolean): void {
     const { records } = lane
+
     applyFields(node, (apply) => {
       for (let i = 0; i < lane.head; i++) apply(records, i * RECORD)
     })
+
+    // One pass: age, drop the dead, slide survivors down to `write` in order, then move them.
     let write = 0
+
     for (let read = 0; read < lane.head; read++) {
       const o = read * RECORD
       const age = records[o + AGE]! + dt
       if (age > records[o + LIFE]!) continue
+
       const w = write * RECORD
       if (w !== o) records.copyWithin(w, o, o + RECORD)
       records[w + AGE] = age
@@ -847,6 +1041,7 @@ export class EffectInstance {
       if (perp) carryAxis(records, w)
       write++
     }
+
     lane.head = write
     lane.count = write
     for (let i = 0; i < write; i++) records[i * RECORD + BORN] = lane.clock
@@ -855,21 +1050,29 @@ export class EffectInstance {
 
   #updateSpawner(node: AppearanceNode, descriptor: ParticleAppearance, dt: number): boolean {
     node.age += dt
+
     const records = node.records!
     const empty = node.refs === 0 && records.length === 0
+
     applyFields(node, (apply) => {
       for (const { state } of records) if (state[AGE]! < state[LIFE]!) apply(state, 0)
     })
+
     let write = 0
+
     for (const record of records) {
       const { state } = record
+
       if (state[AGE]! <= state[LIFE]!) {
         state[AGE]! += dt
+
         if (!(state[AGE]! > state[LIFE]!)) this.#placeLife(descriptor, record, dt)
         else if (!runFinished(record.lifeRun)) stopRun(record.lifeRun, node.children)
+
         records[write++] = record
         continue
       }
+
       if (
         !runFinished(record.lifeRun) ||
         (record.deathRun !== undefined && !runFinished(record.deathRun))
@@ -877,9 +1080,11 @@ export class EffectInstance {
         records[write++] = record
         continue
       }
+
       killRun(record.lifeRun, node)
       if (record.deathRun) killRun(record.deathRun, node)
     }
+
     records.length = write
     return empty
   }
@@ -887,26 +1092,34 @@ export class EffectInstance {
   /** `0x622ff00`: moves a particle, and hands its life effect `[R | p]`. */
   #placeLife(descriptor: ParticleAppearance, record: ParticleRecord, dt: number): void {
     const { state } = record
+
     state[0]! += state[VELOCITY]! * dt
     state[1]! += state[VELOCITY + 1]! * dt
     state[2]! += state[VELOCITY + 2]! * dt
+
     const position = { x: state[0]!, y: state[1]!, z: state[2]! }
     let placed = Matrix4.translation(position)
+
     if (descriptor.useDynamicRotation) {
       const velocity = { x: state[VELOCITY]!, y: state[VELOCITY + 1]!, z: state[VELOCITY + 2]! }
       let turn = turnTo(velocity)
+
       if (descriptor.smoothRotation) {
         const speed = Math.hypot(velocity.x, velocity.y, velocity.z)
         let blend = speed * dt
+
         if (!(speed >= 0.5)) {
           turn = Quat.identity
           blend = dt + 0.01
         }
+
         record.blend = Quat.slerp(record.blend, turn, Math.min(blend, 1))
         turn = record.blend
       }
+
       placed = Matrix4.fromRotationTranslation(Matrix3.fromQuaternion(turn), position)
     }
+
     this.#place(record.lifeRun, placed)
   }
 
@@ -919,9 +1132,11 @@ export class EffectInstance {
   #startDeaths(node: AppearanceNode): void {
     const descriptor = node.descriptor as ParticleAppearance
     if (!descriptor.deathName) return
+
     for (const record of node.records!) {
       const { state } = record
       if (record.deathRun || !(state[AGE]! > state[LIFE]!)) continue
+
       const scene = this.context.lookup?.(descriptor.deathName)
       if (!scene) continue
       record.deathRun = this.#start(scene, node)
@@ -942,24 +1157,33 @@ export class EffectInstance {
   ): void {
     const { descriptor } = node
     const { context } = this
+
     claim(context, node)
+
     const serial = context.pools.serial++
+
     if (descriptor.kind === 'particle-appearance') {
       // No name, or one no library defines, and no particle is born (`0x622f6fc`, `0x622f742`).
       const scene = descriptor.lifeName ? context.lookup?.(descriptor.lifeName) : undefined
       if (!scene) return
+
       const state = new Float32Array(RECORD)
+
       state.set([position.x, position.y, position.z, velocity.x, velocity.y, velocity.z])
       state[AGE] = age
       state[LIFE] = life
       state[SERIAL] = serial
+
       const lifeRun = this.#start(scene, node)
       const record: ParticleRecord = { state, lifeRun, blend: Quat.identity }
+
       node.records!.push(record)
       this.#placeLife(descriptor, record, 0)
       return
     }
+
     const axis = descriptor.kind === 'perp-appearance' ? perpSeed(velocity) : NO_AXIS
+
     appendRecord(node.lane!, [position, velocity], age, life, axis, serial)
   }
 
@@ -971,18 +1195,23 @@ export class EffectInstance {
     node.died = () => {
       if (node.target) node.target.refs--
     }
+
     const { context } = this
     const emit = this.#emitter(node, descriptor)
+
     // `0x6245bf0`.
     node.update = (dt) => {
       node.age += dt
+
       const expired = node.age > node.lifeSpan
       const target = node.target
       if (!target) return expired
+
       if (target.dead) {
         node.target = undefined
         return expired
       }
+
       emit(target, context.sparam, node.age)
       return expired
     }
@@ -990,6 +1219,7 @@ export class EffectInstance {
 
   #emitter(node: EmitterNode, descriptor: Emitter) {
     const { context } = this
+
     return (target: AppearanceNode, sparam: number, t: number) => {
       const at = (c: AnimatedCurve | undefined, fallback: number) => curve(c, sparam, t, fallback)
       const pressure = at(descriptor.pressure, 10)
@@ -998,35 +1228,49 @@ export class EffectInstance {
       const elapsed = t - node.last
       let count = Math.trunc(elapsed * frequency)
       const here = node.world.w
+
       if (node.fresh) {
         node.fresh = false
         count += Math.trunc(descriptor.initialParticles)
         node.previous = { x: here.x, y: here.y, z: here.z }
       }
+
       for (const { key, value } of descriptor.emitCount?.keyframes[0]?.keyframes ?? []) {
         if (key < node.last) continue
         if (key > t) break
         count = Math.trunc(count + value.x)
       }
+
       const lod = descriptor.lodCurve ? floatAt(descriptor.lodCurve, sparam, context.lod) : 1
       const sum = lod * count + node.carry
       const total = Math.trunc(sum)
+
       node.carry = sum - total
+
       if (!total) {
         if (!frequency) node.last = t
         return
       }
+
       const path = transposeInto(node.world, node.previous)
+
       node.previous = { x: here.x, y: here.y, z: here.z }
+
       // The whole path lends the velocity; only its share per birth spaces them (`0x6245fa0`).
       const share = elapsed > 0 ? -at(descriptor.velocityApproach, 0) / elapsed : 0
       const bias = { x: path.x * share, y: path.y * share, z: path.z * share }
+
       if (target.parent === node.parent) path.x = path.y = path.z = 0
+
       const room = at(descriptor.maxParticles, 10000) - held(target)
       let births = room < total ? Math.trunc(room) : total
       // This library's rule, not read: a birth with no life would last until the next update at most.
       if (!(lifeSpan > 0)) births = 0
+
       const frame = Matrix4.multiply(frameInverse(target.world), node.world)
+
+      // Births spread back across the step: the n-th is `age` old, already `v × age` along its heading
+      // and `path × back` along the emitter's travel; `frame` takes emitter space to the target's.
       for (let n = 1; n <= births; n++) {
         const back = 1 - n / total
         const age = elapsed * back
@@ -1043,17 +1287,21 @@ export class EffectInstance {
           frame,
         )
         const velocity = scaled(frame, { x: vx + bias.x, y: vy + bias.y, z: vz + bias.z })
+
         this.#spawn(target, position, velocity, age, lifeSpan)
       }
+
       node.last = t
     }
   }
 
+  /** A unit vector off +Y by a random angle in `min`..`max` degrees, at a random azimuth, z negated. */
   #spread(min: number, max: number): Vector3 {
     const { pools } = this.context
     const phi = random(pools) * 2 * Math.PI
     const theta = (min + random(pools) * (max - min)) * (Math.PI / 180)
     const sin = Math.sin(theta)
+
     return { x: Math.cos(phi) * sin, y: Math.cos(theta), z: -Math.sin(phi) * sin }
   }
 
@@ -1061,6 +1309,7 @@ export class EffectInstance {
   #shape(descriptor: Emitter, sparam: number, t: number) {
     const { pools } = this.context
     const at = (c: AnimatedCurve | undefined, fallback: number) => curve(c, sparam, t, fallback)
+
     switch (descriptor.kind) {
       // `0x621d430`: half-extents, height drawn first, and a heading independent of the point.
       case 'cube-emitter': {
@@ -1068,6 +1317,7 @@ export class EffectInstance {
         const y = 2 * (random(pools) - 0.5) * at(descriptor.height, 5)
         const x = 2 * (random(pools) - 0.5) * at(descriptor.width, 5)
         const z = 2 * (random(pools) - 0.5) * at(descriptor.depth, 5)
+
         return { point: { x, y, z }, direction }
       }
       // `0x623bd60`: a point of the cube normalized, so it leans towards the diagonals.
@@ -1079,6 +1329,7 @@ export class EffectInstance {
         const direction = { x: a * i, y: b * i, z: c * i }
         const min = at(descriptor.minRadius, 0)
         const radius = min + random(pools) * (at(descriptor.maxRadius, 1) - min)
+
         return {
           point: { x: direction.x * radius, y: direction.y * radius, z: direction.z * radius },
           direction,
@@ -1089,6 +1340,7 @@ export class EffectInstance {
         const direction = this.#spread(at(descriptor.minSpread, 0), at(descriptor.maxSpread, 0))
         const min = at(descriptor.minRadius, 0)
         const radius = min + random(pools) * (at(descriptor.maxRadius, 1) - min)
+
         return {
           point: { x: direction.x * radius, y: direction.y * radius, z: direction.z * radius },
           direction,

@@ -39,6 +39,8 @@ export interface VertexLayout {
 export const vertexLayout = (format: VertexFormat): VertexLayout => {
   const attributes: VertexAttribute[] = []
   let offset = 0
+
+  // Floats take 4 bytes a component, `D3DCOLOR` one; `offset` runs on in the FVF's fixed order.
   const add = (name: AttributeName, size: number, normalizedBytes = false) => {
     attributes.push({ name, size, normalizedBytes, offset })
     offset += normalizedBytes ? size : size * 4
@@ -52,6 +54,7 @@ export const vertexLayout = (format: VertexFormat): VertexLayout => {
   if (format & VertexFormat.Specular) offset += 4
 
   const maps = getMapCount(format)
+
   for (let map = 0; map < maps; map++) {
     if (map < 2) add(map === 0 ? 'uv0' : 'uv1', 2)
     else offset += 8
@@ -102,12 +105,14 @@ export const planReference = (data: VMeshData, reference: VMeshRef): ReferencePl
   const groups: GroupDraw[] = []
 
   let written = 0
+
   for (const { materialId, startIndex, elementCount, baseVertex } of draws) {
     groups.push({
       materialId,
       byteOffset: written * Uint16Array.BYTES_PER_ELEMENT,
       count: elementCount,
     })
+
     for (let at = 0; at < elementCount; at++)
       indices[written++] = data.indices[startIndex + at]! + baseVertex
   }

@@ -19,6 +19,7 @@ import type { LensGlow, StarLensFlare, StarSpines } from './corona.js'
 import { textureHasAlpha } from './exterior.js'
 import type { Draw } from './frame.js'
 import type { TextureShape } from './ring.js'
+import { unitByte } from './retail.js'
 
 const f = Math.fround
 
@@ -71,6 +72,7 @@ export interface Star {
 export const starRadius = ({ radius = 1000, glow, center }: Star): number => {
   const glowScale = f(glow?.scale ?? 1)
   const centerScale = f(center ? (center.scale ?? 1) : 0)
+
   return f((centerScale > glowScale ? centerScale : glowScale) * f(radius))
 }
 
@@ -81,7 +83,7 @@ const BLACK: Vector3 = { x: 0, y: 0, z: 0 }
 const WHITE: Vector3 = { x: 1, y: 1, z: 1 }
 
 // `ScaleClampToByte`: times 255 on the FPU, truncated, held to a byte.
-const byte = (value: number): number => Math.min(Math.max(Math.trunc(value * 255), 0), 255)
+const byte = unitByte
 
 const add = (a: Vector3, b: Vector3): Vector3 => ({
   x: f(a.x + b.x),
@@ -114,6 +116,7 @@ const glowDraw = (
   projection: Matrix4,
 ): Draw | undefined => {
   if (!shape) return undefined
+
   const across = scaled(scaled(right, size), f(scale))
   const over = scaled(scaled(up, size), f(scale))
   // Top left, top right, bottom right, bottom left (`0x50ce2d` on).
@@ -126,6 +129,7 @@ const glowDraw = (
   const { u0, v0, u1, v1 } = shape
   const um = f(f(u0 + u1) * 0.5)
   const vm = f(f(v0 + v1) * 0.5)
+  // The centre, then the rim clockwise from the top left through corners and edge midpoints, closed.
   const fan: [Vector3, number, number][] = [
     [centre, um, vm],
     [c0, u0, v0],
@@ -144,11 +148,13 @@ const glowDraw = (
 
   const vertices = new Uint8Array(fan.length * STRIDE)
   const floats = new Float32Array(vertices.buffer)
+
   fan.forEach(([{ x, y, z }, u, v], index) => {
     floats.set([x, y, z], (index * STRIDE) / 4)
     vertices.set(index === 0 ? inner : outer, index * STRIDE + 12)
     floats.set([u, v], (index * STRIDE + 16) / 4)
   })
+
   const count = fan.length
   const mesh: VMeshData = {
     name: 'star glow',
@@ -172,6 +178,7 @@ const glowDraw = (
     boundingBox: { min: BLACK, max: BLACK },
     boundingSphere: { center: BLACK, radius: 0 },
   }
+
   return {
     mesh,
     reference,
@@ -247,9 +254,11 @@ export const starGlowDraws = (
   const draws: Draw[] = []
   const glow = glowDraw(star.glow ?? {}, position, scale, right, up, alpha, projection)
   if (glow) draws.push(glow)
+
   if (star.center) {
     const centre = glowDraw(star.center, position, scale, right, up, f(alpha * alpha), projection)
     if (centre) draws.push(centre)
   }
+
   return draws
 }

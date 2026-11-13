@@ -35,13 +35,17 @@ export const assertFrameMatches = (
     // unindexed from a buffer, `DrawPrimitive`.
     const unindexed = retail.call === 'DrawPrimitiveUP' || retail.call === 'DrawPrimitive'
     const immediate = unindexed || retail.call === 'DrawIndexedPrimitiveUP'
+
     if (!scattered.includes(n))
       assert.equal(ours.count, unindexed ? retail.vertices : retail.indices, what)
+
     // Retail's Two, nomad and atmosphere copy their vertices elsewhere, so only the others compare.
     // Retail holds a model's meshes in one index buffer, so each mesh has one constant offset.
     if (!ours.negateNormals && !ours.nomad && !ours.atmosphere && !streamed && !immediate) {
+      // `byteOffset / 2`: indices are 16-bit, so bytes into the buffer become an index count.
       const start = ours.reference.indexStart + ours.byteOffset / 2
       const offset = offsets.get(ours.mesh) ?? retail.startIndex! - start
+
       offsets.set(ours.mesh, offset)
       assert.equal(start + offset, retail.startIndex, what)
     }
@@ -52,9 +56,11 @@ export const assertFrameMatches = (
     assert.equal(retail.states['ALPHABLENDENABLE'], ours.blend ? 1 : 0, what)
     assert.equal(retail.states['ALPHAREF'], ours.alphaReference, what)
     assert.equal(retail.states['ALPHATESTENABLE'], ours.alphaFunction === 'always' ? 0 : 1, what)
+
     // D3DCMP_LESS 2, GREATER 5.
     if (ours.alphaFunction !== 'always')
       assert.equal(retail.states['ALPHAFUNC'], ours.alphaFunction === 'less' ? 2 : 5, what)
+
     assert.equal(retail.states['NORMALIZENORMALS'], ours.normalizeNormals ? 1 : 0, what)
     assert.equal(retail.states['ZWRITEENABLE'], ours.depthWrite ? 1 : 0, what)
 
@@ -64,9 +70,13 @@ export const assertFrameMatches = (
       ours.diffuse.forEach((value, c) =>
         close(value, retail.material!.diffuse[c]!, `${what} diffuse`),
       )
+
       const ambient = [ours.ambient.x, ours.ambient.y, ours.ambient.z]
+
       ambient.forEach((value, c) => close(value, retail.material!.ambient[c]!, `${what} ambient`))
+
       const emissive = [ours.emissive.x, ours.emissive.y, ours.emissive.z]
+
       emissive.forEach((value, c) =>
         close(value, retail.material!.emissive[c]!, `${what} emissive`),
       )
@@ -74,6 +84,7 @@ export const assertFrameMatches = (
 
     const stageNames = (stage: number) =>
       namesOf(index, retail.stages[stage]!.texture!).map(({ name }) => name.toLowerCase())
+
     if (ours.texture) assert.ok(stageNames(0).includes(ours.texture.name.toLowerCase()), what)
     // With stage 0 empty and off, `BindEnvMap` takes it. Engine glow is the one with no stage 0 table.
     else if (retail.stages[0]!.states['COLOROP'] !== 5)
@@ -89,6 +100,7 @@ export const assertFrameMatches = (
         screen: [2, 4],
         premultiplied: [2, 6],
       }[ours.blendMode]
+
       assert.deepEqual(
         [retail.states['SRCBLEND'], retail.states['DESTBLEND']],
         [source, destination],
@@ -99,13 +111,17 @@ export const assertFrameMatches = (
     // D3DCMP_LESS 2, LESSEQUAL 4. With `ZENABLE` 0 the device ignores `ZFUNC`: a sky sets 8, and
     // the far list leaves whatever was there (`DrainBucket`).
     assert.equal(retail.states['ZENABLE'], ours.depthFunc === 'always' ? 0 : 1, what)
+
     if (ours.depthFunc !== 'always')
       assert.equal(retail.states['ZFUNC'], { less: 2, lequal: 4 }[ours.depthFunc], what)
+
     // The menu's is white. In space each object carries the system's, or its nebula's.
     if (ours.sceneAmbient) {
+      // Packed as D3DCOLOR 0xAARRGGBB with alpha 255; `>>> 0` reads it unsigned.
       const { x, y, z } = ours.sceneAmbient
       const byte = (c: number) => Math.round(c * 255)
       const packed = ((0xff << 24) | (byte(x) << 16) | (byte(y) << 8) | byte(z)) >>> 0
+
       assert.equal(retail.states['AMBIENT'], packed, what)
     }
 
@@ -123,21 +139,26 @@ export const assertFrameMatches = (
         : ours.second || ours.nomad
           ? 7
           : 1
+
     // With stage 0 off the cascade ends there, and stage 1 is whatever was left: the fog overlay's.
     if (retail.stages[0]!.states['COLOROP'] !== 1 || ours.texture)
       assert.equal(operation, stage, what)
+
     if (ours.second?.texture) {
       assert.ok(stageNames(1).includes(ours.second.texture.name.toLowerCase()), what)
       assert.equal(retail.stages[1]!.states['TEXCOORDINDEX'], ours.second.texture.uvSet, what)
     }
+
     // A planet mask's tile matrix, and retail's flags saying the stage applies it.
     if (ours.second?.tile !== undefined) {
       assert.equal(retail.stages[1]!.states['TEXTURETRANSFORMFLAGS'], 2, what)
       close(retail.stages[1]!.transform![0]!, ours.second.tile, `${what} tile`)
       close(retail.stages[1]!.transform![5]!, ours.second.tile, `${what} tile`)
     }
+
     if (ours.environment) {
       const stage = onStageZero ? 0 : 1
+
       assert.ok(stageNames(stage).includes(ours.environment), what)
       assert.equal(retail.stages[stage]!.states['TEXCOORDINDEX'], 0x30000, what)
     }

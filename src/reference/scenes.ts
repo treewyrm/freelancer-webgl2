@@ -1,8 +1,9 @@
 import { BAND_ANIMATIONS, BANDS, ONE_UV_BANDS, PLANET_BANDS } from './bands.js'
 import type { SwitchTable } from '#/deformable/level.js'
 import { IDENTITY, rotation, type ReferenceScene } from './scene.js'
+import { playedScenes, thornScenes } from './thorn.js'
 
-/** Identity orientation looks down -Z, as in the lab rig's `freelancer-testing/tests/mount.ts`. */
+/** Identity orientation looks down -Z. */
 const CAMERA = {
   position: [0, 0, 0],
   orientation: IDENTITY,
@@ -371,5 +372,7 @@ export const scenes: ReadonlyMap<string, ReferenceScene> = new Map(
     effect('effect_pool', 'pool', 1),
     // Moving at 50 a second, which a THN host's zero-length pass makes no difference to: it draws nothing.
     effect('effect_dust', 'dust', 5, { travel: { by: [6000, 0, 0], duration: 120 } }),
+    ...thornScenes,
+    ...playedScenes,
   ].map((scene) => [scene.name, scene]),
 )

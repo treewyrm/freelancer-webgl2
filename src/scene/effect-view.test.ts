@@ -22,11 +22,14 @@ const camera: Camera = {
   far: 21000,
 }
 const ahead = (z: number, x = 0): Vector3 => ({ x, y: 0, z: -z })
+
 const frame = (nebulae: SpaceNebula[] = []) => {
   const states = nebulae.map((nebula) => nebulaState(nebula, camera.position))
   const field = pickField(states, camera.position, 20000)
+
   return { camera, aspect: 1, view: viewMatrix(camera), nebulae: states, ...(field && { field }) }
 }
+
 const view = (effect: PlacedEffect, options?: EffectViewOptions, nebulae?: SpaceNebula[]) =>
   viewEffect(effect, frame(nebulae), options)
 
@@ -44,9 +47,15 @@ test('the retail table has every type, in order', () => {
     lodType: 1,
     radius: 100,
     existOffscreen: true,
+    updateOffscreen: true,
     pbubble: { near: 500, far: 2000 },
     runTime: -1,
   })
+  // Only ten rows step unseen, as `Freelancer.exe` has them (`+0x15`).
+  assert.deepEqual(
+    RETAIL_EFFECT_TYPES.flatMap(({ updateOffscreen }, at) => (updateOffscreen ? [at] : [])),
+    [2, 3, 24, 25, 26, 35, 36, 37, 38, 45],
+  )
   // Every other row runs 15 seconds or until it ends, as `.data` has them.
   assert.equal(RETAIL_EFFECT_TYPES[0]!.runTime, 15)
   assert.equal(RETAIL_EFFECT_TYPES[41]!.runTime, 15)
@@ -72,11 +81,14 @@ test('its bubble narrows from far to near as generic_effect_perf falls', () => {
 
 test('a priority under the perf hides it, the generic one for a generic appearance', () => {
   const small = { type: 1, position: ahead(100) }
+
   assert.equal(view(small, { effectDetail: 0.4 }).fate, 'draw')
   assert.equal(view({ ...small, generic: true }, { effectDetail: 0.4 }).fate, 'die')
   assert.equal(view({ type: 4, position: ahead(100) }, { effectDetail: 0.9 }).fate, 'die')
+
   // A mod's row over the table.
   const raised = { effectDetail: 0.9, effectTypes: { 4: { priority: 1 } } as never }
+
   assert.equal(view({ type: 4, position: ahead(100) }, raised).fate, 'draw')
 })
 
@@ -86,6 +98,7 @@ test("a cloaked ship's effect hides, and so does one in another field than the c
     position: ahead(100),
     watched: { position, cloak },
   })
+
   assert.equal(view(watched(ahead(100), 1)).fate, 'die')
   assert.equal(view(watched(ahead(100), 0.5)).fate, 'draw')
 
@@ -94,9 +107,12 @@ test("a cloaked ship's effect hides, and so does one in another field than the c
     zone: zoneOf({ type: 'sphere', center: { x: 0, y: 0, z: 0 }, radius: 1000 }),
     fog: { distance: 300, color: { x: 0, y: 0, z: 0 } },
   }
+
   assert.equal(viewEffect(watched(ahead(100)), frame([core])).fate, 'draw')
   assert.equal(viewEffect(watched(ahead(2000)), frame([core])).fate, 'die')
+
   const far = { ...watched(ahead(100)), position: ahead(400) }
+
   assert.equal(viewEffect(far, frame([core])).fate, 'die')
 })
 
@@ -112,8 +128,10 @@ test('an [EffectLOD] row fades it in by its size on screen, and hides it under t
       effectTypes: { [NONE]: { lodType: 6 } } as never,
     },
   )
+
   assert.equal(fate, 'draw')
   assert.ok(Math.abs(lod - 0.5) < 1e-6, `${lod}`)
+
   const tiny = { ...options, effectLods: [, , , , , , { ...row, minScreenSize: size + 1 }] }
   const hidden = view(
     { type: NONE, position: ahead(100) },
@@ -122,6 +140,7 @@ test('an [EffectLOD] row fades it in by its size on screen, and hides it under t
       effectTypes: { [NONE]: { lodType: 6 } } as never,
     },
   )
+
   assert.deepEqual(hidden, { fate: 'die', lod: 0 })
 })
 

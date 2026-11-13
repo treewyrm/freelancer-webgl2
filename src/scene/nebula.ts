@@ -10,12 +10,15 @@ import type { NebulaExterior } from './exterior.js'
 import type { NebulaLightning } from './lightning.js'
 import type { TextureShape } from './ring.js'
 import { segmentMeetsZone } from './zone-segment.js'
+import { inverseRoot, unitByte } from './retail.js'
 
 /**
  * What a nebula asks of its zone: `IZone`'s position, `GetRadius`, `GetRadiusAlong`, `GetSize` and
  * `GetOrientation`.
  */
 export interface Zone {
+  /** Its `shape`: what the exclusion managers measure by kind (`AsteroidExclusionZone::update_dist`). */
+  type: Shape['type']
   position: Vector3
   /** The sphere around it. */
   radius: number
@@ -113,12 +116,16 @@ export const RETAIL_NEBULA_LIMITS: Readonly<NebulaLimits> = {
   exclusionFarMargin: 500,
 }
 
-/** D3D's linear fog: none nearer than `start`, all of `color` from `end`. */
+/** D3D's fog: linear, none nearer than `start` and all of `color` from `end`, or exponential. */
 export interface Fog {
   /** 0 to 1, whole bytes. */
   color: Vector3
   start: number
   end: number
+  /** `D3DFOGMODE`. A nebula's is linear; a room's `fogmode` can be any. Linear when absent. */
+  mode?: 'linear' | 'exp' | 'exp2'
+  /** What `exp` and `exp2` read: `e^-(density × W)`, and `e^-(density × W)²`. */
+  density?: number
 }
 
 const f = Math.fround
@@ -174,6 +181,7 @@ export const zoneOf = (shape: Shape, written: WrittenZone = {}): Zone => {
   })
   const zone = {
     ...reach,
+    type: shape.type,
     meets: (start: Vector3, end: Vector3) => segmentMeetsZone(shape.type, reach, start, end),
     holds: (point: Vector3) => inZone(shape.type, reach, toLocal, point),
   }
@@ -192,6 +200,7 @@ export const zoneOf = (shape: Shape, written: WrittenZone = {}): Zone => {
     // `ClampPointToBoxSurface` (`FUN_062dba00`): each axis outside held to its face; a point
     // inside goes to the face it's nearest.
     const half = [f(size.x * 0.5), f(size.y * 0.5), f(size.z * 0.5)]
+
     return {
       ...zone,
       surfacePoint: (point) => {
@@ -199,20 +208,26 @@ export const zoneOf = (shape: Shape, written: WrittenZone = {}): Zone => {
         const values = [local.x, local.y, local.z]
         const over = values.map((value, axis) => f(Math.abs(value) - half[axis]!))
         let outside = false
+
         const out = values.map((value, axis) => {
           if (over[axis]! < 0) return value
           outside = true
           return Math.sign(value) < 0 || Object.is(value, -0) ? -half[axis]! : half[axis]!
         })
+
         if (!outside) {
           let nearest = 2
+
           if (over[0]! >= over[1]!) {
             if (over[0]! >= over[2]!) nearest = 0
           } else if (over[1]! >= over[2]!) nearest = 1
+
           const value = values[nearest]!
+
           out[nearest] =
             Math.sign(value) < 0 || Object.is(value, -0) ? -half[nearest]! : half[nearest]!
         }
+
         return plus(toWorld({ x: out[0]!, y: out[1]!, z: out[2]! }), centre)
       },
     }
@@ -223,6 +238,7 @@ export const zoneOf = (shape: Shape, written: WrittenZone = {}): Zone => {
     const middle = f((size.y + size.x) * 0.5)
     const half = size.z * 0.5
     const cutoff = half / Math.sqrt(size.x * size.x + half * half)
+
     return {
       ...zone,
       surfacePoint: (point) => {
@@ -231,11 +247,13 @@ export const zoneOf = (shape: Shape, written: WrittenZone = {}): Zone => {
         let tube = sub(local, rim)
         const length = Math.sqrt(tube.x * tube.x + tube.y * tube.y + tube.z * tube.z)
         if (!(length < f(1e-4))) tube = scaled(tube, 1 / length)
+
         const y = Math.abs(tube.y)
         const reach =
           y > cutoff
             ? half / y
             : ((size.x - size.y) * 0.5) / Math.sqrt(tube.z * tube.z + tube.x * tube.x)
+
         return plus(centre, toWorld(plus(rim, scaled(tube, reach))))
       },
     }
@@ -248,8 +266,10 @@ export const zoneOf = (shape: Shape, written: WrittenZone = {}): Zone => {
       const delta = sub(point, centre)
       const length = Math.sqrt(delta.x * delta.x + delta.y * delta.y + delta.z * delta.z)
       if (length < f(1e-4)) return centre
+
       const unit = scaled(delta, 1 / length)
       const reach = f(zone.radiusAlong(unit))
+
       return plus(scaled(unit, reach), centre)
     },
   }
@@ -263,7 +283,7 @@ export const zoneOf = (shape: Shape, written: WrittenZone = {}): Zone => {
  */
 const inZone = (
   type: Shape['type'],
-  { position, radius, radiusAlong, size }: Omit<Zone, 'surfacePoint' | 'meets' | 'holds'>,
+  { position, radius, radiusAlong, size }: Omit<Zone, 'surfacePoint' | 'meets' | 'holds' | 'type'>,
   toLocal: (d: Vector3) => Vector3,
   point: Vector3,
 ): boolean => {
@@ -273,8 +293,10 @@ const inZone = (
   const dz = f(exact)
   const squared = exact * dz + dx * dx + dy * dy
   if (squared < f(1e-4)) return true
+
   const distance = f(squared)
   if (!(distance < radius * radius)) return false
+
   switch (type) {
     case 'sphere':
       return true
@@ -282,11 +304,13 @@ const inZone = (
       const length = f(Math.sqrt(distance))
       const inverse = 1 / length
       const unit = { x: f(dx * inverse), y: f(dy * inverse), z: f(dz * inverse) }
+
       return radiusAlong(unit) >= length
     }
     case 'box': {
       // `ClampToBoxSurface`'s distance, negated inside, under 0: on a face is out.
       const local = toLocal({ x: dx, y: dy, z: dz })
+
       return (
         Math.abs(local.x) < f(size.x * 0.5) &&
         Math.abs(local.y) < f(size.y * 0.5) &&
@@ -301,7 +325,9 @@ const inZone = (
     case 'ring': {
       const local = toLocal({ x: dx, y: dy, z: dz })
       const inner = f(Math.sqrt(size.y * size.y + size.z * size.z * 0.25))
+
       if (!(size.z * 0.5 >= Math.abs(local.y))) return false
+
       const radial = local.x * local.x + local.z * local.z
       if (!(radial - size.x * size.x <= 0)) return false
       return radial - ((inner + inner + size.y) * size.y + inner * inner) >= 0
@@ -313,13 +339,16 @@ const inZone = (
 const reachOf = (
   shape: Shape,
   written: WrittenZone,
-): Omit<Zone, 'surfacePoint' | 'meets' | 'holds'> => {
+): Omit<Zone, 'surfacePoint' | 'meets' | 'holds' | 'type'> => {
   const position = shape.center
   const turn = written.orientation ?? (shape.type === 'sphere' ? Quat.identity : shape.orientation)
+
   const axis = (direction: Vector3): Vector3 => {
     const { x, y, z } = Quat.transform(direction, turn)
+
     return { x: f(x), y: f(y), z: f(z) }
   }
+
   const size = written.size ?? writtenSize(shape)
   const own = {
     size: { x: f(size.x), y: f(size.y), z: f(size.z) },
@@ -329,10 +358,13 @@ const reachOf = (
       axis({ x: 0, y: 0, z: 1 }),
     ] as const,
   }
+
   if (shape.type === 'sphere') {
     const radius = f(shape.radius)
+
     return { position, radius, radiusAlong: () => radius, ...own }
   }
+
   // `EngineTransposeTransform`: the direction in the zone's own frame.
   const inverse = Quat.conjugate(shape.orientation)
   const local = (direction: Vector3) => Quat.transform(direction, inverse)
@@ -342,15 +374,18 @@ const reachOf = (
     const a = x * x
     const b = y * y
     const c = z * z
+
     return {
       ...own,
       position,
       radius: f(Math.max(x, y, z)),
-      // `EllipsoidRadiusAlong` (`0x633dc90`).
+      // `EllipsoidRadiusAlong` (`0x633dc90`): `1 / √(Σ d² / radius²)`, the radii squared cleared
+      // from the denominators (`a`, `b`, `c` are x², y², z²).
       radiusAlong: (direction) => {
         const d = local(direction)
         const sum = d.x * d.x * c * b + d.z * d.z * b * a + d.y * d.y * c * a
         const product = a * (c * b) * sum
+
         return product > 1e-4 ? Math.sqrt(product) / sum : 0
       },
     }
@@ -358,16 +393,20 @@ const reachOf = (
 
   if (shape.type === 'box') {
     const { x, y, z } = shape.size
+
     const along = (size: number, component: number) => {
       const magnitude = Math.abs(component)
+
       return magnitude > f(1e-4) ? size / magnitude : f(1e10)
     }
+
     return {
       ...own,
       position,
       radius: f(Math.sqrt(x * x + y * y + z * z) * 0.5),
       radiusAlong: (direction) => {
         const d = local(direction)
+
         return Math.min(f(along(x, d.x)), along(y, d.y), f(along(z, d.z))) * 0.5
       },
     }
@@ -377,6 +416,7 @@ const reachOf = (
   const { radius } = shape
   const half = shape.height * 0.5
   const cutoff = half / Math.sqrt(radius * radius + half * half)
+
   return {
     ...own,
     position,
@@ -384,6 +424,7 @@ const reachOf = (
     radiusAlong: (direction) => {
       const d = local(direction)
       const y = Math.abs(d.y)
+
       return y > cutoff ? half / y : radius / Math.sqrt(d.x * d.x + d.z * d.z)
     },
   }
@@ -395,6 +436,7 @@ export const exteriorFactor = (zone: Zone, distance: number, point: Vector3): nu
   const squared = f(offset.x * offset.x + offset.z * offset.z + offset.y * offset.y)
   if (squared > zone.radius * zone.radius) return 0
   if (squared < 0.1) return 1
+
   const length = Math.sqrt(squared)
   const edge = zone.radiusAlong(scaled(offset, 1 / length)) - f(length)
   if (edge < 0) return 0
@@ -410,13 +452,17 @@ export const immersion = (zone: Zone, edgeFraction: number, point: Vector3): num
   const offset = sub(point, zone.position)
   const squared = offset.x * offset.x + offset.z * offset.z + offset.y * offset.y
   if (zone.radius * zone.radius < squared) return 0
+
   // `ClassifyPoint`: how far out it is, over the reach that way.
   const length = Math.sqrt(offset.y * offset.y + offset.z * offset.z + offset.x * offset.x)
   let value = 0
+
   if (!(length < f(1e-4))) {
     const reach = zone.radiusAlong(scaled(offset, 1 / f(length)))
+
     value = reach > f(1e-4) ? f(length) / reach : 0
   }
+
   if (value >= 1) return 0
   if (1 - edgeFraction > f(value)) return 1
   if (edgeFraction < 1e-4) return 1
@@ -434,6 +480,7 @@ const sortKey = ({ zone }: NebulaExclusion, eye: Vector3): number => {
   const offset = sub(eye, zone.position)
   const length = f(Math.sqrt(offset.y * offset.y + offset.z * offset.z + offset.x * offset.x))
   const distance = length - zone.radius
+
   return distance < 0 ? 0 : f(distance * distance)
 }
 
@@ -461,9 +508,11 @@ export class ExclusionOrder {
   at(point: Vector3): InExclusion | undefined {
     for (const { exclusion, key } of this.#sorted) {
       if (key > 10) return undefined
+
       const value = immersion(exclusion.zone, exclusion.edgeFraction ?? 0, point)
       if (value > f(1e-5)) return { exclusion, immersion: f(value) }
     }
+
     return undefined
   }
 }
@@ -482,11 +531,14 @@ export const exclusionAt = (
   const sorted = exclusions
     .map((exclusion) => ({ exclusion, key: sortKey(exclusion, eye) }))
     .sort((a, b) => a.key - b.key)
+
   for (const { exclusion, key } of sorted) {
     if (key > 10) return undefined
+
     const value = immersion(exclusion.zone, exclusion.edgeFraction ?? 0, point)
     if (value > f(1e-5)) return { exclusion, immersion: f(value) }
   }
+
   return undefined
 }
 
@@ -520,18 +572,23 @@ export const nebulaState = (
   const span = f(fogDistance + near)
   const surface = f(length - zone.radiusAlong(scaled(offset, 1 / length)))
   const depth = surface > 0 ? 0 : -surface > span ? 1 : f(-surface / span)
+
   if (depth > 0) {
     const state: NebulaState = { nebula, fogDistance, depth, start: near, end: span, surface }
     const inExclusion = exclusionAt(nebula.exclusions ?? [], eye)
     if (!inExclusion) return state
+
     // Its `fog_far` pulls the end towards it, as deep as the camera is in it.
     const { exclusion, immersion: by } = inExclusion
     const far = exclusion.fogFar ?? -1
     const end = by > 0 && far > near ? f((1 - by) * span + far * by) : span
+
     return { ...state, end, inExclusion }
   }
+
   // Outside, the fog's range follows the camera's distance from the surface.
   const start = surface + near
+
   return { nebula, fogDistance, depth, start: f(start), end: f(start + fogDistance), surface }
 }
 
@@ -542,8 +599,10 @@ export const fogEnd = (state: NebulaState, point: Vector3): number => {
     const { zone, edgeFraction = 0 } = state.inExclusion.exclusion
     const by = immersion(zone, edgeFraction, point)
     const span = f(f(state.nebula.fog.near ?? 0) + state.fogDistance)
+
     return f((1 - by) * span + by * state.end)
   }
+
   const factor = exteriorFactor(state.nebula.zone, state.fogDistance, point)
   if (!(factor < 1)) return state.end
   return f(state.end / Math.max(factor * factor, f(1e-4)))
@@ -554,14 +613,16 @@ export const fogFar = (state: NebulaState, limits: NebulaLimits = RETAIL_NEBULA_
   const sum = state.end + limits.nebulaFarMargin
   const far = sum < limits.nebulaLeastFar ? limits.nebulaLeastFar : f(sum)
   if (!state.inExclusion) return far
+
   // At least across the camera's zone and a margin.
   const { radius } = state.inExclusion.exclusion.zone
   const least = radius + radius + limits.exclusionFarMargin
+
   return far > least ? far : f(least)
 }
 
 // `FogApplyColorAndRange`: each channel to a byte, by truncation.
-const byte = (value: number) => Math.min(Math.max(Math.trunc(value * 255), 0), 255) / 255
+const byte = (value: number) => unitByte(value) / 255
 
 /** The fog `FogApplyColorAndRange` sets, in `colour` or the nebula's own. */
 export const fogOf = (start: number, end: number, color: Vector3): Fog => ({
@@ -583,10 +644,12 @@ export const findNebula = (
   hint?: SpaceNebula,
 ): Within | undefined => {
   const hinted = hint && nebulae.find((state) => state.nebula === hint)
+
   for (const state of hinted ? [hinted, ...nebulae] : nebulae) {
     const factor = exteriorFactor(state.nebula.zone, state.fogDistance, point)
     if (factor > 0) return { state, factor }
   }
+
   return undefined
 }
 
@@ -597,16 +660,8 @@ export interface SpaceField {
   enclosure: 0 | 1 | 2
 }
 
-const floats = new Float32Array(1)
-const bits = new Int32Array(floats.buffer)
-
 // The distance by one Newton step from `0x5f3759df`, as `SelectFieldControllers` has it.
-const roughLength = (squared: number): number => {
-  floats[0] = squared
-  bits[0] = 0x5f3759df - (bits[0]! >> 1)
-  const estimate = floats[0]!
-  return f((1.5 - estimate * estimate * squared * 0.5) * estimate * squared)
-}
+const roughLength = (squared: number): number => f(inverseRoot(squared) * squared)
 
 /** A nebula `SelectFieldControllers` leaves to the far list (`ZItemNebula`), keyed by its score. */
 export interface DeferredNebula {
@@ -634,6 +689,7 @@ export const listNebulae = (
   let best = f(range * range)
   let field: SpaceField | undefined
   const deferred: DeferredNebula[] = []
+
   for (const state of nebulae) {
     const { zone } = state.nebula
     const dx = zone.position.x - eye.x
@@ -644,6 +700,7 @@ export const listNebulae = (
     const inverse = f(1 / distance)
     const hit = f(zone.radiusAlong({ x: f(inverse * dx), y: f(inverse * dy), z: f(inverse * dz) }))
     const score = distance <= hit ? 0 : f((distance - hit) * (distance - hit))
+
     if (field && field.enclosure !== 0) {
       deferred.push({ state, key: score })
       continue
@@ -651,6 +708,7 @@ export const listNebulae = (
 
     const enclosed = exteriorFactor(zone, state.fogDistance, eye)
     if (enclosed >= 1) return { field: { state, enclosure: 2 }, deferred: [] }
+
     if (enclosed > 0) {
       if (field) deferred.push({ state: field.state, key: best })
       field = { state, enclosure: 1 }
@@ -660,6 +718,7 @@ export const listNebulae = (
       field = { state, enclosure: 0 }
     } else deferred.push({ state, key: score })
   }
+
   return { ...(field && { field }), deferred }
 }
 

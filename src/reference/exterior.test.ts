@@ -38,17 +38,21 @@ const skipOf = (name: string) =>
 const load = async (name: (typeof RUNS_COMPARED)[number]['name']) => {
   const read = async (path: string) => {
     const file = readFileSync(join(data, path))
+
     return new Uint8Array(file.buffer, file.byteOffset, file.byteLength)
   }
+
   const system = systems.get(name)!
   const { draws, options } = readSpaceRun(join(references, name), system, RUNS[name])
   const scene = await loadSystem(system, read, options)
+
   // Entering the system is a cut, which turns the bits to the camera; then a frame on.
   collectSpaceFrame({ ...scene, cut: true })
   return { frame: collectSpaceFrame({ ...scene, step: 1 / 60 }), captured: draws }
 }
 
 type Corner = readonly [number, number, number]
+
 const middle = (a: Corner, c: Corner): Corner => [
   (a[0] + c[0]) / 2,
   (a[1] + c[1]) / 2,
@@ -60,6 +64,7 @@ for (const { name, scene, effects, bits } of RUNS_COMPARED) {
   test(`${name} is retail draw for draw`, { skip: skipOf(name) }, async () => {
     const { frame, captured } = await load(name)
     const retail = captured.slice(0, scene - effects)
+
     assert.deepEqual(frame.unsupported, ['texture envmapglass'])
     assert.equal(frame.draws.length, retail.length)
     assertFrameMatches(frame, retail, indexTextures(data), { streamed: true })
@@ -70,11 +75,15 @@ for (const { name, scene, effects, bits } of RUNS_COMPARED) {
     { skip: skipOf(name) },
     async () => {
       const { frame, captured } = await load(name)
+
       for (const n of bits) {
         const ours = frame.draws[n]!
         const theirs = captured[n]!
+
         assert.equal(ours.materialName, 'nebula exterior', `draw ${n}`)
+
         const { states } = theirs
+
         assert.deepEqual(
           [
             'ZENABLE',
@@ -92,26 +101,32 @@ for (const { name, scene, effects, bits } of RUNS_COMPARED) {
           Math.abs(ours.fog!.end / states['FOGEND']! - 1) < 1e-5,
           `draw ${n} fog end ${ours.fog!.end} against ${states['FOGEND']}`,
         )
+
         const floats = new Float32Array(ours.mesh.vertices.buffer)
         const bytes = ours.mesh.vertices
         const vertices = theirs.vertexData!
+
         assert.equal(ours.reference.vertexCount, vertices.length, `draw ${n}`)
+
         const ourCorner = (at: number): Corner => [
           floats[at * 6]!,
           floats[at * 6 + 1]!,
           floats[at * 6 + 2]!,
         ]
+
         for (let bit = 0; bit < vertices.length / 4; bit++) {
           const what = `draw ${n} bit ${bit}`
           const first = bit * 4
           const theirCorner = (at: number) => vertices[first + at]!.p as unknown as Corner
           const ourMiddle = middle(ourCorner(first), ourCorner(first + 2))
           const theirMiddle = middle(theirCorner(0), theirCorner(2))
+
           // Where it stands, to a hundredth: the bits are 15000 to 60000 out.
           assert.ok(
             apart(ourMiddle, theirMiddle) < 0.01,
             `${what}: ${ourMiddle} against ${theirMiddle}`,
           )
+
           // Its radius along both axes: each corner √2 of it from the middle.
           for (let at = 0; at < 4; at++)
             assert.ok(
@@ -120,10 +135,12 @@ for (const { name, scene, effects, bits } of RUNS_COMPARED) {
               ) < 0.01,
               `${what} corner ${at}`,
             )
+
           for (let at = 0; at < 4; at++) {
             const { d, t0 } = vertices[first + at]!
             const [b, g, r, a] = bytes.slice((first + at) * 24 + 12, (first + at) * 24 + 16)
             const colour = ((a! << 24) | (r! << 16) | (g! << 8) | b!) >>> 0
+
             assert.equal(colour.toString(16), Number(d).toString(16), `${what} corner ${at}`)
             assert.deepEqual(
               [floats[(first + at) * 6 + 4], floats[(first + at) * 6 + 5]],

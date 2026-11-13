@@ -35,5 +35,6 @@ test('it wraps, always, to the first segment', () => {
 
 test('no segments, or none with length, is the identity', () => {
   const empty = { name: 'x', flags: 0, segments: [] } as unknown as MaterialAnim
+
   assert.deepEqual(sampleUvAnimation(empty, 5), { offset: [0, 0], scale: [1, 1] })
 })

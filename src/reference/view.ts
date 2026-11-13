@@ -9,10 +9,13 @@ import { launch, runFixture, saveArtifact } from '#/harness.js'
 import type { ViewArgs, ViewReport } from './view.fixture.js'
 
 const data = process.env['FREELANCER_DATA'] ?? join(homedir(), 'Downloads/Freelancer/DATA')
+
 const read = async (path: string) => {
   const file = readFileSync(join(data, path.replace(/\\/g, '/')))
+
   return new Uint8Array(file.buffer, file.byteOffset, file.byteLength)
 }
+
 const triple = (text: string | undefined) => {
   const values = (text ?? '').split(',').map(Number)
   if (values.length !== 3 || values.some(Number.isNaN)) throw new Error(`Not x,y,z: ${text}`)
@@ -21,6 +24,7 @@ const triple = (text: string | undefined) => {
 
 const [path, eye, target, name = 'view'] = process.argv.slice(2)
 if (!path) throw new Error('Usage: npm run view -- <system ini> <eye x,y,z> <target x,y,z> [name]')
+
 const args: ViewArgs = {
   path,
   eye: triple(eye),
@@ -31,12 +35,14 @@ const args: ViewArgs = {
   sunEffect: 1,
 }
 const browser = await launch()
+
 try {
   const { value, png } = await runFixture<ViewReport>(
     browser,
     new URL('./view.fixture.ts', import.meta.url),
     { width: 1024, height: 768, context: { antialias: false, alpha: false }, args, read },
   )
+
   await saveArtifact(name, png)
   console.log(JSON.stringify(value, null, 2), `\nartifacts/${name}.png`)
 } finally {

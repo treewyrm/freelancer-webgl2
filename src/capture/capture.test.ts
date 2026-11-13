@@ -18,11 +18,13 @@ const lines = {
 
 test('a frame keeps its events in order and resolves its textures', () => {
   const { device, frames } = readCapture(Object.values(lines).join('\n') + '\n')
+
   assert.equal(device?.behaviour, 0x40)
   assert.equal(device?.windowed, false)
   assert.equal(frames.length, 1)
 
   const frame = frames[0]!
+
   assert.deepEqual(
     frame.events.map(({ kind }) => kind),
     ['scene', 'clear', 'draw'],
@@ -30,12 +32,14 @@ test('a frame keeps its events in order and resolves its textures', () => {
   assert.equal(frame.shot?.file, 'd3d8log.f7.bmp')
 
   const draw = frame.draws[0]!
+
   assert.equal(draw.fvf, 0x112)
   assert.equal(draw.baseVertex, 4)
   assert.equal(draw.states['LIGHTING'], 1)
   assert.deepEqual(draw.projection, [3])
 
   const [first, second] = draw.stages
+
   assert.equal(first?.texture?.width, 32)
   assert.deepEqual(first?.texture?.hash, ['00000000aaaaaaaa', undefined])
   assert.equal(first?.states['COLOROP'], 4)
@@ -50,6 +54,7 @@ test("a frame carries the game's own dt, and none from a build it can't read", (
     ',"wall":0.0105,"dt":0.0104,"raw":0.0104,"paused":0,"t":12.5,"tick":1200}',
   )
   const [frame] = readCapture([lines.texture, lines.draw, timed].join('\n')).frames
+
   assert.equal(frame?.wall, 0.0105)
   assert.deepEqual(frame?.clock, {
     step: 0.0104,
@@ -61,12 +66,14 @@ test("a frame carries the game's own dt, and none from a build it can't read", (
   })
 
   const paused = timed.replace('"paused":0', '"paused":1')
+
   assert.equal(
     readCapture([lines.texture, lines.draw, paused].join('\n')).frames[0]?.clock?.step,
     0,
   )
 
   const untimed = lines.frame.replace('}', ',"wall":0.0105}')
+
   assert.equal(
     readCapture([lines.texture, lines.draw, untimed].join('\n')).frames[0]?.clock,
     undefined,
@@ -81,6 +88,7 @@ test('a texture line binds only what follows it, so a reused address stays hones
       '\n',
     ),
   )
+
   assert.deepEqual(
     frames[0]!.draws.map((entry) => entry.stages[0]?.texture?.width),
     [32, 64],

@@ -24,16 +24,19 @@ const run = (instance: EffectInstance, seconds: number, dt = STEP) => {
 
 const drawsOf = (instance: EffectInstance): EffectDraw[] => {
   const draws: EffectDraw[] = []
+
   collectEffect(instance, Matrix4.identity, () => undefined, draws, new Set())
   return draws
 }
 
 const appearance = (instance: EffectInstance, at = 0) => {
   const list: AppearanceNode[] = []
+
   const visit = (one: (typeof instance.top)[number]) => {
     if (one.descriptor?.category === 'appearance') list.push(one as AppearanceNode)
     one.children.forEach(visit)
   }
+
   instance.top.forEach(visit)
   return list[at]!
 }
@@ -45,9 +48,11 @@ test('a frame emits the truncated count and drops the fraction, so the rate foll
       { node: emitter('e', { Emitter_Frequency: flat(100) }), targets: ['a'] },
     ])
     const instance = new EffectInstance(scene)
+
     run(instance, 1, dt)
     return appearance(instance).lane!.count
   }
+
   // `0x6245cc0`: 100 a second at 60 Hz is one a frame.
   assert.equal(at(1 / 60), 60)
   assert.equal(at(1 / 30), 90)
@@ -59,8 +64,11 @@ test('an emitter past its life stops, and what it made lives out its own span', 
     { node: emitter('e', { Node_LifeSpan: 0.5, Emitter_InitLifeSpan: flat(2) }), targets: ['a'] },
   ])
   const instance = new EffectInstance(scene)
+
   run(instance, 1)
+
   const lane = appearance(instance).lane!
+
   assert.ok(lane.count >= 29 && lane.count <= 31, `${lane.count}`)
   assert.equal(instance.top.length, 1)
   run(instance, 2)
@@ -73,6 +81,7 @@ test('an appearance never checks its own Node_LifeSpan: only having nothing does
     { node: emitter('e'), targets: ['a'] },
   ])
   const instance = new EffectInstance(scene)
+
   run(instance, 1)
   assert.equal(appearance(instance).dead, false)
   assert.ok(appearance(instance).lane!.count > 50)
@@ -92,6 +101,7 @@ test('a folder past the longest life below it takes all of it along, particles i
     },
   ])
   const instance = new EffectInstance(scene)
+
   run(instance, 0.9)
   assert.equal(instance.finished, false)
   assert.ok(appearance(instance).lane!.count > 40)
@@ -107,6 +117,7 @@ test('an emitter naming two appearances draws through the later one', () => {
     { node: emitter('e'), targets: ['first', 'second'] },
   ])
   const instance = new EffectInstance(scene)
+
   run(instance, 0.5)
   assert.equal(appearance(instance, 0).lane!.count, 0)
   assert.ok(appearance(instance, 1).lane!.count > 20)
@@ -128,6 +139,7 @@ test('an appearance updates before a sibling field, so it reads the field a fram
   ])
   const instance = new EffectInstance(scene)
   const speed = () => appearance(instance).lane!.records[VELOCITY + 1]!
+
   instance.advance(STEP)
   assert.equal(speed(), 0)
   instance.advance(STEP)
@@ -156,11 +168,15 @@ test('a dust field of no radius kills everything, and one with room writes the a
       },
     ])
     const instance = new EffectInstance(scene)
+
     run(instance, 3 * STEP)
     return appearance(instance).lane!
   }
+
   assert.equal(particles(0).count, 0)
+
   const lane = particles(4)
+
   assert.equal(lane.count, 1)
   // Depth (R + z) / 2R of the sphere at z = 0, times 10, and one step's ageing.
   assert.ok(Math.abs(lane.records[AGE]! - (5 + STEP)) < 1e-5, `${lane.records[AGE]}`)
@@ -174,12 +190,39 @@ test('a full pool evicts its oldest, whichever effect holds it', () => {
       { pools },
     )
   const older = make()
+
   run(older, 8 * STEP)
+
   const newer = make()
+
   run(newer, 6 * STEP)
+
   const count = (instance: EffectInstance) => appearance(instance).lane!.count
+
   assert.equal(count(newer), 6)
   assert.equal(count(older), 4)
+})
+
+test('a released effect gives its share of the pool back, and the next takes all of it', () => {
+  const pools = createPools(0, { ...RETAIL_POOLS, 'basic-appearance': 10 })
+  const make = () =>
+    new EffectInstance(
+      sceneOf([{ node: basic('a') }, { node: emitter('e'), targets: ['a'] }]).scene,
+      { pools },
+    )
+  const dropped = make()
+
+  run(dropped, 8 * STEP)
+  assert.equal(pools.held.get('basic-appearance')?.size, 1)
+  dropped.release()
+  assert.equal(pools.held.get('basic-appearance')?.size, 0)
+  assert.ok(dropped.finished)
+
+  // Ten births, none evicted for what the released one held.
+  const next = make()
+
+  run(next, 10 * STEP)
+  assert.equal(appearance(next).lane!.count, 10)
 })
 
 test('a perp takes its roll from +X, or +Z when it leaves along +X', () => {
@@ -197,10 +240,14 @@ test('a perp takes its roll from +X, or +Z when it leaves along +X', () => {
       },
     ])
     const instance = new EffectInstance(scene)
+
     instance.advance(STEP)
+
     const { records } = appearance(instance).lane!
+
     return [...records.subarray(AXIS, AXIS + 3)]
   }
+
   assert.deepEqual(seeded({}), [1, 0, 0])
 })
 
@@ -210,6 +257,7 @@ test('a stopped effect stops emitting and finishes when what it made has gone', 
     { node: emitter('e', { Emitter_InitLifeSpan: flat(0.5) }), targets: ['a'] },
   ])
   const instance = new EffectInstance(scene)
+
   run(instance, 0.5)
   instance.stop()
   assert.equal(instance.finished, false)
@@ -230,8 +278,11 @@ test('draws walk the tree: an appearance beside the root before everything under
     { node: basic('beside') },
   ])
   const instance = new EffectInstance(scene)
+
   run(instance, 0.1)
+
   const draws = drawsOf(instance) as SpriteDraw[]
+
   assert.equal(draws.length, 2)
   assert.equal(draws[0]!.lane, appearance(instance, 0).lane)
   assert.equal(appearance(instance, 0).descriptor.name, 'beside')
@@ -265,11 +316,16 @@ test('a sub-effect hangs off its spawner, moves with its particle, and stops at 
     },
   ])
   const instance = new EffectInstance(scene, { lookup: () => child })
+
   run(instance, 0.25)
+
   const spawner = appearance(instance)
+
   assert.equal(spawner.records!.length, 1)
   assert.ok(appearance(instance, 1).lane!.count > 0)
+
   const root = spawner.children.find((one) => one.key === 400)!
+
   assert.ok(root.world.w.y > 10, `${root.world.w.y}`)
   run(instance, 1)
   assert.equal(spawner.records!.length, 0)
@@ -286,6 +342,7 @@ test('a life effect no library names means no particle', () => {
     { node: emitter('e'), targets: ['p'] },
   ])
   const instance = new EffectInstance(scene, { lookup: () => undefined })
+
   run(instance, 0.5)
   assert.equal(appearance(instance).records!.length, 0)
 })
@@ -299,10 +356,14 @@ test('a mount reaches the control root alone: what is beside it stays, and leave
   ])
   const instance = new EffectInstance(scene)
   for (let n = 1; n <= 30; n++) instance.advance(STEP, { placement: moving(n * STEP) })
+
   const app = appearance(instance)
+
   assert.deepEqual(app.world, Matrix4.identity)
+
   const { records, head } = app.lane!
   const z = (i: number) => records[i * RECORD + 2]!
+
   assert.ok(z(head - 1) > 25, `${z(head - 1)}`)
   // Left behind where each was born, oldest nearest where it started.
   assert.ok(z(0) < 3, `${z(0)}`)
@@ -321,9 +382,12 @@ test("VelocityApproach lends a birth the whole of the emitter's own velocity", (
     ])
     const instance = new EffectInstance(scene)
     for (let n = 1; n <= 10; n++) instance.advance(STEP, { placement: moving(n * STEP) })
+
     const { records, head } = appearance(instance).lane!
+
     return records[(head - 1) * RECORD + VELOCITY + 2]!
   }
+
   assert.equal(speedWith(0), 0)
   assert.ok(Math.abs(speedWith(1) - 60) < 0.01, `${speedWith(1)}`)
 })
@@ -340,7 +404,9 @@ test("a particle under an emitter sharing its appearance's parent drops the path
   ])
   const instance = new EffectInstance(scene)
   for (let n = 1; n <= 10; n++) instance.advance(STEP, { placement: moving(n * STEP) })
+
   const { records, head } = appearance(instance).lane!
+
   // In the frame they share, so at its origin, moving with the bias.
   assert.ok(Math.abs(records[(head - 1) * RECORD + VELOCITY + 2]! - 60) < 0.01)
   assert.equal(records[(head - 1) * RECORD + 2], 0)
@@ -356,8 +422,11 @@ test('of a property given twice, the last stands, as the DLL sets each as it com
     },
   ])
   const quad = scene.nodes[0]!.descriptor as { quadTexture: boolean }
+
   assert.equal(quad.quadTexture, true)
+
   const twice = node('b', 'FxBasicAppearance', { BasicApp_QuadTexture: true })
+
   twice.properties.push({ name: 'BasicApp_QuadTexture', type: 'boolean', value: false })
   assert.equal((describeNode(twice) as { quadTexture: boolean }).quadTexture, false)
 })
@@ -378,11 +447,13 @@ test("a THN host's zero-length pass lets a field act once a frame, with the real
   ])
   const instance = new EffectInstance(scene)
   const speed = () => appearance(instance).lane!.records[VELOCITY + 1]!
+
   // `0x45404a`, `0x454054`, then the same at 0 ms: what's read is the update before.
   for (let n = 0; n < 3; n++) {
     instance.advance(STEP)
     instance.advance(0)
   }
+
   assert.ok(Math.abs(speed() + 3) < 1e-4, `${speed()}`)
 })
 
@@ -399,14 +470,18 @@ test('a hidden appearance draws nothing and keeps running', () => {
     },
   ])
   const instance = new EffectInstance(scene)
+
   run(instance, 0.5)
+
   const collect = (hide: boolean) => {
     const draws: EffectDraw[] = []
     const visible = (node: { descriptor?: { name: string } }) =>
       !hide || node.descriptor?.name !== 'a'
+
     collectEffect(instance, Matrix4.identity, () => undefined, draws, new Set(), visible)
     return draws.length
   }
+
   assert.equal(collect(false), 2)
   assert.equal(collect(true), 1)
   assert.ok(appearance(instance, 0).lane!.count > 0)
@@ -426,18 +501,24 @@ test('hiding a particle appearance hides what it started, and not what sits besi
     { root: true, children: [{ node: emitter('i'), targets: ['s'] }, { node: basic('s') }] },
   ]).scene
   const instance = new EffectInstance(scene, { lookup: () => sub })
+
   run(instance, 0.5)
+
   const count = (visible?: (n: { descriptor?: { name: string } }) => boolean) => {
     const draws: EffectDraw[] = []
+
     collectEffect(instance, Matrix4.identity, () => undefined, draws, new Set(), visible)
     return draws.length
   }
+
   assert.ok(count() > 0)
   assert.equal(
     count((n) => n.descriptor?.name !== 'p'),
     0,
   )
+
   const names = new Set<string | undefined>()
+
   instance.eachParticle((entry) => names.add(entry.descriptor?.name))
   assert.deepEqual([...names].sort(), ['p', 's'])
 })
@@ -447,8 +528,11 @@ test('eachParticle reads every live age and names the file entry', () => {
     { root: true, children: [{ node: emitter('e'), targets: ['a'] }, { node: basic('a') }] },
   ])
   const instance = new EffectInstance(scene)
+
   run(instance, 0.5)
+
   const ages: number[] = []
+
   instance.eachParticle((entry, age, life) => {
     assert.equal(entry.descriptor?.name, 'a')
     assert.ok(effect.children[0]!.children.includes(entry.instance))
@@ -457,6 +541,50 @@ test('eachParticle reads every live age and names the file entry', () => {
   })
   assert.equal(ages.length, appearance(instance, 0).lane!.count)
   assert.ok(Math.max(...ages) <= 0.5 + 1e-6 && Math.min(...ages) >= -1e-6)
+})
+
+test('eachParticle places a ballistic particle where it has flown to, in the world', () => {
+  const { scene } = sceneOf([
+    {
+      root: true,
+      children: [
+        { node: emitter('e', { Emitter_Pressure: flat(2) }), targets: ['a'] },
+        { node: basic('a') },
+      ],
+    },
+  ])
+  const instance = new EffectInstance(scene)
+  const placement = Matrix4.translation({ x: 100, y: 0, z: 0 })
+  for (let n = 0; n < 30; n++) instance.advance(STEP, { placement })
+
+  const placed: { age: number; distance: number }[] = []
+
+  instance.eachParticle((_, age, __, position, velocity) => {
+    const d = { x: position.x - 100, y: position.y, z: position.z }
+
+    assert.ok(Math.abs(Math.hypot(velocity.x, velocity.y, velocity.z) - 2) < 1e-4)
+
+    // Out from the emitter along its own heading, as far as its age has carried it at that speed.
+    const cross = Math.hypot(
+      d.y * velocity.z - d.z * velocity.y,
+      d.z * velocity.x - d.x * velocity.z,
+      d.x * velocity.y - d.y * velocity.x,
+    )
+
+    assert.ok(cross < 1e-3)
+
+    const distance = Math.hypot(d.x, d.y, d.z)
+
+    assert.ok(distance <= 2 * age + 1e-3)
+    placed.push({ age, distance })
+  })
+  assert.ok(placed.length > 20)
+  placed.sort((a, b) => a.age - b.age)
+
+  for (let i = 1; i < placed.length; i++)
+    assert.ok(placed[i]!.distance >= placed[i - 1]!.distance - 1e-4)
+
+  assert.ok(placed.at(-1)!.distance > 0.8)
 })
 
 // Four frames at 15 over two atlases, as no retail animation has: those all keep to one.
@@ -468,6 +596,7 @@ const animated = (name: string): TextureEntry | undefined => {
       rate: 15,
       frames: [0, 0, 1, 1].map((index, n) => ({ index, u1: n / 4, v1: 0, u2: (n + 1) / 4, v2: 1 })),
     }
+
   return name === 'anim_0' || name === 'anim_1'
     ? ({ name, type: 'image' } as unknown as TextureEntry)
     : undefined
@@ -476,6 +605,7 @@ const animated = (name: string): TextureEntry | undefined => {
 const spriteAt = (instance: EffectInstance) => {
   const draws: EffectDraw[] = []
   const unsupported = new Set<string>()
+
   collectEffect(instance, Matrix4.identity, animated, draws, unsupported)
   assert.deepEqual([...unsupported], [])
   return draws[0] as SpriteDraw
@@ -487,12 +617,17 @@ test("an appearance's playback clamps on its age, and binds that frame's atlas f
     { node: basic('a', { BasicApp_TexName: 'anim' }) },
   ])
   const instance = new EffectInstance(scene)
+
   run(instance, 0.1)
+
   const early = spriteAt(instance)
+
   assert.deepEqual([early.texture?.name, early.currentFrame, early.frames.length], ['anim_0', 1, 4])
   // Past the last frame's end at 4 / 15: a loop would be back on frame 1 and `anim_0`.
   run(instance, 0.25)
+
   const late = spriteAt(instance)
+
   assert.deepEqual([late.texture?.name, late.currentFrame], ['anim_1', 3])
 })
 
@@ -509,10 +644,14 @@ test("a common frame picks its atlas and rect by GetFrame's rule: -1 is the curr
       },
     ])
     const instance = new EffectInstance(scene)
+
     run(instance, 0.5)
+
     const { texture, frames } = spriteAt(instance)
+
     return [texture?.name, frames[0]!.u1]
   }
+
   // Truncated toward 0 over the three steps: 0.9 is frame 2, -0.2 is 0, -1/3 is -1, -1 is -3.
   assert.deepEqual([0.9, -0.2, -1 / 3, -1].map(at), [
     ['anim_1', 0.5],

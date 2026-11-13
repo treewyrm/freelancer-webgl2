@@ -13,6 +13,7 @@ import {
 } from '@treewyrm/freelancer/vmesh'
 import type { Draw } from './frame.js'
 import type { NebulaState, SpaceNebula } from './nebula.js'
+import { unitByteRounded } from './retail.js'
 
 const f = Math.fround
 
@@ -22,7 +23,7 @@ const STRIDE = 24
 const BLACK: Vector3 = { x: 0, y: 0, z: 0 }
 
 // `ScaleClampToByte`: times 255, truncated, held to a byte.
-const byte = (value: number): number => Math.min(Math.max(Math.trunc(f(value * 255)), 0), 255)
+const byte = unitByteRounded
 
 /**
  * `+0x2b8`, per nebula: set on the frame the camera's depth reaches 1, which still draws, and cleared
@@ -60,10 +61,13 @@ export const fogOverlayDraw = (
   ]
   const vertices = new Uint8Array(corners.length * STRIDE)
   const floats = new Float32Array(vertices.buffer)
+
+  // Per vertex: xyz floats at byte 0, BGRA at 12, the unread UV set after.
   corners.forEach(([x, y], at) => {
     floats.set([x!, y!, 0], (at * STRIDE) / 4)
     vertices.set(bytes, at * STRIDE + 12)
   })
+
   const mesh: VMeshData = {
     name: 'fog overlay',
     version: 1,
@@ -84,6 +88,7 @@ export const fogOverlayDraw = (
     boundingBox: { min: BLACK, max: BLACK },
     boundingSphere: { center: BLACK, radius: 0 },
   }
+
   return {
     mesh,
     reference,

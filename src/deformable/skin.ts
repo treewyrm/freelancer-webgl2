@@ -40,12 +40,16 @@ export interface SkinMesh {
 /** `ExpandTristrip` (`0x65f7d70`), which every strip goes through at load: what has no area goes. */
 const expanded = (indices: Uint16Array): number[] => {
   const out: number[] = []
+
   for (let at = 0; at + 2 < indices.length; at++) {
     const [a, b, c] = [indices[at]!, indices[at + 1]!, indices[at + 2]!]
     if (a === b || b === c || a === c) continue
+
+    // A strip's winding alternates, so odd triangles swap their last two to stay one way.
     if (at % 2 === 0) out.push(a, b, c)
     else out.push(a, c, b)
   }
+
   return out
 }
 
@@ -56,6 +60,7 @@ const buildSkin = ({ geometry, groups }: Level, bones: number): SkinMesh => {
 
   // The slices are cumulative from `Point_bone_count`: `Point_bone_first` is never read (`0x65f8239`).
   const starts = new Uint32Array(boneCount.length)
+
   for (let point = 1; point < starts.length; point++)
     starts[point] = starts[point - 1]! + boneCount[point - 1]!
 
@@ -64,6 +69,7 @@ const buildSkin = ({ geometry, groups }: Level, bones: number): SkinMesh => {
   const min = { x: Infinity, y: Infinity, z: Infinity }
   const max = { x: -Infinity, y: -Infinity, z: -Infinity }
 
+  // Each element becomes its own vertex: position, normal and influences read by point, UV by `uv0.indices`.
   for (let element = 0; element < count; element++) {
     const point = elements[element]!
     const coordinate = uv0.indices[element]!
@@ -73,6 +79,7 @@ const buildSkin = ({ geometry, groups }: Level, bones: number): SkinMesh => {
       points[point * 3 + 1] ?? 0,
       points[point * 3 + 2] ?? 0,
     ]
+
     vertices.set(
       [
         x,
@@ -98,14 +105,16 @@ const buildSkin = ({ geometry, groups }: Level, bones: number): SkinMesh => {
     const used = declared > MOST_BLENDED ? 1 : declared
     const first = starts[point] ?? 0
     const out = element * INFLUENCE_FLOATS
+
     for (let slot = 0; slot < used; slot++) {
       const id = boneIds[first + slot] ?? 0
       if (id >= bones) throw new RangeError(`Bone id ${id} past a table of ${bones}`)
       influences[out + slot] = id
       influences[out + MOST_BLENDED + slot] = declared === 1 ? 1 : (boneWeights[first + slot] ?? 0)
     }
-    // Under a weighted sum a point with none would collapse on the origin. Retail has none.
-    if (!used) influences[out + MOST_BLENDED] = 1
+
+    // A point with none is in no bone's list, so never re-skinned: it keeps its stored position
+    // under the root's world (decomp \`BuildBoneVertexLists\`). No weight at all says so to the shader.
   }
 
   // `DrawFaceGroup` skips an empty group.
@@ -116,6 +125,7 @@ const buildSkin = ({ geometry, groups }: Level, bones: number): SkinMesh => {
   const radius = Math.hypot(max.x - min.x, max.y - min.y, max.z - min.z) / 2
   const center = { x: (min.x + max.x) / 2, y: (min.y + max.y) / 2, z: (min.z + max.z) / 2 }
   const indices = new Uint16Array(lists.flat())
+
   for (const index of indices)
     if (index >= count) throw new RangeError(`Face group index ${index} past ${count} elements`)
 
@@ -155,10 +165,12 @@ const skins = new WeakMap<Level, SkinMesh>()
 /** The same object for the same level, so a renderer's buffers are shared between characters. */
 export const skinMesh = (level: Level, bones: number): SkinMesh => {
   let skin = skins.get(level)
+
   if (!skin) {
     skin = buildSkin(level, bones)
     skins.set(level, skin)
   }
+
   return skin
 }
 
@@ -172,8 +184,10 @@ export const boneTable = (
   root: Matrix4,
 ): Float32Array => {
   if (bones.length > MAX_BONES) throw new RangeError(`${bones.length} bones, past ${MAX_BONES}`)
+
   const table = new Float32Array(bones.length * 16)
   const inverse = Matrix4.invert(root)
+
   bones.forEach(({ orientation, position }, index) => {
     const world = worlds[index]
     const matrix = world
@@ -182,6 +196,7 @@ export const boneTable = (
           Matrix4.fromRotationTranslation(orientation, position),
         )
       : Matrix4.identity
+
     Matrix4.toArray(matrix, table, index * 16)
   })
   return table
@@ -192,7 +207,11 @@ export interface SkinOptions {
   level?: number
   /** Each part's level as the game chooses it, `tables` in part order. */
   lod?: { camera: Camera; tables: readonly SwitchTable[] }
-  /** A level at or past this draws rigid, at bind. A costume's default is the builder's: see below. */
+  /**
+   * A level at or past this draws rigid, at bind. A costume's default is the builder's, by slot:
+   * the body none, a head or hand 2 (\`0x443b60\`). It goes by position, the first part taken as the
+   * body, so a costume with no body passes its own, or its head skins every level.
+   */
   skinnedLevels?: readonly number[]
   jointState?: (bone: CompoundNode<Bone>) => JointState | undefined
   /**
@@ -216,6 +235,7 @@ const eyeOffset = (
   parent: Matrix4 | undefined,
 ): [number, number] | undefined => {
   if (!world) return undefined
+
   const { x, y, z } = world.z
   const axes = parent ?? Matrix4.identity
   const across = axes.x.x * x + axes.x.y * y + axes.x.z * z
@@ -258,23 +278,27 @@ export const poseSkin = (
   const offset =
     uvBone &&
     eyeOffset(uvBone, worlds[uvBone.bone], parent === undefined ? undefined : worlds[parent])
+
   return { reference, mesh, world: root, skin, ...(offset ? { eyeOffset: offset } : {}) }
 }
 
 /**
- * A character's parts, body first, each drawn with its root's world and skinned relative to it. Their
- * skeletons join by shared hardpoint name (`0x65f3540`, library `COSTUME.md`): walking every bone, the
- * first with a name holds it, and a later one with no parent links to it. That's a part's root, placing
- * the part, or a detached bone, placing one seam. A part with no root or level is skipped.
+ * Every bone's world in a costume, by part and by its place in the part's table; nothing for a part
+ * with no root. The skeletons join by shared hardpoint name (`0x65f3540`, library `COSTUME.md`):
+ * walking every bone, the first with a name holds it, and a later one with no parent links to it.
+ * That's a part's root, placing the part, or a detached bone, placing one seam.
  */
-export const placeCostume = (
+export const costumeWorlds = (
   models: readonly DeformableModel[],
   transform: Matrix4,
-  { level, lod, skinnedLevels, jointState, pose = 'chain' }: SkinOptions = {},
-): PlacedPart[] => {
+  { jointState, pose = 'chain' }: Pick<SkinOptions, 'jointState' | 'pose'> = {},
+): (Matrix4[] | undefined)[] => {
   const holders = new Map<string, { world: Matrix4; hardpoint: Matrix4 }>()
+
+  // Seats a hardpoint on the holder's: holder world · holder hardpoint · inverse of this hardpoint.
   const linked = (name: string, hardpoint: Hardpoint): Matrix4 | undefined => {
     const holder = holders.get(name.toLowerCase())
+
     return (
       holder &&
       Matrix4.multiply(
@@ -284,9 +308,73 @@ export const placeCostume = (
     )
   }
 
+  return models.map((model, at) => {
+    const root = getBoneModel(model)
+    if (!root) return undefined
+
+    // A root links by the first of its names already held. No other can join it to a second.
+    const place = root.part.hardpoints.flatMap((hardpoint) => {
+      const world = linked(hardpoint.name, hardpoint)
+
+      return world ? [world] : []
+    })[0]
+
+    const transforms = partTransforms(root, place ?? transform, jointState)
+
+    const worlds: (Matrix4 | undefined)[] = []
+    for (const [node, world] of transforms) worlds[node.index] = world
+
+    // The modelled pose is the host's to ask for: a head's and hand's chain already is theirs.
+    if (pose === 'bind' && at === 0)
+      for (const [node] of transforms)
+        worlds[node.index] = Matrix4.multiply(transform, Matrix4.invert(placement(node.part)))
+
+    // Everything stops at the last bone a part claims (`0x65f5a52`), so past it a slot keeps the identity.
+    const cursor = model.bones.reduce(
+      (last, { name }, index) => (name === undefined ? last : index + 1),
+      0,
+    )
+
+    for (let index = 0; index < cursor; index++) {
+      const bone = model.bones[index]!
+
+      for (const hardpoint of bone.hardpoints) {
+        const name = hardpoint.name.toLowerCase()
+        const world = worlds[index]
+
+        if (holders.has(name)) {
+          // The engine refuses a link to a bone with a parent, so only a detached one takes it here.
+          if (!world) worlds[index] = linked(name, hardpoint)
+        }
+        // The first with a name holds it, seated or not: the walk runs before the destroy pass, so a
+        // detached bone with no seat still holds at the identity it keeps (\`0x65f35b4\`).
+        else
+          holders.set(name, { world: world ?? Matrix4.identity, hardpoint: placement(hardpoint) })
+      }
+
+      // A seam nothing seats is destroyed, and its record keeps the identity (`0x65f3d49`).
+      worlds[index] ??= Matrix4.identity
+    }
+
+    return worlds as Matrix4[]
+  })
+}
+
+/**
+ * A character's parts, body first, each drawn with its root's world and skinned relative to it, its
+ * bones joined as {@link costumeWorlds} joins them. A part with no root or level is skipped.
+ */
+export const placeCostume = (
+  models: readonly DeformableModel[],
+  transform: Matrix4,
+  { level, lod, skinnedLevels, jointState, pose = 'chain' }: SkinOptions = {},
+): PlacedPart[] => {
+  const all = costumeWorlds(models, transform, { ...(jointState && { jointState }), pose })
   const parts: PlacedPart[] = []
+
   models.forEach((model, at) => {
     const root = getBoneModel(model)
+    const worlds = all[at]
     const table = lod?.tables[at]
     const chosenAt =
       level === undefined && lod && table
@@ -302,55 +390,25 @@ export const placeCostume = (
           )
         : Math.min(level ?? 0, model.levels.length - 1)
     const chosen = chosenAt === undefined ? undefined : model.levels[chosenAt]
-    if (!root) return
-
-    // A root links by the first of its names already held. No other can join it to a second.
-    const place = root.part.hardpoints.flatMap((hardpoint) => {
-      const world = linked(hardpoint.name, hardpoint)
-      return world ? [world] : []
-    })[0]
-    const transforms = partTransforms(root, place ?? transform, jointState)
-
-    const worlds: (Matrix4 | undefined)[] = []
-    for (const [node, world] of transforms) worlds[node.index] = world
-    // The modelled pose is the host's to ask for: a head's and hand's chain already is theirs.
-    if (pose === 'bind' && at === 0)
-      for (const [node] of transforms)
-        worlds[node.index] = Matrix4.multiply(transform, Matrix4.invert(placement(node.part)))
-
-    // Everything stops at the last bone a part claims (`0x65f5a52`), so past it a slot keeps the identity.
-    const cursor = model.bones.reduce(
-      (last, { name }, index) => (name === undefined ? last : index + 1),
-      0,
-    )
-    for (let index = 0; index < cursor; index++) {
-      const bone = model.bones[index]!
-      for (const hardpoint of bone.hardpoints) {
-        const name = hardpoint.name.toLowerCase()
-        const world = worlds[index]
-        if (holders.has(name)) {
-          // The engine refuses a link to a bone with a parent, so only a detached one takes it here.
-          if (!world) worlds[index] = linked(name, hardpoint)
-        } else if (world) holders.set(name, { world, hardpoint: placement(hardpoint) })
-      }
-      // A seam nothing seats is destroyed, and its record keeps the identity (`0x65f3d49`).
-      worlds[index] ??= Matrix4.identity
-    }
 
     // Past its far cutoff a part draws nothing, and its bones still hold for those after it.
-    if (!chosen) return
+    if (!root || !worlds || !chosen) return
+
     const parents: (number | undefined)[] = []
+
     const walk = (node: typeof root) => {
       for (const child of node.children) {
         parents[child.index] = node.index
         walk(child)
       }
     }
+
     walk(root)
     parts.push(
       poseSkin(chosen, model.bones, {
         worlds,
-        root: worlds[root.index]!,
+        // Slot 0 is the root: the skinning inverse and the draw's world (\`0x65f6c00\`).
+        root: worlds[0] ?? Matrix4.identity,
         parents,
         // `BuildCharacterDeformable` (`0x443b60`): the body has no limit, and the others skin levels 0
         // and 1.

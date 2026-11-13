@@ -44,13 +44,17 @@ export const immediateDraw = (
   fog?: Fog,
 ): Draw | undefined => {
   if (!indices.length) return undefined
+
   const vertices = new Uint8Array(count * STRIDE)
   const floats = new Float32Array(vertices.buffer)
+
+  // Interleaves into 24-byte vertices: xyz at 0, BGRA bytes at 12, uv at 16.
   for (let at = 0; at < count; at++) {
     floats.set(built.slice(at * 5, at * 5 + 3), (at * STRIDE) / 4)
     vertices.set(colors.slice(at * 4, at * 4 + 4), at * STRIDE + 12)
     floats.set(built.slice(at * 5 + 3, at * 5 + 5), (at * STRIDE + 16) / 4)
   }
+
   const mesh: VMeshData = {
     name,
     version: 1,
@@ -79,6 +83,7 @@ export const immediateDraw = (
     boundingBox: { min: ORIGIN, max: ORIGIN },
     boundingSphere: { center: ORIGIN, radius: 0 },
   }
+
   return {
     mesh,
     reference,

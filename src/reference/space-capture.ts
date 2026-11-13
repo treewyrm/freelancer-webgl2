@@ -26,11 +26,15 @@ const cameraOf = (draws: readonly CaptureDraw[], far: readonly number[], at: num
   ;[1, 0, 0, 0, 1, 0, 0, 0, -1].forEach((cell, at) =>
     assert.ok(Math.abs(turn[at]! - cell) < 1e-6, 'the camera looked straight down -Z'),
   )
+
+  // `world[12..14]` is D3D's row-major translation: camera-relative with z negated, so the camera
+  // is the solar's position less (x, y, -z).
   const [x, y, z] = draws[at]!.world!.slice(12, 15) as [number, number, number]
   // A near list's draw: D3D's `_11` is 1 / tan(half fov x), `_33` is far / (far - near), `_43` is
   // -near times that.
   const projection = draws.find(({ states }) => states['ZENABLE'] === 1)!.projection!
   const near = -projection[14]! / projection[10]!
+
   return {
     position: { x: far[0]! - x, y: far[1]! - y, z: far[2]! + z },
     orientation: Matrix3.identity,
@@ -107,6 +111,24 @@ export const RUNS = {
     far: [-4600, -600, -3400],
     farDraw: 55,
     hullDraw: 33,
+    effectSeconds: 20,
+    effectRate: 96,
+    animationSeconds: 0,
+  },
+  // The first cube, as in asteroid_inside. In a core, no sky: the pilot is first.
+  ew04_inside: {
+    far: [-1000, -600, -1000],
+    farDraw: 24,
+    hullDraw: 2,
+    effectSeconds: 20,
+    effectRate: 96,
+    animationSeconds: 0,
+  },
+  // The first cube, as in asteroid_inside.
+  ew04_outside: {
+    far: [-1000, -600, -1000],
+    farDraw: 35,
+    hullDraw: 13,
     effectSeconds: 20,
     effectRate: 96,
     animationSeconds: 0,
@@ -325,6 +347,7 @@ export const readSpaceRun = (
     'PerfOptions',
   )!
   const option = (name: string) => Number(section.getValue(name)!.value)
+
   return {
     draws,
     options: {

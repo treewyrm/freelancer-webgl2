@@ -2,19 +2,18 @@
 
 **WebGL2 renderer for Freelancer** (Digital Anvil, 2003), published as
 `@treewyrm/freelancer-webgl2`. Its first consumer is [freelancer-vscode](../freelancer-vscode),
-whose webviews will move onto it.
+whose webviews draw with it.
 
-**Status: M7 done, M8 next.** Rigid models, planets, starspheres, characters, effects and whole systems render and match retail; all but systems are in the extension's model viewer, character editor, material preview and effect editor behind a setting. The canopy glass is deferred; see [VALIDATION.md](docs/VALIDATION.md#open-questions).
+**Status:** rigid models, planets, starspheres, characters, effects, whole systems, base rooms and cutscenes render and match retail, and every picture in the extension is drawn with it: its own renderer is down to the camera, the pick and the overlays. What retail evidence hasn't settled is in [VALIDATION.md](docs/VALIDATION.md#open-questions); what's uncaptured, per material, in [COVERAGE.md](docs/COVERAGE.md).
 
 | Doc | Covers |
 | --- | ------ |
-| [docs/PLAN.md](docs/PLAN.md) | Milestones, the current state of work, what to do next |
+| [docs/API.md](docs/API.md) | The public surface by area, conventions, recipes; update it when an export changes |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | The frame as data, materials, host boundary, injection, resources |
 | [docs/VALIDATION.md](docs/VALIDATION.md) | Checking against retail: reference scenes, captures, comparison |
 | [docs/COVERAGE.md](docs/COVERAGE.md) | Each material's status, by evidence |
-| [docs/ADAPTING.md](docs/ADAPTING.md) | What to reuse from the extension, what was audited, known decomp errors |
-
-**To continue work, read PLAN.md and take the next unticked item.**
+| [docs/DECOMP-ERRORS.md](docs/DECOMP-ERRORS.md) | Where the decomp disagrees with the retail binary |
+| [docs/retail/](docs/retail/README.md) | How retail renders, where it isn't obvious: materials, characters, animation, Alchemy, THN; each claim checked or marked |
 
 ## Commands
 
@@ -42,15 +41,9 @@ Single file: `node --import tsx --test src/gl/program.gpu.test.ts`
    blocks and the switches in `src/Freelancer.Diagnostics.props`, including widescreen.
 2. **[../freelancer](../freelancer) `docs/`** says what the data means, and
    `docs/refs/RENDERER.md` maps it onto WebGL2: the mirrored projection, winding, matrix upload.
-3. **[../freelancer-vscode](../freelancer-vscode) `src/webview/gl/`** shows what the consumer needs
-   and is a useful comparison. It is **not a specification**: its foundations began as guesswork and
-   eyeballing, later corrected from DLL disassembly, so a right answer there may rest on the wrong
-   structure. Readings in its `docs/renderer/` that cite an address are good leads; confirm them in
-   the decomp before relying on them. **Its GPU skinning and Alchemy are the exception**: adapt them
-   after an audit, as [ADAPTING.md](docs/ADAPTING.md) describes.
-4. **[../freelancer-render](../freelancer-render)** is an earlier attempt at this project, and leads
-   only. It renders rigid models, but by transcribing the original's approach. Its notes can point
-   at the right source; do not copy its structure or code style.
+3. **[../freelancer-vscode](../freelancer-vscode)** shows what the consumer needs. Its
+   `docs/renderer/` readings are leads, **not a specification**; where they were wrong, the
+   Corrections table of each [docs/retail/](docs/retail/README.md) page says so.
 
 **Retail binaries outrank all of these.** The decomp is the fast way in, not the final word: it has
 been found wrong, even where its comments say traced. When sources disagree, read the DLL in
@@ -84,9 +77,10 @@ pipeline, and nothing obliges this library to imitate how it got there.
 3. **Depend on the published library**, never `file:../freelancer`; use `npm link` to iterate on
    both. The same goes for how `freelancer-vscode` will depend on this package.
 4. **No game data** in git or the package. Captures go to the ignored `references/`, other output to
-   the ignored `artifacts/`.
+   the ignored `artifacts/`. The exception is the README's screenshots in `docs/images/`: frames this
+   library drew, in git, never in the package.
 5. **Editor visuals stay in `freelancer-vscode`**: guides, overlays, gizmos, picking. This library
-   replaces that project's renderer, so it gives them a way in; see below.
+   gives them a way in; see below.
 
 ## Editor injection
 
@@ -104,20 +98,15 @@ Flat, one directory per subsystem, added when there is code for it. A subsystem 
 | `gl/`           | Context, programs, GL resources       | `src/RP8/`                            |
 | `texture/`      | Upload plans, GL textures, samplers   | `src/Shading/TextureLibrary.cpp`      |
 | `mesh/`         | VMesh buffers and index plans         | `src/RendComp/`                       |
-| `scene/`        | Camera; next, frame order and lights  | `src/freelancer/`, `src/Shading/MaterialBatcher.cpp` |
+| `scene/`        | Camera, frames, lights, space, rooms  | `src/freelancer/`, `src/Shading/MaterialBatcher.cpp` |
 | `material/`     | One program per material type         | `src/Shading/`, `src/flmaterials/`    |
 | `deformable/`   | Skinned meshes and bone tables        | `src/Deformable2/`                    |
 | `alchemy/`      | Particle effects: run, draws, programs | `src/alchemy/`                       |
+| `thorn/`        | THN playback: clock, placement, paths | `src/Thorn/`, `gf_thorn_*`, `gf_script_object.cpp` |
 | `harness.ts`    | GPU test runner, never shipped        |                                       |
 | `capture/`      | Capture reader and texture names, never shipped |                             |
 | `reference/`    | Reference scenes and their install, never shipped |                           |
 | `/tools/d3d8log` | Proxy `d3d8.dll` capturing retail frames, C++, never shipped |                |
-
-Expected next, as a guide and not a commitment:
-
-| Directory       | Holds                                 | Decomp source                         |
-| --------------- | ------------------------------------- | ------------------------------------- |
-| `thorn/`        | THN scene playback                    | `src/Thorn/`                          |
 
 ## Tests
 

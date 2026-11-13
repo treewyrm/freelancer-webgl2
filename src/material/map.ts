@@ -61,11 +61,14 @@ export const mapMaterialType = (
 ): string => {
   const lowered = name.slice(0, FIELD_LENGTH).toLowerCase()
   const original = type.slice(0, FIELD_LENGTH)
+
   if (EYE_RULE.test(lowered)) return 'EyeMaterial'
+
   for (let at = rules.length - 1; at >= 0; at--) {
     const rule = rules[at]!
     if (rule.pattern.test(rule.on === 'name' ? lowered : original)) return rule.to
   }
+
   return original
 }
 

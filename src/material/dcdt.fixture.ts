@@ -96,10 +96,12 @@ const LIGHT_DOWN_Z = { color: { x: 1, y: 1, z: 1 }, direction: { x: 0, y: 0, z: 
 
 export default ((gl) => {
   const program = createDcDtProgram(gl)
+
   gl.bindVertexArray(gl.createVertexArray())
 
   // One big triangle at view depth -0.5, by a clip space equal to view space.
   const position = gl.createBuffer()
+
   gl.bindBuffer(gl.ARRAY_BUFFER, position)
   gl.bufferData(
     gl.ARRAY_BUFFER,
@@ -120,7 +122,9 @@ export default ((gl) => {
     gl.clearColor(0, 0, 1, 1)
     gl.clear(gl.COLOR_BUFFER_BIT)
     gl.drawArrays(gl.TRIANGLES, 0, 3)
+
     const pixel = new Uint8Array(4)
+
     gl.readPixels(
       gl.canvas.width >> 1,
       gl.canvas.height >> 1,
@@ -135,7 +139,9 @@ export default ((gl) => {
 
   gl.activeTexture(gl.TEXTURE0 + DIFFUSE_UNIT)
   gl.bindTexture(gl.TEXTURE_2D, createTexture(gl, planUpload(solid(128))))
+
   const nearest = gl.createSampler()
+
   gl.samplerParameteri(nearest, gl.TEXTURE_MIN_FILTER, gl.NEAREST)
   gl.samplerParameteri(nearest, gl.TEXTURE_MAG_FILTER, gl.NEAREST)
   gl.bindSampler(DIFFUSE_UNIT, nearest)
@@ -181,6 +187,12 @@ export default ((gl) => {
       { lights: [LIGHT_DOWN_Z], ambient: { x: 1, y: 1, z: 1 } },
     ),
     noTextureIsWhite: read(lit, { lights: [LIGHT_DOWN_Z] }),
+    // Material ambient 0.5 × the light's 0.5, from behind, where its diffuse adds nothing.
+    lightAmbient: read(
+      { ambient: { x: 0.5, y: 0.5, z: 1 } },
+      { lights: [{ ...LIGHT_DOWN_Z, ambient: { x: 0.5, y: 0.25, z: 0.5 } }] },
+      { x: 0, y: 0, z: -1 },
+    ),
   }
 
   // Modulate 2X, which clamps. The cube is 0.75 everywhere, then 0.25.
@@ -204,6 +216,7 @@ export default ((gl) => {
     [255, 0, 255],
     [0, 255, 255],
   ])
+
   const white = {
     diffuse: [1, 1, 1, 1] as Draw['diffuse'],
     environment: 'cube',
@@ -211,9 +224,12 @@ export default ((gl) => {
   }
   const bright = { lights: [LIGHT_DOWN_Z], ambient: { x: 1, y: 1, z: 1 } }
   const whiteAmbient = { ...white, ambient: { x: 1, y: 1, z: 1 } }
+
   // Facing the eye, the reflection is back along +Z in view space, -Z in D3D's flipped space.
   report['reflectBack'] = read(whiteAmbient, bright)
+
   const tilted = { x: Math.SQRT1_2, y: 0, z: Math.SQRT1_2 }
+
   report['reflectSide'] = read(whiteAmbient, bright, tilted)
 
   const quarter: Matrix3 = {
@@ -222,6 +238,7 @@ export default ((gl) => {
     z: { x: -1, y: 0, z: 0 },
   }
   const view = Matrix4.fromRotationTranslation(quarter)
+
   // The world undoes the view for positions, so the triangle stays put. The light, in world space,
   // is only right if the view turns it: world +X becomes view -Z, shining at the normal.
   report['turnedView'] = read(
@@ -231,6 +248,7 @@ export default ((gl) => {
 
   // D3DCMP_GREATER on 8 bits.
   const faded = { emissive: { x: 1, y: 1, z: 1 }, diffuse: [0, 0, 0, 0.5] as Draw['diffuse'] }
+
   report['alphaKept'] = read({ ...faded, alphaReference: 127 })
   report['alphaCut'] = read({ ...faded, alphaReference: 128 })
   report['alphaZero'] = read({ emissive: { x: 1, y: 1, z: 1 }, diffuse: [0, 0, 0, 0] })
@@ -253,13 +271,16 @@ export default ((gl) => {
     flip: false,
     levels: [new Uint8Array([255, 0, 0, 255, 0, 255, 0, 255])],
   }
+
   gl.activeTexture(gl.TEXTURE0 + DIFFUSE_UNIT)
   gl.bindTexture(gl.TEXTURE_2D, createTexture(gl, planUpload(checker)))
   gl.vertexAttrib2f(ATTRIBUTE_LOCATIONS.uv0, 0.25, 0.5)
+
   const stageZero = {
     emissive: { x: 1, y: 1, z: 1 },
     texture: { name: 'checker', uvSet: 0 } as NonNullable<Draw['texture']>,
   }
+
   report['uvPlain'] = read(stageZero)
   report['uvOffset'] = read({ ...stageZero, uvTransform: { offset: [0.5, 0], scale: [1, 1] } })
   report['uvScaled'] = read({ ...stageZero, uvTransform: { offset: [0, 0], scale: [3, 1] } })
@@ -270,8 +291,10 @@ export default ((gl) => {
   gl.activeTexture(gl.TEXTURE0 + SECOND_UNIT)
   gl.bindTexture(gl.TEXTURE_2D, createTexture(gl, planUpload(solid(128))))
   gl.bindSampler(SECOND_UNIT, nearest)
+
   const stageTexture = { name: 's', uvSet: 0 } as NonNullable<Draw['texture']>
   const half = { emissive: { x: 0.5, y: 0.5, z: 0.5 } }
+
   report['add'] = read({ ...half, second: { operation: 'add', texture: stageTexture } })
   report['addSaturates'] = read({
     emissive: { x: 1, y: 1, z: 1 },
@@ -285,12 +308,16 @@ export default ((gl) => {
 
   // Nomad: unlit white plus the ramp, whose coordinate comes from the normal against the view axis.
   const ramp = gl.createTexture()
+
   gl.activeTexture(gl.TEXTURE0 + SECOND_UNIT)
   gl.bindTexture(gl.TEXTURE_2D, ramp)
+
   // Four columns of u by four rows of v, in red and green.
   const texels = new Uint8Array(16 * 4)
+
   for (let v = 0; v < 4; v++)
     for (let u = 0; u < 4; u++) texels.set([u * 60, v * 60, 0, 255], (v * 4 + u) * 4)
+
   gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1)
   gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 4, 4, 0, gl.RGBA, gl.UNSIGNED_BYTE, texels)
   gl.bindSampler(SECOND_UNIT, nearest)
@@ -298,12 +325,14 @@ export default ((gl) => {
   gl.samplerParameteri(nearest, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
   gl.activeTexture(gl.TEXTURE0 + DIFFUSE_UNIT)
   gl.bindTexture(gl.TEXTURE_2D, createTexture(gl, planUpload(solid(0))))
+
   const shell = {
     nomad: true,
     texture: stageTexture,
     second: { operation: 'add', texture: { ...stageTexture, uvSet: 1 } },
     diffuse: [1, 1, 1, 1] as Draw['diffuse'],
   } as const
+
   // Facing the camera, dot(axis, normal) is -1 so u is 0. Facing away, it is 1, so u is at the end.
   report['nomadFacing'] = read(shell, {}, { x: 0, y: 0, z: 1 })
   report['nomadAway'] = read(shell, {}, { x: 0, y: 0, z: -1 })
@@ -328,7 +357,9 @@ export default ((gl) => {
 
   // D3DCOLOR's bytes, B G R A.
   gl.vertexAttrib4f(ATTRIBUTE_LOCATIONS.diffuse, 0.25, 0.5, 1, 0.5)
+
   const coloured = { colorVertex: true, diffuse: [0, 0, 0, 1] as Draw['diffuse'] }
+
   report['vertexColor'] = read({ ...coloured, alphaReference: 127 }, { lights: [LIGHT_DOWN_Z] })
   report['vertexColorAlpha'] = read(
     { ...coloured, alphaReference: 128 },

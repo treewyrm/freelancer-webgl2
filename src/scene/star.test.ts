@@ -8,7 +8,8 @@ import { textureShape } from './ring.js'
 import { starGlowDraws, starRadius, type Star } from './star.js'
 
 const glow2 = { name: 'glow2', width: 128, height: 128, format: 'rgba32_8888' } as Texture
-const suncircle = { name: 'suncircle', width: 64, height: 64, format: 'rgb24_888' } as Texture
+// A 16-bit Targa in `fx\sun.txm`, as `lenscircle` and `lenscircle2` are.
+const suncircle = { name: 'suncircle', width: 64, height: 64, format: 'rgb16_555' } as Texture
 const camera: Camera = {
   position: { x: 0, y: 0, z: 0 },
   orientation: Matrix3.identity,
@@ -29,12 +30,16 @@ const yellow: Star = {
 
 const positionsOf = (draw: Draw) => {
   const floats = new Float32Array(draw.mesh.vertices.buffer)
+
   return Array.from({ length: draw.count }, (_, at) => [...floats.slice(at * 6, at * 6 + 3)])
 }
+
 const uvsOf = (draw: Draw) => {
   const floats = new Float32Array(draw.mesh.vertices.buffer)
+
   return Array.from({ length: draw.count }, (_, at) => [...floats.slice(at * 6 + 4, at * 6 + 6)])
 }
+
 const coloursOf = (draw: Draw) =>
   Array.from({ length: draw.count }, (_, at) => [
     ...draw.mesh.vertices.slice(at * 24 + 12, at * 24 + 16),
@@ -49,6 +54,7 @@ test("a star's sphere is its larger scale times its radius, the glow's when ther
 
 test('the glow is a fan about the star, square to the camera, its first corner top left', () => {
   const [glow] = starGlowDraws(yellow, { x: 0, y: 0, z: -100000 }, camera, Matrix4.identity)
+
   assert.equal(glow!.mesh.primitive, 6)
   // Half a side is radius × scale: 15000. The centre, then the rim from the top left clockwise.
   assert.deepEqual(positionsOf(glow!), [
@@ -63,9 +69,11 @@ test('the glow is a fan about the star, square to the camera, its first corner t
     [-15000, 0, -100000],
     [-15000, 15000, -100000],
   ])
+
   const { u0, v0, u1, v1 } = textureShape(glow2, {})
   const um = Math.fround(Math.fround(u0 + u1) * 0.5)
   const vm = Math.fround(Math.fround(v0 + v1) * 0.5)
+
   assert.deepEqual(uvsOf(glow!), [
     [um, vm],
     [u0, v0],
@@ -89,6 +97,7 @@ test('the inner colour is at the centre and the outer on the rim, B G R A, trunc
     0.5,
   )
   const colours = coloursOf(glow!)
+
   // 0.9 · 255 is 229.5, and `ftol` truncates; 0.5 · 255 is 127.
   assert.deepEqual(colours[0], [229, 255, 255, 127])
   for (const rim of colours.slice(1)) assert.deepEqual(rim, [76, 204, 255, 127])
@@ -102,15 +111,25 @@ test('a colour over 1 is held to a byte, as St03_starglow writes a green of 80',
     glow: { shape: textureShape(glow2, {}), innerColor: { x: 0.95, y: 80, z: 0.69 } },
   }
   const [glow] = starGlowDraws(star, { x: 0, y: 0, z: -5000 }, camera, Matrix4.identity)
+
   assert.deepEqual(coloursOf(glow!)[0], [175, 255, 242, 255])
 })
 
 test('a texture with alpha blends by it; one without as ONE, INVSRCCOLOR', () => {
   const draws = starGlowDraws(yellow, { x: 0, y: 0, z: -5000 }, camera, Matrix4.identity)
+
   assert.deepEqual(
     draws.map(({ blendMode }) => blendMode),
     ['alpha', 'screen'],
   )
+
+  // `sm_red_sun` (Hi02_Sun): `red_starcenter` is `lenscircle`, X1R5G5B5, so no alpha to blend by.
+  const lenscircle = { name: 'lenscircle', width: 64, height: 64, format: 'rgb16_555' } as Texture
+  const red: Star = { radius: 2000, center: { shape: textureShape(lenscircle, {}) } }
+  const [centre] = starGlowDraws(red, { x: 0, y: 0, z: -5000 }, camera, Matrix4.identity)
+
+  assert.equal(centre!.blendMode, 'screen')
+
   for (const draw of draws) {
     assert.equal(draw.depthFunc, 'always')
     assert.equal(draw.depthWrite, false)
@@ -130,6 +149,7 @@ test('the glow is sized by size, and turns about the camera’s up toward the st
     2,
   )
   const [centre, topLeft] = positionsOf(glow!)
+
   assert.deepEqual(centre, [10000, 0, 0])
   // Right is the way to it crossed with up: +x × +y is +z. The top left is back along it, and up.
   assert.deepEqual(topLeft, [10000, 2000, -2000])
@@ -137,7 +157,9 @@ test('the glow is sized by size, and turns about the camera’s up toward the st
 
 test('a glow without a shape draws nothing, and no centre means one draw', () => {
   assert.deepEqual(starGlowDraws({}, { x: 0, y: 0, z: -1000 }, camera, Matrix4.identity), [])
+
   const { center: _, ...glowOnly } = yellow
+
   assert.equal(
     starGlowDraws(glowOnly, { x: 0, y: 0, z: -1000 }, camera, Matrix4.identity).length,
     1,

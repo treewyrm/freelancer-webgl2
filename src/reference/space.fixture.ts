@@ -29,6 +29,7 @@ export interface SpaceReport {
 export default (async (gl, { args, read }) => {
   const { system, options, spins = [], sunEffect } = args as SpaceArgs
   const scene = await loadSystem(systems.get(system)!, read, options)
+
   // Each bit standing where retail drew one takes its up. Square to the camera already, the bits'
   // turn leaves it.
   for (const { exterior, zone } of scene.nebulae ?? [])
@@ -43,10 +44,12 @@ export default (async (gl, { args, read }) => {
       )
       if (spin) (bit as { axis: Vector3 }).axis = spin.up
     }
+
   const { width, height } = gl.canvas
   const suns =
     sunEffect === undefined ? {} : { sunEffect, viewport: { width, height }, step: 1 / 60 }
   let frame = collectSpaceFrame({ ...scene, ...suns })
+
   if (sunEffect !== undefined)
     for (let at = 0; at < 300; at++) frame = collectSpaceFrame({ ...scene, ...suns })
 
@@ -54,12 +57,16 @@ export default (async (gl, { args, read }) => {
   createRenderer(gl).render(frame)
 
   const raw = new Uint8Array(width * height * 4)
+
   gl.readPixels(0, 0, width, height, gl.RGBA, gl.UNSIGNED_BYTE, raw)
+
   const flipped = new Uint8Array(raw.length)
+
   for (let y = 0; y < height; y++)
     flipped.set(raw.subarray(y * width * 4, (y + 1) * width * 4), (height - 1 - y) * width * 4)
 
   let text = ''
+
   for (let at = 0; at < flipped.length; at += 0x8000)
     text += String.fromCharCode(...flipped.subarray(at, at + 0x8000))
 

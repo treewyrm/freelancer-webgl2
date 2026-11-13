@@ -37,15 +37,20 @@ const skip = !existsSync(data)
 const load = async () => {
   const read = async (path: string) => {
     const file = readFileSync(join(data, path))
+
     return new Uint8Array(file.buffer, file.byteOffset, file.byteLength)
   }
+
   const system = systems.get(name)!
   const { draws, options } = readSpaceRun(join(references, name), system, RUNS[name])
   const scene = await loadSystem(system, read, options)
+
   // Entering the system is a cut, which scatters the rocks; then a frame on.
   collectSpaceFrame({ ...scene, cut: true })
+
   const frame = collectSpaceFrame({ ...scene, step: 1 / 60 })
   const billboards = scene.asteroids!.find(({ billboards }) => billboards)!.billboards!
+
   return { scene, frame, billboards, camera: options.camera, captured: draws }
 }
 
@@ -58,6 +63,7 @@ const rocksOf = (vertices: readonly CaptureVertex[]) =>
       y: (a!.p[1]! + b!.p[1]!) / 2,
       z: (a!.p[2]! + b!.p[2]!) / 2,
     }
+
     return {
       corners: [a!.p, b!.p, c!.p] as number[][],
       middle,
@@ -72,6 +78,7 @@ const rgbOf = ({ x, y, z }: Vector3) => ((byteOf(x) << 16) | (byteOf(y) << 8) | 
 test(`${name} is retail draw for draw`, { skip }, async () => {
   const { frame, captured } = await load()
   const retail = captured.slice(0, SCENE)
+
   assert.deepEqual(frame.unsupported, ['texture envmapglass'])
   assert.equal(frame.draws.length, retail.length)
   assertFrameMatches(frame, retail, indexTextures(data), { streamed: true, scattered: [...ROCKS] })
@@ -80,9 +87,11 @@ test(`${name} is retail draw for draw`, { skip }, async () => {
 
 test(`${name}: the rocks' states, and their place under the camera's view`, { skip }, async () => {
   const { frame, captured } = await load()
+
   for (const n of ROCKS) {
     const { states, stages, world, call } = captured[n]!
     const ours = frame.draws[n]!
+
     assert.equal(ours.materialName, 'asteroid billboards')
     assert.equal(call, 'DrawPrimitive')
     assert.deepEqual(
@@ -98,9 +107,12 @@ test(`${name}: the rocks' states, and their place under the camera's view`, { sk
       [4, 2, 0, 4, 2, 0],
     )
     assert.equal(stages[1]!.states['COLOROP'], 1)
+
     // In world space, the view as the device's world and an identity view.
     const turned = [world![0], world![5], world![10]]
+
     assert.deepEqual(turned, [1, 1, -1])
+
     const { x, y, z } = frame.view.w
     ;[x, y, -z].forEach((cell, at) => assert.ok(Math.abs(cell - world![12 + at]!) < 1e-3))
   }
@@ -113,29 +125,37 @@ test(
     const { frame, captured, billboards, camera } = await load()
     const settled = billboards.settings.size!
     let drawn = 0
+
     for (const [k, n] of ROCKS.entries()) {
       const rocks = rocksOf(captured[n]!.vertexData!)
+
       drawn += rocks.length
+
       for (const [at, { corners, middle, colours }] of rocks.entries()) {
         const what = `draw ${n} rock ${at}`
         const [a, b, c] = corners as [number[], number[], number[]]
         // Base and point each `size` from its middle, square to each other, facing the camera.
         const base = Math.hypot(b[0]! - a[0]!, b[1]! - a[1]!, b[2]! - a[2]!) / 2
         const point = Math.hypot(c[0]! - middle.x, c[1]! - middle.y, c[2]! - middle.z)
+
         assert.ok(base > settled[0] - 0.01 && base < settled[1] + 0.01, `${what} size ${base}`)
         assert.ok(Math.abs(point - base) < 1e-3, what)
         assert.equal(a[2], b[2])
         assert.ok(Math.abs(c[2]! - a[2]!) < 1e-3, what)
+
         // Opaque in the first draw, faded in the second, as our fade says at retail's place.
         const alpha = billboards.alphaAt(camera, middle)
+
         assert.equal(byteOf(alpha), colours[0]! >>> 24, `${what} alpha ${alpha}`)
         assert.ok(k === 0 ? alpha >= 1 : alpha < 1 && alpha > Math.fround(0.02), what)
         colours.forEach((colour) => assert.equal(colour >>> 24, colours[0]! >>> 24))
       }
     }
+
     // Ours scatter by our own run of `rand()`: 368 to retail's 376, and 374 over 200 seeds. Which
     // fade is a coin of the place, so the split between the draws strays further.
     const ours = (frame.draws[ROCKS[0]]!.count + frame.draws[ROCKS[1]]!.count) / 3
+
     assert.ok(Math.abs(ours - drawn) < 0.05 * drawn, `${ours} rocks against ${drawn}`)
   },
 )
@@ -154,18 +174,23 @@ test(
     const cornerOf = (uvs: number[]) =>
       ['0,0,1,0', '1,0,1,1', '1,1,0,1', '0,1,0,0'].indexOf(uvs.join(','))
     const firstU = new Set<number>()
+
     for (const n of ROCKS)
       for (const { colours, uvs } of rocksOf(captured[n]!.vertexData!)) {
         const corner = cornerOf(uvs)
+
         assert.ok(corner >= 0, `UVs ${uvs}`)
         assert.equal(colours[2]! & 0xffffff, rgbOf(centre))
         assert.equal(colours[0], colours[1])
+
         // Retail's V flip is this rock's, its U flip the first rock's: one of two for all.
         const flipV = corner >> 1
         const pick = [0, 1].find((u) => rgbOf(corners[u + flipV * 2]!) === (colours[0]! & 0xffffff))
+
         assert.notEqual(pick, undefined, `colour ${(colours[0]! & 0xffffff).toString(16)}`)
         firstU.add(pick!)
       }
+
     assert.equal(firstU.size, 1)
   },
 )

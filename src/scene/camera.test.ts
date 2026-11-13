@@ -1,7 +1,14 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { Matrix3, Matrix4 } from '@treewyrm/freelancer/math'
-import { projectionMatrix, sphereInFrustum, viewMatrix, type Camera } from './camera.js'
+import {
+  classifySphere,
+  projectionMatrix,
+  sphereInFrustum,
+  underPixel,
+  viewMatrix,
+  type Camera,
+} from './camera.js'
 
 const camera: Camera = {
   position: { x: 0, y: 0, z: 0 },
@@ -23,21 +30,27 @@ const near = (actual: number, expected: number) =>
 test('fovh is half the horizontal angle, and the vertical follows the aspect', () => {
   const edge = Math.tan(Math.PI / 6)
   const right = clip({ x: edge, y: 0, z: -1 })
+
   near(right.x / right.w, 1)
+
   const top = clip({ x: 0, y: edge / (4 / 3), z: -1 })
+
   near(top.y / top.w, 1)
 })
 
 test('+X is to the right and +Y up, looking down -Z', () => {
   const point = clip({ x: 1, y: 2, z: -10 })
+
   assert.ok(point.x > 0 && point.y > 0 && point.w === 10)
 })
 
 test('window depth is D3D z / w: 0 at the near plane and 1 at the far', () => {
   const windowDepth = (distance: number) => {
     const point = clip({ x: 0, y: 0, z: -distance })
+
     return (point.z / point.w + 1) / 2
   }
+
   near(windowDepth(1), 0)
   near(windowDepth(10000), 1)
   // SetPerspective: (far / (far - near)) * (1 - near / d), at a distance d of 100.
@@ -52,6 +65,7 @@ test('the view undoes the camera frame', () => {
     orientation: { x: { x: 0, y: 0, z: 1 }, y: { x: 0, y: 1, z: 0 }, z: { x: -1, y: 0, z: 0 } },
   }
   const ahead = Matrix4.transformPoint({ x: 2, y: 0, z: 0 }, viewMatrix(turned))
+
   near(ahead.x, 0)
   near(ahead.y, 0)
   near(ahead.z, -3)
@@ -68,6 +82,7 @@ test('a sphere is culled only when wholly past one plane', () => {
   }
   const inside = (x: number, y: number, z: number, radius = 1) =>
     sphereInFrustum({ x, y, z }, radius, camera, 4 / 3)
+
   assert.equal(inside(0, 0, -10), true)
   // Behind, and past the far plane, with their edges either side of it.
   assert.equal(inside(0, 0, 1), false)
@@ -82,4 +97,22 @@ test('a sphere is culled only when wholly past one plane', () => {
   // Up: at depth 10 the plane's at y = 7.5, and 1 reaches 1.25 further.
   assert.equal(inside(0, 8.7, -10), true)
   assert.equal(inside(0, 8.8, -10), false)
+})
+
+const VGA = { width: 640, height: 480 }
+
+test("a room camera's sphere under a pixel ranks 2, by π (R / z)² of its pixel scales", () => {
+  // 30° each side: about 961,600 pixels at R / z of 1, so a unit sphere goes under one past 980.
+  assert.equal(underPixel(-980, 1, 30, VGA), false)
+  assert.equal(underPixel(-981, 1, 30, VGA), true)
+  assert.equal(classifySphere({ x: 0, y: 0, z: -981 }, 1, camera, 4 / 3, VGA), 2)
+  assert.equal(classifySphere({ x: 0, y: 0, z: -980 }, 1, camera, 4 / 3, VGA), 4)
+  assert.equal(classifySphere({ x: 0, y: 0, z: -981 }, 1, camera, 4 / 3), 4)
+  assert.equal(sphereInFrustum({ x: 0, y: 0, z: -981 }, 1, camera, 4 / 3, VGA), false)
+})
+
+test('outside still ranks 1 before its size is asked, and a centre on the eye plane is never sized', () => {
+  assert.equal(classifySphere({ x: 5000, y: 0, z: -2000 }, 1, camera, 4 / 3, VGA), 1)
+  assert.equal(underPixel(0, 0.001, 30, VGA), false)
+  assert.equal(underPixel(-0.00009, 1e-9, 30, VGA), false)
 })

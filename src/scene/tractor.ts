@@ -12,6 +12,7 @@ import type { Draw } from './frame.js'
 import { immediateDraw, type ImmediateBatch } from './immediate.js'
 import type { Random } from './lightning.js'
 import type { Fog } from './nebula.js'
+import { unitByte } from './retail.js'
 
 const f = Math.fround
 
@@ -92,11 +93,12 @@ const BYTE_TO_UNIT = f(1 / 255)
 const RAND_UNIT = f(1 / 32767)
 
 // `Win3DColor3f`: by 255, truncated, then held to a byte.
-const byte = (value: number) => Math.min(Math.max(Math.trunc(value * 255), 0), 255)
+const byte = unitByte
 
 // `CliTractorBeamInit` (`FUN_00512be0`): the bytes `ReadUnknown` kept, over 255 as a float.
 export const colorBytes = ({ x, y, z }: Vector3): [number, number, number, number] => {
   const unit = (value: number) => byte(f((Math.trunc(value) & 0xff) * BYTE_TO_UNIT))
+
   return [unit(z), unit(y), unit(x), 0xff]
 }
 
@@ -120,6 +122,7 @@ const randomVector = (random: Random, radius: number): V => {
   const y = f(random() - 0x3fff)
   const z = random() - 0x3fff
   const by = radius / Math.sqrt(z * z + y * y + x * x)
+
   return [f(x * by), f(y * by), f(by * z)]
 }
 
@@ -154,6 +157,7 @@ export const segmentCorners = (
   const half = length(sub(mid, cur))
   const along = scale(sub(cur, mid), quadScale)
   const across = scale(rescale(side, f(narrow ? half * 0.5 : half)), quadScale)
+
   return [add(mid, along), add(mid, across), sub(mid, along), sub(mid, across)]
 }
 
@@ -161,9 +165,12 @@ export const segmentCorners = (
 // has no axis, leaves the quad to D3D, which draws nothing for it: none is built.
 const quad = (lines: Lines, corners: readonly V[]) => {
   if (!corners.every((corner) => corner.every(Number.isFinite))) return
+
   let batch = lines.batches.at(-1)!
   if (batch.count + 4 > MOST_VERTICES) lines.batches.push((batch = emptyBatch()))
+
   const first = batch.count
+
   corners.forEach((corner, at) => {
     batch.vertices.push(...corner, QUAD_UVS[at * 2]!, QUAD_UVS[at * 2 + 1]!)
     batch.colors.push(...lines.color)
@@ -191,8 +198,10 @@ const fuzzyLine = (
   const unit = rescale(dir, f(f(reach) / count))
   const stray = f(jitter * width)
   let cur = start
+
   for (let at = 1; at <= count; at++) {
     const next = at === count ? end : add(add(start, scale(unit, at)), randomVector(random, stray))
+
     segment(lines, cur, next, lineQuad, true)
     cur = next
   }
@@ -212,31 +221,41 @@ const fuzzyArc = (
   const from = sub(start, centre)
   const reachExt = length(from)
   const radius = f(reachExt)
+
   if (reachExt < 0.001) return
+
   const toEndRaw = sub(end, centre)
   if (length(toEndRaw) < 0.001) return
+
   const stray = f(jitter * width)
   const toEnd = rescale(toEndRaw, radius)
   const radiusSq = f(radius * radius)
   const cosineExt = (toEnd[2] * from[2] + toEnd[1] * from[1] + toEnd[0] * from[0]) / radiusSq
   let cosine = f(cosineExt)
+
   if (cosineExt < -1) cosine = -1
   else if (cosine > 1) cosine = 1
+
   const angle = f(Math.acos(cosine))
+  // A chord of `width` on this radius subtends `acos(1 - width² / 2r²)`; the arc is cut into that many.
   let chord = f(1 - (width * width) / (radiusSq + radiusSq))
+
   if (chord < -1) chord = -1
   else if (chord > 1) chord = 1
+
   const count = Math.floor(angle / Math.acos(chord)) + 1
   const step = f(angle / count)
   const axis = cross(from, toEnd)
   const axisLength = length(axis)
   const unitAxis: V = [axis[0] / axisLength, axis[1] / axisLength, axis[2] / axisLength]
   let cur = start
+
   for (let at = 1; at <= count; at++) {
     const next =
       at === count
         ? add(centre, toEnd)
         : add(add(centre, rotate(from, unitAxis, at * step)), randomVector(random, stray))
+
     segment(lines, cur, next, arcQuad, false)
     cur = next
   }
@@ -250,6 +269,7 @@ export const rotate = (v: V, [kx, ky, kz]: V, angle: number): V => {
   const c = Math.cos(angle)
   const s = Math.sin(angle)
   const dot = (kx * v[0] + ky * v[1] + kz * v[2]) * (1 - c)
+
   return [
     f(v[0] * c + (ky * v[2] - kz * v[1]) * s + kx * dot),
     f(v[1] * c + (kz * v[0] - kx * v[2]) * s + ky * dot),
@@ -276,6 +296,7 @@ export const lookMatrixYup = ([x, y, z]: V): [V, V, V] => {
   const ux = upX * upInverse
   const uy = upY * upInverse
   const uz = f(upZ * upInverse)
+
   return [
     [f(lz * uy - uz * ly), f(uz * lx - ux * lz), f(ly * ux - uy * lx)],
     [f(ux), f(uy), uz],
@@ -303,13 +324,17 @@ const arm = (
   const reach = f(lootDistance - radius)
   const excess = f(tipDistance - reach)
   let end: V = tip
+
   if (excess > 0) {
     const lootLength = length(toLoot)
     const shell = lootLength !== 0 ? scale(toLoot, reach / lootLength) : toLoot
+
     end = add(shell, source)
   }
+
   const strayY = f(random() * limits.endJitter * RAND_UNIT)
   const strayX = random() * limits.endJitter * RAND_UNIT
+
   end = [f(end[0] + strayX), f(end[1] + strayY), end[2]]
   fuzzyLine(lines, random, source, end, limits.width, limits)
   if (!(excess > 0)) return
@@ -319,12 +344,16 @@ const arm = (
   const centre = sub(loot, scale(tipDir, limits.sparkPullBack))
   const sinSpread = Math.sin(spread)
   const cosSpread = f(Math.cos(spread))
+
   for (let at = 0; at < limits.sparks; at++) {
     const theta = random() * f(2 * Math.PI) * RAND_UNIT
+    // A point on the cone of half-angle `spread` about the loot-to-source axis, then taken to world by
+    // `lookMatrixYup`'s columns.
     const cone: V = [f(Math.cos(theta) * sinSpread), f(Math.sin(theta) * sinSpread), cosSpread]
     const turned: V = [0, 1, 2].map((row) =>
       f(column0[row]! * cone[0] + column1[row]! * cone[1] + column2[row]! * cone[2]),
     ) as V
+
     fuzzyArc(lines, random, end, add(turned, centre), centre, limits.sparkWidth, limits)
   }
 }
@@ -348,15 +377,19 @@ export const tractorDraws = (
   const limits = { ...RETAIL_TRACTOR_LIMITS, ...given }
   const eye = vector(camera.position)
   const draws: Draw[] = []
+
   for (const { source, maxLength, color, arms } of tractors) {
     const at = Matrix4.transformPoint(source, view)
     if (classifySphere(at, f(maxLength), camera, aspect) < 3) continue
+
     const lines: Lines = { batches: [emptyBatch()], color: colorBytes(color), eye }
     for (const held of arms.slice(0, limits.arms)) arm(lines, random, vector(source), held, limits)
+
     for (const batch of lines.batches) {
       const draw = immediateDraw('line', batch, texture, fog)
       if (draw) draws.push(draw)
     }
   }
+
   return draws
 }

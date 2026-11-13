@@ -25,16 +25,21 @@ export default (async (gl, { args, read }) => {
   const frame = collectFrame({ ...scene, ...(time === undefined ? {} : { time }) })
 
   const { width, height } = gl.canvas
+
   gl.viewport(0, 0, width, height)
   createRenderer(gl).render(frame)
 
   const raw = new Uint8Array(width * height * 4)
+
   gl.readPixels(0, 0, width, height, gl.RGBA, gl.UNSIGNED_BYTE, raw)
+
   const flipped = new Uint8Array(raw.length)
+
   for (let y = 0; y < height; y++)
     flipped.set(raw.subarray(y * width * 4, (y + 1) * width * 4), (height - 1 - y) * width * 4)
 
   let text = ''
+
   for (let at = 0; at < flipped.length; at += 0x8000)
     text += String.fromCharCode(...flipped.subarray(at, at + 0x8000))
 

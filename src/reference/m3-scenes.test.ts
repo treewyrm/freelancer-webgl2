@@ -27,9 +27,12 @@ const skipFor = (name: string) =>
 const loadedScene = async (name: string) => {
   const read = async (path: string) => {
     const file = readFileSync(join(data, path))
+
     return new Uint8Array(file.buffer, file.byteOffset, file.byteLength)
   }
+
   const { scene } = await loadScene(scenes.get(name)!, read)
+
   return scene
 }
 
@@ -40,9 +43,13 @@ test(
   { skip: !existsSync(data) && 'no retail DATA' },
   async () => {
     const frame = await load()
+
     assert.deepEqual(frame.unsupported, [])
+
     const glass = frame.draws.filter(({ materialName }) => materialName === 'D_glass')
+
     assert.ok(glass.length > 0)
+
     for (const draw of glass) {
       assert.equal(draw.blend, true)
       assert.equal(draw.environment, undefined)
@@ -70,8 +77,11 @@ for (const name of [
 ])
   test(`${name} is retail draw for draw, in retail order`, { skip: skipFor(name) }, async () => {
     const frame = await load(name)
+
     assert.deepEqual(frame.unsupported, MISSING[name] ?? [])
+
     const draws = readCapture(readFileSync(runOf(name), 'utf8')).frames.at(-1)!.draws
+
     assertFrameMatches(frame, draws, indexTextures(data))
   })
 
@@ -81,6 +91,7 @@ test(
   async () => {
     const frame = await load('ku_dragon_pair')
     const glass = frame.draws.slice(-2)
+
     assert.deepEqual(
       glass.map(({ materialName }) => materialName),
       ['D_glass', 'D_glass'],
@@ -88,6 +99,7 @@ test(
 
     const draws = readCapture(readFileSync(runOf('ku_dragon_pair'), 'utf8')).frames.at(-1)!.draws
     const hull = draws.slice(0, frame.draws.length)
+
     assert.equal(hull.length, 25)
     assert.deepEqual(
       hull.map((draw) => draw.states['ALPHABLENDENABLE']),
@@ -96,9 +108,11 @@ test(
 
     // Retail's world holds the modelview with Z flipped, so further is larger.
     const retail = hull.slice(-2).map((draw) => draw.world![14]!)
+
     assert.ok(retail[0]! > retail[1]!, `${retail}`)
     glass.forEach((draw, at) => {
       const ours = -Matrix4.multiply(frame.view, draw.world).w.z
+
       assert.ok(Math.abs(ours - retail[at]!) < 1e-2, `${ours} against ${retail[at]}`)
     })
   },
@@ -113,8 +127,10 @@ for (const name of ['dyson_door_shield', 'no_fighter', 'bands'])
       const frame = await load(name)
       const draws = readCapture(readFileSync(runOf(name), 'utf8')).frames.at(-1)!.draws
       let compared = 0
+
       frame.draws.forEach((ours, n) => {
         if (!ours.nomad) return
+
         const retail = draws[n]!
         const { mesh, reference, world } = ours
         const { stride, attributes } = vertexLayout(mesh.format)
@@ -132,6 +148,7 @@ for (const name of ['dyson_door_shield', 'no_fighter', 'bands'])
             p.every((value, c) => Math.abs(float((at + k) * stride + c * 4) - value) < 1e-3),
           )
         let start = -1
+
         for (
           let at = reference.vertexStart;
           at < reference.vertexStart + reference.vertexCount;
@@ -141,6 +158,7 @@ for (const name of ['dyson_door_shield', 'no_fighter', 'bands'])
             start = at
             break
           }
+
         assert.notEqual(start, -1, 'run of vertices not found')
 
         logged.forEach((vertex, k) => {
@@ -148,6 +166,7 @@ for (const name of ['dyson_door_shield', 'no_fighter', 'bands'])
           const normal = [0, 4, 8].map((o) => float(from + normalAt + o))
           const ratio =
             (axis[0]! * normal[0]! + axis[1]! * normal[1]! + axis[2]! * normal[2]! + 1) * 0.5
+
           assert.ok(
             Math.abs(vertex.t1![0]! - ratio) < 1e-4,
             `${n}/${k}: ${vertex.t1![0]} against ${ratio}`,
@@ -169,12 +188,16 @@ test('lair`s UV animation is retail`s at some one moment', { skip: skipFor('lair
   const anim = scene.models[0]!.materialAnimations![0]!
   const period = anim.segments.reduce((sum, { duration }) => sum + duration, 0)
   let checked = 0
+
   frame.draws.forEach((ours, n) => {
     const transform = draws[n]!.stages[0]!.transform
+
     if (!ours.uvTransform) return
     assert.ok(transform, `draw ${n}`)
+
     // Column major from row vectors, offset in the third row: the moment that best explains all four.
     let best = Infinity
+
     for (let step = 0; step <= 4000; step++) {
       const { offset, scale } = sampleUvAnimation(anim, (step / 4000) * period)
       const error = Math.max(
@@ -183,8 +206,10 @@ test('lair`s UV animation is retail`s at some one moment', { skip: skipFor('lair
         Math.abs(transform[8]! - offset[0]),
         Math.abs(transform[9]! - offset[1]),
       )
+
       best = Math.min(best, error)
     }
+
     assert.ok(best < 1e-3, `draw ${n}: ${best}, ${transform}`)
     checked++
   })

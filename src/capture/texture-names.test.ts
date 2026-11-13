@@ -46,9 +46,11 @@ test('a surface is matched by its stored bytes, a dropped top level included', (
   const top = new Uint8Array(32 * 32).fill(1)
   const next = new Uint8Array(16 * 16).fill(2)
   const index: TextureIndex = new Map()
+
   addLibrary(index, 'a.txm', [image({ width: 32, height: 32, levels: [top, next] })])
 
   const expected = [{ source: 'a.txm', name: 'test' }]
+
   assert.deepEqual(namesOf(index, captured([contentHash(top)], 32)), expected)
   assert.deepEqual(namesOf(index, captured([contentHash(next)], 16)), expected)
   assert.deepEqual(namesOf(index, captured([undefined, contentHash(next)], 32)), expected)
@@ -57,12 +59,14 @@ test('a surface is matched by its stored bytes, a dropped top level included', (
 test('the same bytes at a different width do not match', () => {
   const pixels = new Uint8Array(16 * 16).fill(1)
   const index: TextureIndex = new Map()
+
   addLibrary(index, 'a.txm', [image({ levels: [pixels] })])
   assert.deepEqual(namesOf(index, captured([contentHash(pixels)], 32)), [])
 })
 
 test('levels too small to identify anything are left out', () => {
   const index: TextureIndex = new Map()
+
   addLibrary(index, 'a.txm', [image({ width: 8, height: 8, levels: [new Uint8Array(32)] })])
   assert.equal(index.size, 0)
 })
@@ -74,6 +78,7 @@ test('a Targa is compared as uploaded: rows as stored without the top-left bit, 
   level.fill(0xff, 48)
 
   const index: TextureIndex = new Map()
+
   addLibrary(index, 'a.txm', [
     image({ storage: 'targa', format: 'rgb24_888', height: 16, levels: [level] }),
   ])
@@ -89,10 +94,12 @@ test('a Targa is compared as uploaded: rows as stored without the top-left bit, 
 test('a 32-bit Targa is compared in BGRA order', () => {
   const level = new Uint8Array(16 * 16 * 4)
   for (let at = 0; at < level.length; at += 4) level.set([1, 2, 3, 4], at)
+
   const device = new Uint8Array(level.length)
   for (let at = 0; at < level.length; at += 4) device.set([3, 2, 1, 4], at)
 
   const index: TextureIndex = new Map()
+
   addLibrary(index, 'a.txm', [image({ storage: 'targa', format: 'rgba32_8888', levels: [level] })])
   assert.equal(namesOf(index, captured([contentHash(device)])).length, 1)
 })
@@ -109,9 +116,11 @@ test('a cube is matched by its six faces in a row', () => {
     faces: [face(1), face(2), face(3), face(4), face(5), face(6)],
   }
   const index: TextureIndex = new Map()
+
   addLibrary(index, 'a.txm', [cube])
 
   const row = new Uint8Array(6 * 16 * 16 * 4)
+
   cube.faces.forEach(([level], at) => row.set(level!, at * level!.length))
   assert.deepEqual(namesOf(index, { ...captured([contentHash(row)]), type: 'cube' }), [
     { source: 'a.txm', name: 'envmap' },
@@ -138,6 +147,7 @@ test(
       .flatMap(({ stages }) => stages.map(({ texture }) => texture))
       .filter((texture) => texture !== undefined)
     const names = new Set(textures.flatMap((texture) => namesOf(index, texture)).map((n) => n.name))
+
     for (const name of ['mercury01', 'atmosphere', 'detailmap_lava', 'smokecard'])
       assert.ok(names.has(name), `${name} not found`)
   },

@@ -18,13 +18,16 @@ export const playbackFrame = (
   // A single frame is never advanced, and a rate within the epsilon leaves the duration 0, which
   // reads frame 0 either way: a clamp to 0, or a NaN that `ftol` turns to 0.
   if (count <= 1) return 0
+
   const fps = Math.fround(rate)
   if (!(Math.abs(fps) > 1e-5)) return 0
+
   // `PlaybackDuration`: just short of the last frame's end, so a clamp holds on it.
   const duration = count / fps - 1e-6
   const seconds = Math.fround(
     wrap === 'loop' ? elapsed % duration : Math.max(0, Math.min(elapsed, duration)),
   )
+
   // `+ 0`, as a negative rate's clamp gives -0.
   return Math.floor((fps * seconds) % count) + 0
 }
@@ -37,7 +40,9 @@ export const frameAtlas = (
 ): { name: string; entry: Texture } | undefined => {
   const at = animation.frames[frame]
   if (!at) return undefined
+
   const name = `${animation.name}_${at.index}`
   const entry = texture(name)
+
   return entry && entry.type !== 'cube' && entry.type !== 'animated' ? { name, entry } : undefined
 }

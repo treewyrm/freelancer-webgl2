@@ -29,7 +29,13 @@ import type { EffectNode } from '#/alchemy/tree.js'
 import { mapMaterialType, REGISTERED_TYPES, type MaterialMapRule } from '#/material/map.js'
 import { frameAtlas, playbackFrame } from '#/texture/playback.js'
 import { DEFAULT_SAMPLER, type SamplerState, type TextureWrap } from '#/texture/texture.js'
-import { projectionMatrix, sphereInFrustum, viewMatrix, type Camera } from './camera.js'
+import {
+  projectionMatrix,
+  sphereInFrustum,
+  viewMatrix,
+  type Camera,
+  type Viewport,
+} from './camera.js'
 import { partTransforms } from './hierarchy.js'
 import { sampleUvAnimation, type UvTransform } from './uv-animation.js'
 import { largestAxis, levelAt, levelEnds, levelMetric, type LodList } from './level.js'
@@ -47,6 +53,11 @@ export interface SceneLight {
   attenuation?: Vector3
   /** With a position, a spot along `direction`: D3D8's angles, inner and outer, in radians. */
   spot?: Spot
+  /**
+   * `D3DLIGHT8`'s `Ambient`, which D3D8 adds as the material's ambient times it, attenuated and in
+   * the cone, whichever way the surface faces. A THN light's; a system's is black.
+   */
+  ambient?: Vector3
 }
 
 /** `D3DLIGHT8`'s `Theta`, `Phi` and `Falloff`: full angles in radians, no light outside `phi`. */
@@ -241,6 +252,11 @@ export interface Draw {
   projection?: Matrix4
   /** `D3DVIEWPORT8`'s `MinZ` and `MaxZ`, for this draw: `[0, 1]` when absent. */
   depthRange?: readonly [number, number]
+  /**
+   * D3D8's `ZBIAS`, 0 to 16, pulling it toward the camera: a room's shadow's 4. How far a level
+   * moves depth is the driver's; here one level is one unit of `polygonOffset`: uncaptured.
+   */
+  depthBias?: number
   /** D3D's table fog, on depth: a nebula's, for what it holds (`StarSysApplyObjectLighting`). */
   fog?: Fog
   negateNormals: boolean
@@ -294,8 +310,8 @@ export interface Frame {
   beams?: Draw
   /**
    * Screen quads, after the effects, in D3D's pixels: added, the texture times each quad's colour,
-   * `lequal` without writing depth (`ScreenQuadFlush` in `SpaceEffectsDrawFrame`). Each batch is one
-   * texture's.
+   * `lequal` without writing depth (`ScreenQuadFlush` in `SpaceEffectsDrawFrame`), under
+   * `effectFog` by `1 / rhw`. Each batch is one texture's.
    */
   screenQuads?: ScreenQuadBatch[]
   /**
@@ -411,10 +427,14 @@ const drawTexture = ({ flags }: TextureReference, { name, entry }: Bound): DrawT
  */
 const alphaBits = (entry: TextureEntry | undefined): number => {
   if (!entry || entry.type === 'animated') return 0
+
   switch (entry.format) {
     case 'dxt1':
     case 'rgba16_5551':
       return 1
+    // `A4R4G4B4`'s row of the format table (`shading!0x6ed5230`).
+    case 'rgba16_4444':
+      return 4
     case 'dxt3':
     case 'dxt5':
     case 'rgba32_8888':
@@ -482,8 +502,10 @@ const cloak = (
   fade: number,
 ): Pass => {
   const plain: Pass = { ...pass, normalizeNormals: false }
+
   delete plain.environment
   if (BATCHED.test(type)) return plain
+
   const alpha = (pass.alpha ?? material.opacity ?? 1) * fade
   // Glass sets its own blend for each pass as it draws.
   if (kind === 'glass') return { ...plain, alpha }
@@ -495,6 +517,7 @@ const cloak = (
 // Truncated to the byte `SubmitNomadGeometry` writes, after the smoothstep of `NomadFadeFromValue`.
 const nomadAlpha = (fade: number): number => {
   const delta = Math.min(Math.max(1 - fade, 0), 1)
+
   return Math.trunc((1 - (3 - 2 * delta) * delta * delta) * 255) / 255
 }
 
@@ -522,6 +545,7 @@ const planetPasses = (
     alpha: 1,
     normalizeNormals: model.environment !== undefined,
   }
+
   if (kind === 'detailMap')
     return [
       {
@@ -548,6 +572,7 @@ const planetPasses = (
     depthFunc: 'lequal',
     mask: second,
   } as const
+
   if (kind === 'illum')
     return [
       // The test off, so a texel at zero alpha still draws, and B unlit: the night side's lights.
@@ -560,6 +585,7 @@ const planetPasses = (
       },
       { ...over, depthWrite: false, unlit: true },
     ]
+
   return [
     { ...shared, blend: false, alphaReference: 0xfe, alphaFunction: 'less', mask: first },
     over,
@@ -607,6 +633,7 @@ const passesOf = (
         : {}),
       ...withEnvironment(model.environment),
     }
+
     return type.endsWith('Two')
       ? [front, { ...front, cull: 'front', negateNormals: true }]
       : [front]
@@ -614,15 +641,20 @@ const passesOf = (
 
   if (kind === 'hudIcon' || kind === 'hudAnim' || kind === 'exclusion' || kind === 'water') {
     const entry = material.diffuseTexture && model.texture(material.diffuseTexture.name)
-    const alpha =
-      (kind !== 'hudAnim' && kind !== 'water' && model.instance?.alpha) || material.opacity
+    // `+0x64`, set at load: its own `Oc` below 1, or a `Dt` format with more than one alpha bit.
+    const translucent = (material.opacity ?? 1) < 1 || alphaBits(entry) > 1
+    // HUDIcon and ExclusionZone write the engine's alpha over `Oc` (`flmaterials!0x66f80f8`).
+    const override = kind === 'hudIcon' || kind === 'exclusion' ? model.instance?.alpha : undefined
+    const alpha = override ?? material.opacity
+
     return [
       {
         // None sets an alpha test, and all leave stage 1 free for a reflection. `kExclusionRs` always
-        // blends, and the others by `RecomputeOpacityFlags`: alpha below 1, or more than one bit.
+        // blends; HUDIcon when the override is below 1 or `+0x64` is set (`0x66f8133`), so its own
+        // translucency holds whatever the override says; the others by `+0x64` alone.
         cull: 'back',
         negateNormals: false,
-        blend: kind === 'exclusion' || (alpha ?? 1) < 1 || alphaBits(entry) > 1,
+        blend: kind === 'exclusion' || translucent || (override ?? 1) < 1,
         alphaReference: DEVICE_ALPHA_REFERENCE,
         ...(alpha === undefined ? {} : { alpha }),
         // `SubmitPlanetWaterGeometry`.
@@ -656,6 +688,7 @@ const passesOf = (
     // `SubmitGlassGeometry`: inner faces opaque, then outer faces blended. Only those reflect.
     const alpha = Math.max(opacity, glassLeastAlpha)
     const shared = { negateNormals: false, alphaReference: DEVICE_ALPHA_REFERENCE, alpha }
+
     return [
       { ...shared, cull: 'front', blend: false, ...NO_ENVIRONMENT },
       {
@@ -715,13 +748,16 @@ const referenceOf = (
   { level, camera, lod, detail }: PlaceOptions,
 ): VMeshRef | undefined => {
   if (part.type !== 'rigid' || !part.part) return undefined
+
   const source = part.part
+
   if (level === undefined && camera)
     return levelAt(
       source,
       levelMetric(source, world, transform, camera),
       levelEnds(source, name, lod, { detail }),
     )?.reference
+
   if (source.type !== 'multilevel') return source.reference
   return source.levels[Math.min(level ?? 0, source.levels.length - 1)]?.reference
 }
@@ -735,14 +771,19 @@ export const placeParts = (
   // A `.3db` is one part, with no hierarchy to walk. The game matches it as `Root`.
   if (root.type !== 'compound') {
     const reference = referenceOf(root, 'Root', transform, transform, options)
+
     return reference ? [{ reference, world: transform }] : []
   }
+
   const parts: PlacedPart[] = []
+
   for (const [node, world] of partTransforms(root, transform, options.jointState)) {
     if (options.visible && !options.visible(node)) continue
+
     const reference = referenceOf(node.part, node.name, world, transform, options)
     if (reference) parts.push({ reference, world })
   }
+
   return parts
 }
 
@@ -767,6 +808,7 @@ const entryOf = (
 ): Bound | undefined => {
   const entry = model.texture(name)
   if (entry && entry.type !== 'animated') return { name, entry }
+
   const atlas = entry && frameAtlas(entry, playbackFrame(entry, time, 'loop'), model.texture)
   if (atlas) return atlas
   unsupported.add(`texture ${name}`)
@@ -782,6 +824,7 @@ const maskStage = (
   resolve: Resolve,
 ): DrawStage | undefined => {
   if (!slot) return { operation: 'modulate2x', tile }
+
   const entry = resolve(slot.name)
   if (!entry) return undefined
   return { operation: 'modulate2x', tile, texture: { ...drawTexture(slot, entry), uvSet: 0 } }
@@ -807,11 +850,14 @@ const atmosphereOf = (
     { x: 0, y: 0, z: 0 },
     Matrix4.invert(Matrix4.multiply(view, world)),
   )
+  // `factor` is the camera's height over the surface against the shell's thickness (0 at the
+  // surface, toward 1 far off); its cube sets `gain`, and `v` rises to `1 - alpha` by half of it.
   const length = Math.hypot(camera.x, camera.y, camera.z) || SHELL_FLOOR
   const shell = (scale - 1) * (radius / scale)
   const distance = length - radius
   const factor = distance / ((shell > 0 ? shell : SHELL_FLOOR) + distance)
   const cubed = factor * factor * factor
+
   return {
     scale,
     atmosphere: {
@@ -836,13 +882,16 @@ const secondStage = (
     if (!entry) return undefined
     return { operation: 'add', texture: { ...drawTexture(slot, entry), uvSet: 1 } }
   }
+
   // Without an `Et`, `DcDtEt` disables the stage. `BtDetailMapMaterial` applies it regardless, and so
   // doubles without a `Bt`: two retail materials, uncaptured.
   if (kind === 'emission' && !emissionTexture) return undefined
   if (kind !== 'emission' && kind !== 'detail' && kind !== 'detailTwo') return undefined
+
   const operation = kind === 'emission' ? 'add' : 'modulate2x'
   const slot = kind === 'emission' ? emissionTexture : detailTexture
   if (!slot) return { operation }
+
   const entry = resolve(slot.name)
   // Not in the host's libraries: retail always has them, and a white `add` would hide the model.
   if (!entry) return undefined
@@ -894,13 +943,17 @@ const batchDepth = (
   const stride = vertexByteLength(mesh.format)
   const bytes = new DataView(mesh.vertices.buffer, mesh.vertices.byteOffset)
   let sum = 0
+
   for (let at = 0; at < reference.vertexCount; at++) {
     const offset = (reference.vertexStart + at) * stride
     const px = bytes.getFloat32(offset, true)
     const py = bytes.getFloat32(offset + 4, true)
     const pz = bytes.getFloat32(offset + 8, true)
+
+    // The vertex's view-space Z: the Z component of each column of `view · world`, weighted.
     sum += x.z * px + y.z * py + z.z * pz + w.z
   }
+
   return sum / reference.vertexCount
 }
 
@@ -926,8 +979,11 @@ export const collectModel = (
   limits: FrameLimits = RETAIL_FRAME_LIMITS,
   /** `kDrawNoCull`: the object was found wholly inside, so its parts aren't tested. */
   noCull = false,
+  /** A room camera's: a part covering under a pixel of it isn't drawn (`FRoomCamera`, rank 2). */
+  viewport?: Viewport,
 ): void => {
   const resolve: Resolve = (name) => entryOf(name, model, unsupported, time)
+
   for (const part of model.parts) {
     const {
       reference,
@@ -938,6 +994,7 @@ export const collectModel = (
       extent,
     } = part
     const mesh = generated ?? model.mesh(reference.meshId)
+
     if (!mesh) {
       unsupported.add(`mesh ${reference.meshId}`)
       continue
@@ -957,22 +1014,28 @@ export const collectModel = (
         (radius < 0.001 ? 1 : radius) * largestAxis(world),
         camera,
         aspect,
+        viewport,
       )
 
     for (const { materialId, startIndex, elementCount } of getMeshDraw(mesh, reference)) {
       const material = model.material(faceMaterial ?? materialId)
+
       if (!material) {
         unsupported.add(`material ${materialName ?? faceMaterial ?? materialId}`)
         continue
       }
+
       const type = mapMaterialType(material, model.materialMap)
       // `SubmitNull` draws nothing, and an unregistered type has no fallback (`0x6ecc47e`).
       if (type === 'NullMaterial') continue
+
       if (!REGISTERED_TYPES.has(type)) {
         unregistered.add(material.name)
         continue
       }
+
       const kind = CLASSES[type]
+
       if (!kind) {
         unsupported.add(material.name)
         continue
@@ -1011,6 +1074,7 @@ export const collectModel = (
       // The sky's override calls the batched face's `Submit` itself, so it never reaches a queue
       // (`FMaterialImpl::DrawBackdrop`), and draws where it stands.
       const queuedHere = queued && !model.sky && BATCHED.test(type) && passes[0]!.blend
+
       if (queuedHere)
         queued.push({ depth: batchDepth(mesh, reference, world, view), draws: target })
 
@@ -1092,6 +1156,7 @@ export const BLACK_BACKGROUND: Vector3 = { x: 0, y: 0, z: 0 }
 export const hooksOf = (draws: Draw[]): FrameHook[] => {
   // A sky blends before anything opaque, and isn't what this hook waits for.
   const firstBlended = draws.findIndex(({ blend, depthFunc }) => blend && depthFunc !== 'always')
+
   return [
     { name: 'begin', before: 0 },
     { name: 'opaque', before: firstBlended === -1 ? draws.length : firstBlended },
@@ -1116,6 +1181,7 @@ export const collectFrame = ({
   const unregistered = new Set<string>()
   const view = viewMatrix(camera)
   const queued: Queued[] = []
+
   for (const model of models)
     collectModel(
       model,
@@ -1129,11 +1195,15 @@ export const collectFrame = ({
       unregistered,
       resolved,
     )
+
   // A room flushes its queue once, after all its objects (`RoomBatcherEnd`, `ku_dragon_pair`).
   flushQueued(queued, draws)
+
   const effectDraws: EffectDraw[] = []
+
   for (const { instance, texture, visible } of effects)
     collectEffect(instance, view, texture, effectDraws, unsupported, visible)
+
   return {
     background: background ?? BLACK_BACKGROUND,
     hooks: hooksOf(draws),

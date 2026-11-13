@@ -10,6 +10,8 @@ export interface ReferenceSystem {
   name: string
   /** `[Ambient] color`, 0 to 255. */
   ambient: Vector
+  /** `[SystemInfo] space_color`, 0 to 255: black when absent. Only a retail system read has one. */
+  spaceColor?: Vector
   /** `[Background]`, three `.cmp` paths under `DATA`. */
   background: { basic: string; complex: string; nebulae: string }
   /** `[LightSource]`s, in file order. */
@@ -32,6 +34,8 @@ export interface ReferenceSystem {
     nickname: string
     archetype: string
     position: Vector
+    /** `rotate`, degrees. Only a retail system read has one. */
+    rotate?: Vector
     /** `ring =`: its `RING` zone and ring file, under `DATA`. */
     ring?: { zone: string; file: string }
     /** `star =`: a `[star]` of `solar\StarArch.ini`, which makes it a sun. */
@@ -163,6 +167,7 @@ export const systemIni = ({
       ],
     ),
   ]
+
   return `${lines.join('\r\n')}\r\n`
 }
 
@@ -205,6 +210,7 @@ export const saveText = ({ name, player }: ReferenceSystem, initialWorld: string
     'delta_worth = -1',
     '',
   ]
+
   return `${lines.join('\r\n')}\r\n${initialWorld}`
 }
 
@@ -786,6 +792,143 @@ const ASTEROIDS_EXBAND: Omit<ReferenceSystem, 'name' | 'player'> = {
   ],
 }
 
+const EW04_FIELD_FILE = 'solar\\asteroids\\lab\\lab_ew04_field.ini'
+const EW04_NEBULA_FILE = 'solar\\nebula\\lab\\lab_ew04_nebula.ini'
+
+/**
+ * `Ew04_Orinoco_nomad_asteroids.ini`'s `[Field]` and `[Cube]` as written: no `contains_fog_zone`.
+ * Its exclusions, dynamic rocks and loot left out.
+ */
+const LAB_EW04_FIELD = [
+  '[Field]',
+  'cube_size = 400',
+  'fill_dist = 1400',
+  'diffuse_color = 200, 255, 220',
+  'ambient_color = 40, 40, 50',
+  'ambient_increase = 70, 70, 70',
+  'empty_cube_frequency = 0.2',
+  '[properties]',
+  'flag = nomad_objects',
+  'flag = Object_density_med',
+  '[Cube]',
+  'xaxis_rotation = 0, 178, 0, 184',
+  'yaxis_rotation = 0, 181, 0, 176',
+  'zaxis_rotation = 190, 0, 170, 0',
+  'asteroid = nomad01_asteroid60, 0.6, 0.2, -0.2, 5, 50, 5',
+  'asteroid = nomad01_asteroid60, 0.2, 0.8, 0.3, -4, 40, 3',
+  'asteroid = nomad01_asteroid90, 0.4, -0.7, -0.2, 4, 100, -4',
+  'asteroid = nomad01_asteroid90, -0.3, -0.3, 0.8, -0.5, -100, -8',
+  'asteroid = nomad01_asteroid90, -0.2, -0.1, -0.6, 0.4, 90, 5',
+  'asteroid = nomad01_asteroid200, -0.6, -0.8, 0.7, -0.4, -150, 5',
+].join('\r\n')
+
+/**
+ * `Ew04_Orinoco_edge_nebula.ini`'s fog, light and colour as written; no bits, clouds or lightning,
+ * which are random.
+ */
+const LAB_EW04_NEBULA = [
+  '[TexturePanels]',
+  'file = solar\\nebula\\edge_shapes.ini',
+  '[Fog]',
+  'fog_enabled = 1',
+  'near = 0',
+  'distance = 1400',
+  'color = 40, 80, 60',
+  '[properties]',
+  'flag = nebula',
+  '[Exterior]',
+  'plane_slices = 0',
+  'color = 170, 170, 170',
+  '[NebulaLight]',
+  'ambient = 40, 80, 65',
+  'sun_burnthrough_intensity = 0.25',
+  'sun_burnthrough_scaler = 1.5',
+  '[BackgroundLightning]',
+  'duration = 0',
+  '[DynamicLightning]',
+  'duration = 0',
+].join('\r\n')
+
+/** EW04's field and nebula: its ambient, the lab's sun, the two files. Zones by each scene. */
+const EW04: Omit<ReferenceSystem, 'name' | 'player' | 'zones'> = {
+  ambient: [40, 70, 30],
+  background: {
+    basic: 'solar\\starsphere\\starsphere_stars_caps.cmp',
+    complex: 'solar\\starsphere\\starsphere_ew04_stars.cmp',
+    nebulae: 'solar\\starsphere\\starsphere_ew04.cmp',
+  },
+  lights: ASTEROIDS.lights,
+  // A system with no solar crashes the load (`StarSys.cpp` warns "failed to find any solar
+  // objects"): one behind the camera, out of the field, the nebula and the view.
+  objects: [
+    {
+      nickname: 'Lab_ew04_station',
+      archetype: 'smallstation1_old_nodock',
+      position: [0, 0, 15000],
+    },
+  ],
+  files: [
+    { path: EW04_FIELD_FILE, text: LAB_EW04_FIELD },
+    { path: EW04_NEBULA_FILE, text: LAB_EW04_NEBULA },
+  ],
+}
+
+/**
+ * As Orinoco lies: field and nebula about one centre, 3000 ahead, the camera deep in both. Without
+ * `contains_fog_zone` the cubes take the nebula holding the field's centre (`CliAsteroidUpdate`).
+ */
+const EW04_INSIDE: Omit<ReferenceSystem, 'name' | 'player'> = {
+  ...EW04,
+  zones: [
+    {
+      nickname: 'Lab_ew04_field',
+      position: [0, 0, -3000],
+      pitch: 0,
+      shape: 'SPHERE',
+      size: [8000],
+      propertyFlags: 1026,
+    },
+    {
+      nickname: 'Lab_ew04_nebula',
+      position: [0, 0, -3000],
+      pitch: 0,
+      shape: 'SPHERE',
+      size: [10000],
+      propertyFlags: 16384,
+    },
+  ],
+  asteroids: [{ file: EW04_FIELD_FILE, zone: 'Lab_ew04_field' }],
+  nebulae: [{ file: EW04_NEBULA_FILE, zone: 'Lab_ew04_nebula' }],
+}
+
+/**
+ * The field wider than the nebula about its centre, the camera in the field 3500 outside the
+ * nebula: fogged by the field's nebula, or, if the camera's decides, by none.
+ */
+const EW04_OUTSIDE: Omit<ReferenceSystem, 'name' | 'player'> = {
+  ...EW04,
+  zones: [
+    {
+      nickname: 'Lab_ew04_wide_field',
+      position: [0, 0, -6000],
+      pitch: 0,
+      shape: 'SPHERE',
+      size: [9000],
+      propertyFlags: 1026,
+    },
+    {
+      nickname: 'Lab_ew04_small_nebula',
+      position: [0, 0, -6000],
+      pitch: 0,
+      shape: 'SPHERE',
+      size: [2500],
+      propertyFlags: 16384,
+    },
+  ],
+  asteroids: [{ file: EW04_FIELD_FILE, zone: 'Lab_ew04_wide_field' }],
+  nebulae: [{ file: EW04_NEBULA_FILE, zone: 'Lab_ew04_small_nebula' }],
+}
+
 /** Where the suns stand: 40000 ahead, up and to the right, so the flare's beads are off the middle. */
 const SUN_POSITION: Vector = [6000, 2500, -40000]
 
@@ -828,6 +971,7 @@ const SUN_OCCLUDED: Omit<ReferenceSystem, 'name' | 'player'> = {
     {
       nickname: 'Lab_sun_station',
       archetype: 'smallstation1_old_nodock',
+      // The sun's direction scaled to length 3000, then 300 off in x.
       position: [
         (SUN_POSITION[0] * 3000) / Math.hypot(...SUN_POSITION) - 300,
         (SUN_POSITION[1] * 3000) / Math.hypot(...SUN_POSITION),
@@ -1069,6 +1213,18 @@ export const systems: ReadonlyMap<string, ReferenceSystem> = new Map(
       // As asteroid_dynamic, with the Badlands' ten rocks, each trailing its effect.
       name: 'asteroid_badlands',
       ...ASTEROIDS_BADLANDS,
+      player: { ...RING_PLAYER, position: [0, 0, 0] },
+    } satisfies ReferenceSystem,
+    {
+      // Deep in EW04's Orinoco field and nebula, which share a centre.
+      name: 'ew04_inside',
+      ...EW04_INSIDE,
+      player: { ...RING_PLAYER, position: [0, 0, 0] },
+    } satisfies ReferenceSystem,
+    {
+      // In the field, outside the nebula at its centre.
+      name: 'ew04_outside',
+      ...EW04_OUTSIDE,
       player: { ...RING_PLAYER, position: [0, 0, 0] },
     } satisfies ReferenceSystem,
     {

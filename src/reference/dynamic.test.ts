@@ -36,15 +36,19 @@ const skip = !existsSync(data)
 const load = async () => {
   const read = async (path: string) => {
     const file = readFileSync(join(data, path))
+
     return new Uint8Array(file.buffer, file.byteOffset, file.byteLength)
   }
+
   const system = systems.get(name)!
   const { draws, options } = readSpaceRun(join(references, name), system, RUNS[name])
   const scene = await loadSystem(system, read, options)
   // Placed on the first frame, faded from the second: two seconds on.
   let frame = collectSpaceFrame(scene)
   for (let at = 0; at < 120; at++) frame = collectSpaceFrame({ ...scene, step: 1 / 60 })
+
   const rocks = scene.asteroids!.find(({ dynamic }) => dynamic)!.dynamic![0]!.rocks
+
   return { scene, frame, rocks, camera: options.camera, captured: draws }
 }
 
@@ -57,6 +61,7 @@ const placeOf = (world: readonly number[], eye: Vector3): Vector3 => ({
 
 test(`${name} is retail draw for draw up to the rocks`, { skip }, async () => {
   const { frame, captured } = await load()
+
   assert.equal(captured.length >= SCENE, true)
   assert.deepEqual(frame.unsupported, ['texture envmapglass'])
   assert.equal(frame.draws.length, ROCKS + COUNT)
@@ -77,17 +82,24 @@ test(
     const { frame, rocks, camera, captured } = await load()
     const retail = captured.slice(ROCKS, ROCKS + COUNT)
     const ours = frame.draws.slice(ROCKS)
+
     assert.ok(ours.every(({ materialName }) => materialName === ours[0]!.materialName))
+
     const limit = Math.sqrt(1.05) * rocks.radius
     let faded = 0
+
     const expected: Draw[] = retail.map(({ world }, at) => {
       const place = placeOf(world!, camera.position)
       const centre = rocks.centre(camera)
       const away = Math.hypot(place.x - centre.x, place.y - centre.y, place.z - centre.z)
+
       assert.ok(away <= limit + 1e-3, `rock ${at} ${away} from the spawn point`)
+
       const alpha = rocks.alphaAt(camera, place)!
+
       // Retail's alpha is from this frame's place, before the physics moves it on.
       assert.ok(Math.abs(alpha - retail[at]!.material!.diffuse[3]!) < 1e-4, `rock ${at} alpha`)
+
       const blend = alpha < 1
       if (blend) faded++
       return {
@@ -102,6 +114,7 @@ test(
         alphaReference: blend ? 5 : 127,
       }
     })
+
     // `DrawIndexedPrimitiveVb` streams the indices again for each rock: 120 on each time.
     assertFrameMatches({ ...frame, draws: expected }, retail, indexTextures(data), {
       streamed: true,
@@ -111,6 +124,7 @@ test(
     )
     // Retail's split: four whole, eight fading in or out.
     assert.equal(faded, 8)
+
     // Each turned, not scaled: the view's mirror makes it left-handed.
     for (const { world } of retail) {
       const [a, b, c] = [0, 4, 8].map((k) => world!.slice(k, k + 3)) as [
@@ -119,10 +133,12 @@ test(
         number[],
       ]
       for (const axis of [a, b, c]) assert.ok(Math.abs(Math.hypot(...axis) - 1) < 1e-5)
+
       const det =
         a[0]! * (b[1]! * c[2]! - b[2]! * c[1]!) -
         a[1]! * (b[0]! * c[2]! - b[2]! * c[0]!) +
         a[2]! * (b[0]! * c[1]! - b[1]! * c[0]!)
+
       assert.ok(Math.abs(det + 1) < 1e-5, `${det}`)
     }
   },
@@ -131,10 +147,12 @@ test(
 test(`${name}: the rocks are lit as retail lit them, by the field's pass`, { skip }, async () => {
   const { frame, captured } = await load()
   const ambient = (value: number) => [(value >> 16) & 0xff, (value >> 8) & 0xff, value & 0xff]
+
   for (let at = 0; at < COUNT; at++) {
     const { lights = [], sceneAmbient } = frame.draws[ROCKS + at]!
     const theirs = captured[ROCKS + at]!
     const what = `rock ${at}`
+
     assert.deepEqual(
       [sceneAmbient!.x, sceneAmbient!.y, sceneAmbient!.z].map((c) => Math.round(c * 255)),
       ambient(theirs.states['AMBIENT']!),
@@ -146,6 +164,7 @@ test(`${name}: the rocks are lit as retail lit them, by the field's pass`, { ski
       ;[light.color.x, light.color.y, light.color.z].forEach((c, i) =>
         assert.ok(Math.abs(c - captured.diffuse[i]!) < 1e-5, `${what} light ${k} colour`),
       )
+
       const { x, y, z } = light.direction
       ;[x, y, -z].forEach((c, i) =>
         assert.ok(Math.abs(c - captured.direction[i]!) < 1e-5, `${what} light ${k} direction`),

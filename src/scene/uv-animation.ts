@@ -15,15 +15,21 @@ export interface UvTransform {
 export const sampleUvAnimation = ({ segments }: MaterialAnim, time: number): UvTransform => {
   const total = segments.reduce((sum, { duration }) => sum + duration, 0)
   if (!segments.length || !(total > 0)) return { offset: [0, 0], scale: [1, 1] }
+
   let elapsed = Math.max(0, time) % total
   // A clock landing exactly on the wrap has run one whole loop, and reads the last segment's end.
   if (elapsed === 0 && time > 0) elapsed = total
+
   let at = 0
+
+  // Skips whole segments until `elapsed` is the time within the current one.
   while (at < segments.length - 1 && elapsed > segments[at]!.duration) {
     elapsed -= segments[at]!.duration
     at++
   }
+
   const { start, velocity } = segments[at]!
+
   return {
     offset: [
       start.uOffset + velocity.uOffset * elapsed,

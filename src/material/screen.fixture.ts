@@ -73,16 +73,23 @@ export default ((gl) => {
     ],
   }
   const renderer = createRenderer(gl)
+
   renderer.render(frame)
+
   const pixels = new Uint8Array(32 * 32 * 4)
+
   gl.readPixels(0, 0, 32, 32, gl.RGBA, gl.UNSIGNED_BYTE, pixels)
+
   // GL's rows run up from the bottom; D3D's y down from the top.
   const rowOf = (y: number) =>
     Array.from({ length: 32 }, (_, x) => {
       const at = ((31 - y) * 32 + x) * 4
+
       return [pixels[at]!, pixels[at + 1]!, pixels[at + 2]!]
     })
+
   const report: ScreenReport = { error: gl.getError(), row: rowOf(6), depthRow: rowOf(20) }
+
   renderer.dispose()
   return report
 }) satisfies Fixture<ScreenReport>

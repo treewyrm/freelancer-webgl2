@@ -48,10 +48,13 @@ const skipOf = (name: string) =>
 
 const load = async (name: SunRun) => {
   const system = systems.get(name)!
+
   const read = async (path: string) => {
     const file = readFileSync(join(data, path))
+
     return new Uint8Array(file.buffer, file.byteOffset, file.byteLength)
   }
+
   const { draws, options } = readSpaceRun(join(references, name), system, RUNS[name])
   const section = readFileSync(join(references, name, 'PerfOptions.ini'), 'latin1')
   const sunEffect = Number(/SunEffect\s*=\s*([\d.]+)/.exec(section)![1])
@@ -59,8 +62,10 @@ const load = async (name: SunRun) => {
   const viewport = { width: 1024, height: 768 }
   // Five seconds at 60 a second: the samples, the intensity and the zone have all settled.
   let frame = collectSpaceFrame({ ...scene, sunEffect, viewport, step: 1 / 60 })
+
   for (let at = 0; at < 300; at++)
     frame = collectSpaceFrame({ ...scene, sunEffect, viewport, step: 1 / 60 })
+
   return { frame, retail: draws }
 }
 
@@ -73,8 +78,10 @@ interface Vertex {
 const oursOf = (draw: Draw): Vertex[] => {
   const floats = new Float32Array(draw.mesh.vertices.buffer)
   const bytes = draw.mesh.vertices
+
   return Array.from({ length: draw.reference.vertexCount }, (_, at) => {
     const [b, g, r, a] = bytes.slice(at * 24 + 12, at * 24 + 16)
+
     return {
       p: [...floats.slice(at * 6, at * 6 + 3)],
       argb: ((a! << 24) | (r! << 16) | (g! << 8) | b!) >>> 0,
@@ -92,6 +99,7 @@ const assertVertices = (ours: Vertex[], theirs: Vertex[], what: string, reach: n
   theirs.forEach(({ p, argb, uv }, at) => {
     const mine = ours[at]!
     const where = `${what}, vertex ${at}`
+
     assert.equal(mine.argb, argb, where)
     p.forEach((c, axis) => assert.ok(Math.abs(c - mine.p[axis]!) < reach, `${where}: ${p}`))
     uv.forEach((c, axis) => assert.ok(Math.abs(c - mine.uv[axis]!) < 1e-6, where))
@@ -103,6 +111,7 @@ const beadsOf = (vertices: Vertex[]) =>
   Array.from({ length: vertices.length / 4 }, (_, quad) => {
     const [a, , c] = [vertices[quad * 4]!, vertices[quad * 4 + 1]!, vertices[quad * 4 + 2]!]
     const round = (value: number) => Math.round(value * 100) / 100
+
     return [
       round((a.p[0]! + c.p[0]!) / 2),
       round((a.p[1]! + c.p[1]!) / 2),
@@ -117,6 +126,7 @@ for (const { name, scene, glows, after } of COMPARED) {
     { skip: skipOf(name) },
     async () => {
       const { frame, retail } = await load(name)
+
       assert.deepEqual(
         frame.draws.flatMap(({ materialName }, at) => (materialName === 'star glow' ? [at] : [])),
         glows,
@@ -132,6 +142,7 @@ for (const { name, scene, glows, after } of COMPARED) {
 
   test(`${name}: each glow is retail's, vertex for vertex`, { skip: skipOf(name) }, async () => {
     const { frame, retail } = await load(name)
+
     for (const n of glows)
       // In world space 40000 out: a few float steps there.
       assertVertices(oursOf(frame.draws[n]!), theirsOf(retail[n]!), `draw ${n}`, 0.005)
@@ -144,11 +155,13 @@ for (const { name, scene, glows, after } of COMPARED) {
       const { frame, retail } = await load(name)
       const textures = indexTextures(data)
       const ours = frame.afterEffects ?? []
+
       if (!after) {
         // Behind the nebula's zone: all of it faded out.
         assert.equal(ours.length, 0)
         return
       }
+
       assert.deepEqual(
         ours.map(({ materialName }) => materialName),
         ['spines', 'corona', 'corona', 'lens flare'],
@@ -158,6 +171,7 @@ for (const { name, scene, glows, after } of COMPARED) {
         const mine = ours[at]!
         const what = `draw ${n}, ${mine.materialName}`
         const { states, stages, world } = theirs
+
         // Win3D's screen pixels: added by alpha, no depth, the alpha test the frame left.
         assert.deepEqual(
           [
@@ -177,14 +191,19 @@ for (const { name, scene, glows, after } of COMPARED) {
           [1, 5, mine.alphaReference],
           what,
         )
+        // `ZWRITEENABLE` 1 writes nothing under `ZENABLE` 0, so the draw writes no depth.
         assert.deepEqual(
           [mine.depthFunc, mine.depthWrite, mine.blendMode],
-          ['always', true, 'alphaAdd'],
+          ['always', false, 'alphaAdd'],
         )
+
         const names = namesOf(textures, stages[0]!.texture!).map(({ name }) => name)
+
         assert.ok(names.includes(mine.texture!.name), `${what}: ${names}`)
         assert.deepEqual(world, [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, -1, 0, 0, 0, 0, 1], what)
+
         const vertices = theirsOf(theirs)
+
         if (mine.materialName === 'lens flare')
           assert.deepEqual(beadsOf(oursOf(mine)), beadsOf(vertices), what)
         // Screen pixels: well inside a thousandth.

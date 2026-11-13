@@ -34,6 +34,7 @@ test('a narrow lens counts as closer, against the table fovx, 40 by default', ()
 
 test('the first level whose distance reaches it, and none past the far cutoff', () => {
   const at = (distance: number) => costumeLevel(LEVELS, BODY, distance, FOV)
+
   assert.equal(at(4), 0)
   assert.equal(at(10), 0)
   assert.equal(at(10.5), 1)
@@ -45,6 +46,7 @@ test('the first level whose distance reaches it, and none past the far cutoff', 
 
 test('the last level reaches the far cutoff, whatever its own fraction reads', () => {
   const four = [1, 0.8, 0.6, 0.2].map((fraction) => ({ fraction })) as Level[]
+
   // 0.2 reads 100, and the table at 0 reads 220.
   assert.equal(costumeLevel(four, BODY, 150, FOV), 3)
 })

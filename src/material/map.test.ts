@@ -40,6 +40,7 @@ test('a name rule anchors only where its pattern says', () => {
 
 test('only the first 63 characters of a name are matched', () => {
   const beyond = `${'x'.repeat(63)}2side`
+
   assert.equal(shadedAs(`alpha_mask${beyond}`, 'DcDt'), 'DcDt')
 })
 
@@ -48,18 +49,21 @@ test('the table is the section in the retail dacom.ini', { skip: absent }, () =>
   const text = readFileSync(join(EXE, 'dacom.ini'), 'latin1')
   const section = text.slice(text.indexOf('[MaterialMap]')).split(/\r?\n/).slice(1)
   const end = section.findIndex((line) => line.startsWith('['))
+
   const rules = section
     .slice(0, end)
     .map((line) => line.split(';')[0]!.trim())
     .filter((line) => line.includes('='))
     .map((line) => {
       const fields = line.split('=').map((field) => field.trim())
+
       return {
         on: fields.length === 3 && fields[0]!.toLowerCase() === 'name' ? 'name' : 'type',
         pattern: fields.at(-2),
         to: fields.at(-1),
       }
     })
+
   assert.deepEqual(
     MATERIAL_MAP.map(({ on, pattern, to }) => ({ on, pattern: pattern.source, to })),
     rules,
@@ -70,6 +74,7 @@ test('every registered type is named in the retail DLLs', { skip: absent }, () =
   const held = ['shading.dll', 'flmaterials.dll', 'deformable2.dll'].map((dll) =>
     readFileSync(join(EXE, dll), 'latin1'),
   )
+
   for (const name of REGISTERED_TYPES)
     assert.ok(
       held.some((dll) => dll.includes(`${name}\0`)),
@@ -79,9 +84,11 @@ test('every registered type is named in the retail DLLs', { skip: absent }, () =
 
 const retailMaterials = () => {
   const found: { name: string; type: string }[] = []
+
   const walk = (directory: string) => {
     for (const entry of readdirSync(directory, { withFileTypes: true })) {
       const path = join(directory, entry.name)
+
       if (entry.isDirectory()) walk(path)
       else if (
         ['.mat', '.cmp', '.3db', '.sph', '.dfm', '.utf'].includes(extname(path).toLowerCase())
@@ -89,18 +96,21 @@ const retailMaterials = () => {
         found.push(...readMaterialLibrary(Directory.read(readFileSync(path))))
     }
   }
+
   walk(DATA)
   return found
 }
 
 test('over retail, the map rescues all but two unregistered materials', { skip: absent }, () => {
   const materials = retailMaterials()
+
   assert.equal(materials.length, 7525)
 
   const unregistered = (type: string) => !REGISTERED_TYPES.has(type)
   const before = materials
     .filter(({ type }) => !/^(EcEtOcOt|DcDtEcEt)$/.test(type))
     .filter(({ type }) => unregistered(type))
+
   assert.equal(before.length, 445)
   assert.equal(before.filter((material) => unregistered(mapMaterialType(material))).length, 2)
 })
@@ -108,6 +118,7 @@ test('over retail, the map rescues all but two unregistered materials', { skip: 
 test('deformable2 maps what starts `ey` to the eye class, ahead of the file, and an `Et` goes with it', () => {
   for (const name of ['eyebrown_grey', 'EYE_white', 'ey'])
     assert.equal(mapMaterialType({ name, type: 'DcDtEt' }), 'EyeMaterial', name)
+
   assert.equal(mapMaterialType({ name: 'e', type: 'DcDtEt' }), 'DcDtEt')
   assert.equal(mapMaterialType({ name: 'my_eye', type: 'DcDtEt' }), 'DcDtEt')
 })

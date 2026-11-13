@@ -37,6 +37,7 @@ const topLevels = (node: {
 }): VMeshPart[] => {
   const source = node.part.part
   const own = !source ? [] : 'levels' in source ? source.levels.slice(0, 1) : [source]
+
   return [...own, ...((node.children ?? []) as (typeof node)[]).flatMap(topLevels)]
 }
 
@@ -44,6 +45,7 @@ const lastFrame = (): CaptureDraw[] => readCapture(readFileSync(run, 'utf8')).fr
 
 test('every draw of the frame is accounted for', { skip }, () => {
   const draws = lastFrame()
+
   assert.equal(draws.length, 60)
 
   const file = readFileSync(join(data, 'SHIPS/LIBERTY/LI_ELITE/li_elite.cmp'))
@@ -55,6 +57,7 @@ test('every draw of the frame is accounted for', { skip }, () => {
 
   // Nineteen mesh groups, in the first 22 draws.
   const claimed = new Set<number>()
+
   for (const group of groups) {
     const at = draws.findIndex(
       (draw, n) =>
@@ -64,9 +67,11 @@ test('every draw of the frame is accounted for', { skip }, () => {
         (draw.baseVertex ?? 0) + (draw.minIndex ?? 0) === group.baseVertex &&
         draw.indices === group.elementCount,
     )
+
     assert.notEqual(at, -1, `no draw for the group at index ${group.startIndex}`)
     claimed.add(at)
   }
+
   assert.equal(groups.length, 19)
 
   // The other three are second passes of the same vertices, reached with the winding reversed.
@@ -86,15 +91,18 @@ test('every draw of the frame is accounted for', { skip }, () => {
   // The menu: a full screen logo quad, five buttons of six parts each, six labels, the cursor.
   assert.equal(draws[22]!.space, 'screen')
   assert.equal(draws[22]!.stages[0]!.texture?.width, 1024)
+
   for (let button = 0; button < 5; button++)
     assert.deepEqual(
       draws.slice(23 + button * 6, 29 + button * 6).map((draw) => draw.startIndex),
       draws.slice(23, 29).map((draw) => draw.startIndex),
     )
+
   for (const draw of draws.slice(53, 59)) {
     assert.equal(draw.space, 'screen')
     assert.equal(draw.primitives, 4)
   }
+
   assert.equal(draws[59]!.call, 'DrawIndexedPrimitiveUP')
 })
 
@@ -116,7 +124,9 @@ test('a hull draw reads end to end', { skip }, () => {
   // `set_modelview` flips Z into the world matrix and leaves the view identity, as do lights.
   assert.deepEqual(draw.view, [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1])
   assert.deepEqual(draw.world!.slice(12), [0, 0, 40, 1])
+
   const [light] = draw.lights
+
   assert.ok(Math.abs(light!.direction[2]! - Math.sqrt(2 / 3)) < 1e-5) // from z < 0 in the scene
 
   // `fovh` is half the horizontal angle: cot(30 degrees), and 4:3.
@@ -132,6 +142,7 @@ test('planned indices and vertices are what retail drew', { skip }, () => {
 
   let checked = 0
   let vertices = 0
+
   for (const part of topLevels(readRigidModel(root) as never)) {
     const mesh = getMesh(meshes, part.reference.meshId)!
     const { indices, groups } = planReference(mesh, part.reference)
@@ -153,6 +164,7 @@ test('planned indices and vertices are what retail drew', { skip }, () => {
         const from = (draw.baseVertex! + draw.minIndex! + n) * stride
         const position = [0, 4, 8].map((offset) => view.getFloat32(from + offset, true))
         const uv = [24, 28].map((offset) => view.getFloat32(from + offset, true))
+
         // The log's nine significant digits round-trip a 32-bit float exactly.
         assert.deepEqual(position, p.map(Math.fround))
         assert.deepEqual(uv, t0!.map(Math.fround))
@@ -161,6 +173,7 @@ test('planned indices and vertices are what retail drew', { skip }, () => {
       checked++
     })
   }
+
   assert.equal(checked, 19)
   assert.ok(vertices > 100, `only ${vertices} vertices compared`)
 })
@@ -177,6 +190,7 @@ const CAMERA: Camera = {
 const sceneModel = (): Matrix4 => {
   const [x, y, z] = scenes.get('li_elite')!.model!.orientation
   const [px, py, pz] = scenes.get('li_elite')!.model!.position
+
   return Matrix4.fromRotationTranslation(
     {
       x: { x: x[0], y: y[0], z: z[0] },
@@ -195,6 +209,7 @@ const rootVertices = (): Vector3[] => {
   const mesh = getMesh(meshes, part.reference.meshId)!
   const { stride } = vertexLayout(mesh.format)
   const view = new DataView(mesh.vertices.buffer, mesh.vertices.byteOffset)
+
   return [...new Set(planReference(mesh, part.reference).indices)].map((index) => ({
     x: view.getFloat32(index * stride, true),
     y: view.getFloat32(index * stride + 4, true),
@@ -225,6 +240,7 @@ test('camera and model reach the clip space retail reached', { skip }, () => {
     const ours = clipOf(point)
     const within = (a: number, b: number) =>
       assert.ok(Math.abs(a - b) < 1e-3 * Math.max(1, Math.abs(b)), `${a} against ${b}`)
+
     within(ours.x, retail[0]!)
     within(ours.y, retail[1]!)
     within(ours.w, retail[3]!)
@@ -235,25 +251,34 @@ test('camera and model reach the clip space retail reached', { skip }, () => {
 
 test('the mirror is settled by the retail screenshot, not by the matrices', { skip }, () => {
   const shot = readFileSync(join(references, 'li_elite/d3d8log.f607.bmp'))
+
   const lit = (x: number, y: number): boolean => {
     if (x < 0 || y < 0 || x >= 1024 || y >= 768) return false
+
     // 24-bit BMP, bottom row first, after its 54-byte header.
     const at = 54 + (767 - y) * ((1024 * 3 + 3) & ~3) + x * 3
+
     return shot[at]! + shot[at + 1]! + shot[at + 2]! > 0
   }
+
   const near = (x: number, y: number) =>
     [-1, 0, 1].some((dx) => [-1, 0, 1].some((dy) => lit(x + dx, y + dy)))
 
   const onShip = (mirrored: boolean) => {
     const points = rootVertices()
+
     const hits = points.filter((point) => {
       const { x, y, w } = clipOf(point)
       const ndcX = ((mirrored ? -x : x) / w + 1) / 2
+
       return near(Math.round(ndcX * 1024), Math.round(((1 - y / w) / 2) * 768))
     })
+
     return hits.length / points.length
   }
+
   const [ours, flipped] = [onShip(false), onShip(true)]
+
   assert.ok(ours > 0.99, `only ${ours} of the hull lands on the ship`)
   assert.ok(flipped < ours - 0.1, `mirrored scores ${flipped} against ${ours}`)
 })
@@ -287,6 +312,7 @@ test('retail winding faces the camera, seen through this view', { skip }, () => 
     const stored = corners
       .map((index) => read(index, 12))
       .reduce((sum, n) => ({ x: sum.x + n.x, y: sum.y + n.y, z: sum.z + n.z }))
+
     assert.ok(dot(face, stored) > 0, `triangle ${at / 3} winds against its normals`)
 
     // So counter-clockwise on screen is exactly the triangles facing the camera, at the origin.
@@ -298,6 +324,7 @@ test('retail winding faces the camera, seen through this view', { skip }, () => 
     const counterClockwise = (pb.x - pa.x) * (pc.y - pa.y) - (pb.y - pa.y) * (pc.x - pa.x) > 0
     const position = Matrix4.transformPoint(a, toWorld)
     const towards = -dot(Matrix4.transformDirection(face, toWorld), position) > 0
+
     assert.equal(counterClockwise, towards, `triangle ${at / 3}`)
   }
 })
@@ -313,10 +340,12 @@ test('each part stands where retail drew it', { skip }, () => {
 
   const columns = (matrix: Matrix4) => [matrix.x, matrix.y, matrix.z, matrix.w]
   let compared = 0
+
   for (const [part, world] of transforms) {
     const source = part.part.type === 'rigid' ? part.part.part : undefined
     const level = source && 'levels' in source ? source.levels[0] : source
     if (!level) continue
+
     const modelView = columns(Matrix4.multiply(view, world))
 
     for (const { startIndex } of getMeshDraw(
@@ -324,6 +353,7 @@ test('each part stands where retail drew it', { skip }, () => {
       level.reference,
     )) {
       const { world: retail } = draws.find((draw) => draw.startIndex === startIndex)!
+
       // Retail's world is the modelview with Z flipped, written as rows for row vectors.
       modelView.forEach((column, c) =>
         [column.x, column.y, -column.z].forEach((cell, r) =>
@@ -336,6 +366,7 @@ test('each part stands where retail drew it', { skip }, () => {
       compared++
     }
   }
+
   assert.equal(compared, 19)
 })
 
@@ -344,10 +375,13 @@ test('the collected frame is retail draw for draw, in retail order', { skip }, (
   const file = readFileSync(join(data, 'SHIPS/LIBERTY/LI_ELITE/li_elite.cmp'))
   const root = Directory.read(new Uint8Array(file.buffer, file.byteOffset, file.byteLength))
   const meshes = readVMeshLibrary(root)
+
   const library = (path: string) => {
     const bytes = readFileSync(join(data, path))
+
     return Directory.read(new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.byteLength))
   }
+
   const ships = library('SHIPS/LIBERTY/li_playerships.mat')
   const materials = readMaterialLibrary(ships)
   const textures = [
@@ -386,6 +420,7 @@ test('the collected frame is retail draw for draw, in retail order', { skip }, (
   // Retail's lights are in flipped view space, and this camera is identity.
   const [light] = draws[0]!.lights
   const length = Math.hypot(0.5, 0.5, 1)
+
   close(light!.direction[0]!, 0.5 / length, 'light x')
   close(light!.direction[1]!, -0.5 / length, 'light y')
   close(light!.direction[2]!, 1 / length, 'light z')

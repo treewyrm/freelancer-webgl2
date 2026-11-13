@@ -28,6 +28,7 @@ const FAR_CUTOFF = 15000
 export const lodScale = (detail: number): { low: boolean; scale: number } => {
   const low = detail < 0.75
   const scale = low ? detail * (4 / 3) * 0.5 + 0.5 : (detail - 0.75) * 4 + 1
+
   return { low, scale: Math.fround(scale) }
 }
 
@@ -43,9 +44,11 @@ const walkRanges = (
   detail: number,
 ): { ends: (number | undefined)[]; largest: number } | undefined => {
   if (count === 0) return undefined
+
   const folded = name.toLowerCase()
   const list = lists.find(({ obj }) => obj === undefined || obj.toLowerCase() === folded)
   if (!list) return undefined
+
   const { low, scale } = lodScale(detail)
   // Past what's written, the terminator: -1.
   const range = (at: number) => list.ranges[at] ?? -1
@@ -56,15 +59,18 @@ const walkRanges = (
   const minSpec = head.minSpecLod ?? (head.ranges.length < 3 ? 0 : 1)
   const cap = low ? Math.min(minSpec, count) : 0
   let applied = 0
+
   for (; applied < cap; applied++) {
     if (range(applied + 1) < 0) break
     ends[applied] = 0
   }
+
   if (applied >= count) return { ends, largest: -1 }
 
   // At high detail a near list's far ranges are held at 15000, its level added.
   const farClamp = range(count) < FAR_CUTOFF && scale * range(count) > FAR_CUTOFF
   let largest = Math.max(-1, range(applied))
+
   for (let level = applied; level < count; level++) {
     let end = range(level + 1)
     if (!(end >= 0)) break
@@ -72,6 +78,7 @@ const walkRanges = (
     largest = Math.max(largest, Math.fround(end))
     ends[level] = Math.fround(RANGE_SCALE * end)
   }
+
   return { ends, largest }
 }
 
@@ -88,10 +95,12 @@ export const lodRange = (
   { detail = 0.75 }: LodDetail = {},
 ): number => {
   let largest = -1
+
   for (const { source, name } of parts) {
     const walked = walkRanges(levelCount(source), name, lists, detail)
     if (walked) largest = Math.max(largest, walked.largest)
   }
+
   return largest
 }
 
@@ -113,6 +122,7 @@ export const levelEnds = (
   const switches = source.type === 'vmeshpart' ? BARE : (source.ranges ?? [0, NaN])
   const ends = switches.slice(1)
   const walked = walkRanges(ends.length, name, lists, detail)
+
   return walked ? ends.map((end, at) => walked.ends[at] ?? end) : ends
 }
 
@@ -148,5 +158,6 @@ export const levelMetric = (
   const first = source.type === 'vmeshpart' ? source : source.levels[0]
   const centre = first?.reference.boundingSphere.center ?? { x: 0, y: 0, z: 0 }
   const { z } = Matrix4.transformPoint(centre, Matrix4.multiply(viewMatrix(camera), part))
+
   return (Math.abs(z) * Math.tan((camera.fovh * Math.PI) / 180)) / largestAxis(transform)
 }

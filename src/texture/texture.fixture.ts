@@ -71,6 +71,7 @@ export default ((gl) => {
     'lod',
     'alpha',
   ])
+
   gl.bindVertexArray(gl.createVertexArray())
 
   const read = (
@@ -80,6 +81,7 @@ export default ((gl) => {
     { lod = 0, alpha = false, cube = false } = {},
   ): number[] => {
     const { handle, uniforms } = cube ? cubeProgram : flatProgram
+
     gl.useProgram(handle)
     gl.activeTexture(gl.TEXTURE0)
     gl.bindTexture(cube ? gl.TEXTURE_CUBE_MAP : gl.TEXTURE_2D, texture)
@@ -88,7 +90,9 @@ export default ((gl) => {
     gl.uniform1f(uniforms.lod, lod)
     gl.uniform1i(uniforms.alpha, alpha ? 1 : 0)
     gl.drawArrays(gl.TRIANGLES, 0, 3)
+
     const pixel = new Uint8Array(4)
+
     gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixel)
     return [...pixel]
   }
@@ -98,10 +102,13 @@ export default ((gl) => {
 
   // V = 0 samples the first row uploaded; a top-left Targa's rows go in reversed.
   const stored = createTexture(gl, planUpload(flat({ levels: [CORNERS] })))
+
   report['v0'] = read(stored, nearest, [0.25, 0.25])
   report['v1'] = read(stored, nearest, [0.25, 0.75])
   report['u1'] = read(stored, nearest, [0.75, 0.25])
+
   const reversed = createTexture(gl, planUpload(flat({ flip: true, levels: [CORNERS] })))
+
   report['flippedV0'] = read(reversed, nearest, [0.25, 0.25])
 
   // Six bytes a row, so this fails at the default unpack alignment.
@@ -118,6 +125,7 @@ export default ((gl) => {
       }),
     ),
   )
+
   report['rgb565'] = read(wide, nearest, [0.17, 0.25])
   report['rgb565Green'] = read(wide, nearest, [0.5, 0.25])
   report['rgb565Second'] = read(wide, nearest, [0.17, 0.75])
@@ -134,6 +142,7 @@ export default ((gl) => {
       }),
     ),
   )
+
   report['rgb5a1'] = read(punch, nearest, [0.25, 0.5])
   report['rgb5a1Alpha'] = read(punch, nearest, [0.25, 0.5], { alpha: true })
   report['rgb5a1Second'] = read(punch, nearest, [0.75, 0.5])
@@ -152,6 +161,7 @@ export default ((gl) => {
       }),
     ),
   )
+
   report['dxt1'] = read(dxt1, nearest, [0.125, 0.125])
   report['dxt1Alpha'] = read(dxt1, nearest, [0.125, 0.125], { alpha: true })
   report['dxt1Punched'] = read(dxt1, nearest, [0.125, 0.625])
@@ -172,6 +182,7 @@ export default ((gl) => {
       }),
     ),
   )
+
   report['dxt5'] = read(dxt5, nearest, [0.5, 0.5])
   report['dxt5Alpha'] = read(dxt5, nearest, [0.5, 0.5], { alpha: true })
 
@@ -194,6 +205,7 @@ export default ((gl) => {
     ),
   )
   const hull = createSampler(gl, DEFAULT_SAMPLER)
+
   report['chainLevel0'] = read(chain, hull, [0.5, 0.5])
   report['chainLevel1'] = read(chain, hull, [0.5, 0.5], { lod: 1 })
   // No blending between levels on the default sampler; a fractional level picks the nearer one.
@@ -205,11 +217,13 @@ export default ((gl) => {
     planUpload(flat({ height: 1, levels: [new Uint8Array([...RED, ...BLUE])] })),
   )
   const edge: SamplerState = { ...DEFAULT_SAMPLER, wrapU: 'clamp', wrapV: 'clamp' }
+
   report['bilinear'] = read(line, createSampler(gl, edge), [0.5, 0.5])
 
   // Past the edge, by each wrap.
   const wrapped = (wrapU: TextureWrap) =>
     read(line, createSampler(gl, { ...NEAREST, wrapU }), [1.25, 0.5])
+
   report['wrapRepeat'] = wrapped('repeat')
   report['wrapMirror'] = wrapped('mirror')
   report['wrapClamp'] = wrapped('clamp')
@@ -221,6 +235,7 @@ export default ((gl) => {
     for (let at = 0; at < level.length; at += 4) level.set([b, g, r, 255], at)
     return [level]
   }
+
   const cube: CubeTexture = {
     name: 'cube',
     type: 'cube',
@@ -238,6 +253,7 @@ export default ((gl) => {
     ],
   }
   const cubeTexture = createTexture(gl, planUpload(cube))
+
   report['cubePosX'] = read(cubeTexture, hull, [1, 0, 0], { cube: true })
   report['cubeNegX'] = read(cubeTexture, hull, [-1, 0, 0], { cube: true })
   report['cubePosY'] = read(cubeTexture, hull, [0, 1, 0], { cube: true })

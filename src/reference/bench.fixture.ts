@@ -57,6 +57,7 @@ export interface BenchReport {
 
 const phase = (samples: number[]): Phase => {
   const sorted = [...samples].sort((a, b) => a - b)
+
   return {
     mean: samples.reduce((sum, value) => sum + value, 0) / samples.length,
     median: sorted[Math.floor(sorted.length / 2)]!,
@@ -101,6 +102,7 @@ export default (async (gl, { args, read }) => {
     effectSeconds: 1,
     ships: Array.from({ length: ships }, (_, n) => {
       const [ship, engine] = SHIPS[n % SHIPS.length]!
+
       return {
         ship,
         engine,
@@ -116,7 +118,9 @@ export default (async (gl, { args, read }) => {
 
   const renderer = createRenderer(gl)
   const { width, height } = gl.canvas
+
   gl.viewport(0, 0, width, height)
+
   const pixel = new Uint8Array(4)
   const dt = 1 / 60
   let time = 0
@@ -128,15 +132,20 @@ export default (async (gl, { args, read }) => {
       dynamic.flatMap(({ rocks }) => rocks.effects().map(({ effect }) => effect.instance)),
     ),
   ]
+
   const count = () => {
     const found = { stepped: 0, ballistic: 0, spawned: 0, bytes: 0 }
+
     const visit = (node: RunNode) => {
       if (node.dead) return
+
       const { lane, records } = node as AppearanceNode
+
       if (lane) {
         found[lane.stepped ? 'stepped' : 'ballistic'] += lane.count
         if (lane.stepped) found.bytes += lane.head * RECORD * 4
       }
+
       if (records) found.spawned += records.length
       node.children.forEach(visit)
     }
@@ -149,26 +158,38 @@ export default (async (gl, { args, read }) => {
   const totals = { stepped: 0, ballistic: 0, spawned: 0, bytes: 0 }
   let draws = 0
   let effects = 0
+
   for (let n = 0; n < warmup + frames; n++) {
     time += dt
+
     const moved = { ...scene.camera, position: { ...eye, z: eye.z - speed * time } }
     const a = performance.now()
+
     scene.tick(dt, moved)
+
     const b = performance.now()
     const frame = collectSpaceFrame({ ...scene, camera: moved, time, step: dt })
     const c = performance.now()
+
     renderer.render(frame)
+
     const d = performance.now()
+
     gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixel)
+
     const e = performance.now()
+
     if (n < warmup) continue
     samples.tick.push(b - a)
     samples.collect.push(c - b)
     samples.render.push(d - c)
     finish.push(e - d)
+
     const found = count()
+
     for (const key of ['stepped', 'ballistic', 'spawned', 'bytes'] as const)
       totals[key] += found[key]
+
     draws = frame.draws.length
     effects = frame.effects.length
   }

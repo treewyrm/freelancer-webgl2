@@ -44,10 +44,12 @@ const writeTriangle = (view: DataView, first: number, bgra: number[], tag: numbe
     [3, -1],
     [-1, 3],
   ]
+
   corners.forEach(([x, y], at) => {
     const from = (first + at) * STRIDE
     const floats = (offset: number, values: number[]) =>
       values.forEach((value, n) => view.setFloat32(from + offset + n * 4, value, true))
+
     floats(0, [x!, y!, 0])
     floats(12, [tag, 0, 1])
     bgra.forEach((byte, n) => view.setUint8(from + 24 + n, byte))
@@ -80,6 +82,7 @@ const reference = (fields: Partial<VMeshRef>): VMeshRef => ({
 export default ((gl) => {
   const bytes = new Uint8Array(STRIDE * 9)
   const view = new DataView(bytes.buffer)
+
   writeTriangle(view, 0, [0, 0, 255, 255], 0)
   writeTriangle(view, 3, [0, 255, 0, 255], 0.25)
   writeTriangle(view, 6, [255, 0, 0, 255], 0.5)
@@ -96,6 +99,7 @@ export default ((gl) => {
 
   const { handle, uniforms } = createProgram(gl, VERTEX, FRAGMENT, ['show'])
   const vertices = createVertexBuffer(gl, data)
+
   gl.useProgram(handle)
 
   const draw = (plan: ReferencePlan, at: number, show = 0): number[] => {
@@ -103,9 +107,13 @@ export default ((gl) => {
     gl.uniform1i(uniforms.show, show)
     gl.clearColor(0, 0, 0, 1)
     gl.clear(gl.COLOR_BUFFER_BIT)
+
     const { byteOffset, count } = plan.groups[at]!
+
     gl.drawElements(drawMode(data.primitive), count, gl.UNSIGNED_SHORT, byteOffset)
+
     const pixel = new Uint8Array(4)
+
     gl.readPixels(1, 1, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixel)
     return [...pixel]
   }
@@ -123,5 +131,6 @@ export default ((gl) => {
     uv1: draw(first, 0, 3),
     error: [gl.getError()],
   }
+
   return report
 }) satisfies Fixture<MeshReport>

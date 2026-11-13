@@ -32,6 +32,15 @@ export interface EffectReport {
   scaleResizesPerp: number
   /** A particle's frame -1, -3 and 1, with the playback on frame 2. */
   frameChoice: { current: number[]; past: number[]; inside: number[] }
+  /** Outlined from the end hook and not drawn: red edges, green X, blue Y, white normal. */
+  outlined: {
+    edges: number[]
+    axisX: number
+    axisY: number
+    inside: number[]
+    perpNormal: number
+    error: number
+  }
 }
 
 const SIZE = 64
@@ -62,11 +71,14 @@ const oneShot = (properties: Record<string, unknown> = {}) =>
 
 const fixture: Fixture<EffectReport> = (gl) => {
   const renderer = createRenderer(gl)
+
   const pixelAt = (x: number, y: number) => {
     const out = new Uint8Array(4)
+
     gl.readPixels(x, y, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, out)
     return [...out]
   }
+
   const shot = (
     scene: EffectScene,
     {
@@ -87,6 +99,7 @@ const fixture: Fixture<EffectReport> = (gl) => {
   ) => {
     const instance = new EffectInstance(scene, { lookup })
     for (let n = 0; n < steps; n++) instance.advance(1 / 60)
+
     const frame = collectFrame({
       camera,
       aspect: 1,
@@ -95,14 +108,17 @@ const fixture: Fixture<EffectReport> = (gl) => {
       models: [],
       effects: [{ instance, texture: library }],
     })
+
     renderer.render(frame, hooks)
   }
+
   // Pixels bright on a row or a column through the screen's middle, in GL's y-up rows.
   const litRow = (y: number) => {
     let count = 0
     for (let x = 0; x < SIZE; x++) if (pixelAt(x, y)[0]! + pixelAt(x, y)[1]! > 8) count++
     return count
   }
+
   const litColumn = (x: number, from = 0, to = SIZE) => {
     let count = 0
     for (let y = from; y < to; y++) if (pixelAt(x, y)[0]! + pixelAt(x, y)[1]! > 8) count++
@@ -113,33 +129,43 @@ const fixture: Fixture<EffectReport> = (gl) => {
     sceneOf([{ node: basic('a', properties) }, { node: oneShot(emit), targets: ['a'] }]).scene
 
   shot(quad({ BasicApp_Color: tint(1, 0, 0), BasicApp_Alpha: eased(0.5) }))
+
   const basicSpan = litRow(32)
   const basicCentre = pixelAt(32, 32)
 
   shot(quad({ BasicApp_Alpha: eased(1.5) }))
+
   const alphaWrapped = pixelAt(32, 32)
 
   shot(quad({ BasicApp_Alpha: eased(0.0099) }))
+
   const faintUnder = pixelAt(32, 32)
+
   shot(quad({ BasicApp_Alpha: eased(0.0101) }))
+
   const faint = { under: faintUnder, over: pixelAt(32, 32) }
 
   // A quarter turn, with an aspect of 3: `R·cos − U·sin` puts the wide axis along -U.
   shot(quad({ BasicApp_Rotate: eased(Math.PI / 2), BasicApp_HToVAspect: eased(3) }))
+
   const rolled = { above: litColumn(32), right: litRow(32) }
 
   shot(quad({ BasicApp_QuadTexture: false }))
+
   let apexRow = 0
   let baseRow = SIZE
+
   for (let y = 0; y < SIZE; y++) {
     if (litRow(y) === 0) continue
     apexRow = Math.max(apexRow, y)
     baseRow = Math.min(baseRow, y)
   }
+
   const triangle = { apexRow, baseRow, baseSpan: litRow(baseRow + 1) }
 
   // Moving up at 60: a streak from Size behind where it was a thirtieth ago to Size ahead.
   shot(quad({ BasicApp_MotionBlur: true }, { Emitter_Pressure: flat(60) }))
+
   const blurSpan = { x: litRow(32), y: litColumn(32) }
 
   const rect = (properties: Record<string, unknown>) =>
@@ -157,15 +183,21 @@ const fixture: Fixture<EffectReport> = (gl) => {
       },
       { node: oneShot({ Emitter_Pressure: flat(0.001) }), targets: ['a'] },
     ]).scene
+
   shot(rect({}))
+
   const rectResult = {
     above: litColumn(32, 33, SIZE),
     below: litColumn(32, 0, 31),
     span: litRow(40),
   }
+
   shot(rect({ RectApp_CenterOnPos: true }))
+
   const rectCentered = { above: litColumn(32, 33, SIZE), below: litColumn(32, 0, 31) }
+
   shot(rect({}), { camera: above })
+
   const rectEndOn = litRow(32) + litColumn(32)
 
   const perp = (properties: Record<string, unknown> = {}) =>
@@ -181,8 +213,11 @@ const fixture: Fixture<EffectReport> = (gl) => {
       },
       { node: oneShot({ Emitter_Pressure: flat(0.001) }), targets: ['a'] },
     ]).scene
+
   shot(perp(), { camera: above })
+
   const perpSpan = litRow(32)
+
   // Red in the frame's u1, green in its u2, so the roll shows: u follows the seed's +X.
   shot(perp({ BasicApp_TexName: 'two' }), {
     camera: above,
@@ -197,8 +232,11 @@ const fixture: Fixture<EffectReport> = (gl) => {
       levels: [new Uint8Array([255, 0, 0, 255, 0, 255, 0, 255])],
     },
   })
+
   const perpRoll = { left: pixelAt(28, 32), right: pixelAt(36, 32) }
+
   shot(perp({ RectApp_ViewingAngleFade: true }), { camera: front })
+
   const perpFadeEdgeOn = litRow(32) + litColumn(32)
 
   const beam = sceneOf([
@@ -220,7 +258,9 @@ const fixture: Fixture<EffectReport> = (gl) => {
       targets: ['a'],
     },
   ]).scene
+
   shot(beam, { steps: 6 })
+
   const beamResult = {
     lit: litColumn(32),
     offChain: pixelAt(10, 40),
@@ -251,6 +291,7 @@ const fixture: Fixture<EffectReport> = (gl) => {
             ],
           }
         : undefined
+
   const framed = (position: number) => {
     shot(
       quad({
@@ -262,7 +303,63 @@ const fixture: Fixture<EffectReport> = (gl) => {
     )
     return pixelAt(32, 32)
   }
+
   const frameChoice = { current: framed(-1 / 3), past: framed(-1), inside: framed(0.4) }
+
+  // Outlines alone: the frame draws no effect, and its end hook frames one.
+  const style = {
+    outline: () => [1, 0, 0] as const,
+    axisX: [0, 1, 0] as const,
+    axisY: [0, 0, 1] as const,
+    normal: [1, 1, 1] as const,
+    alpha: 1,
+  }
+
+  const outline = (scene: EffectScene) => {
+    const instance = new EffectInstance(scene)
+
+    instance.advance(1 / 60)
+
+    const frame = collectFrame({
+      camera: front,
+      aspect: 1,
+      ambient: { x: 0, y: 0, z: 0 },
+      lights: [],
+      models: [],
+    })
+
+    renderer.render(frame, {
+      end: ({ outlineEffects }) => outlineEffects([{ instance, texture: () => undefined }], style),
+    })
+  }
+
+  const where = (test: (pixel: number[]) => boolean, along: 'row' | 'column', at: number) => {
+    const found: number[] = []
+
+    for (let n = 0; n < SIZE; n++)
+      if (test(along === 'row' ? pixelAt(n, at) : pixelAt(at, n))) found.push(n)
+
+    return found
+  }
+
+  const only = (r: number, g: number, b: number) => (pixel: number[]) =>
+    pixel[0] === r && pixel[1] === g && pixel[2] === b
+
+  outline(quad())
+
+  const outlined = {
+    edges: where(only(255, 0, 0), 'row', 35),
+    // On the boundary between the middle two rows, so whichever the rasterizer takes.
+    axisX: Math.max(...[31, 32].map((row) => where(only(0, 255, 0), 'row', row).length)),
+    axisY: where(only(0, 0, 255), 'column', 32).length,
+    inside: pixelAt(29, 35),
+    perpNormal: 0,
+    error: gl.getError(),
+  }
+
+  // A perp's normal is its velocity, up the screen from the front.
+  outline(perp())
+  outlined.perpNormal = where(only(255, 255, 255), 'column', 32).length
 
   // Tree order under an order-dependent blend: appearance beside the root first, then the one under it.
   const opaque = (color: ReturnType<typeof tint>, name: string, emit: string) =>
@@ -284,22 +381,30 @@ const fixture: Fixture<EffectReport> = (gl) => {
     ] as const
   const [underApp, underEmit] = opaque(tint(0, 1, 0), 'u', 'eu')
   const [overApp, overEmit] = opaque(tint(1, 0, 0), 'o', 'eo')
+
   shot(sceneOf([{ root: true, children: [underApp, underEmit] }, overApp, overEmit]).scene)
+
   const beside = pixelAt(32, 32)
+
   shot(sceneOf([underApp, underEmit, overApp, overEmit]).scene)
+
   const inFile = pixelAt(32, 32)
 
   const plain = quad({ BasicApp_Color: tint(1, 0, 0) })
+
   shot(plain)
+
   const without = pixelAt(32, 32)
   let opaqueHook: number[] = []
   let endHook: number[] = []
+
   shot(plain, {
     hooks: {
       opaque: () => void (opaqueHook = pixelAt(32, 32)),
       end: () => void (endHook = pixelAt(32, 32)),
     },
   })
+
   const withHooks = pixelAt(32, 32)
 
   const before = pixelAt(32, 32)
@@ -309,19 +414,24 @@ const fixture: Fixture<EffectReport> = (gl) => {
       gl.canvas.addEventListener(name, () => resolve(), { once: true }),
     )
   const lost = nextEvent('webglcontextlost')
+
   lose.loseContext()
+
   const done = lost
     // Restoring is refused until the lost event's task has finished.
     .then(() => new Promise((resolve) => setTimeout(resolve)))
     .then(() => {
       const restored = nextEvent('webglcontextrestored')
+
       lose.restoreContext()
       return restored
     })
 
   return done.then(() => {
     shot(plain)
+
     const after = pixelAt(32, 32)
+
     const scale = (kind: 'basic' | 'perp') => {
       const curves = (value: number) => ({ x: flat(value), y: flat(value), z: flat(value) })
       const transform = {
@@ -338,6 +448,7 @@ const fixture: Fixture<EffectReport> = (gl) => {
               BasicApp_Alpha: eased(1),
               BasicApp_Size: eased(2),
             })
+
       app.properties.find((one) => one.name === 'Node_Transform')!.type = 'transform'
       shot(
         sceneOf([
@@ -350,6 +461,7 @@ const fixture: Fixture<EffectReport> = (gl) => {
       )
       return litRow(32)
     }
+
     return {
       error: gl.getError(),
       basicSpan,
@@ -371,6 +483,7 @@ const fixture: Fixture<EffectReport> = (gl) => {
       scaleMovesBasic: scale('basic'),
       scaleResizesPerp: scale('perp'),
       frameChoice,
+      outlined,
     }
   })
 }

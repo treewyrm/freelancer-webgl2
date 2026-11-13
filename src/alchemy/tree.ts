@@ -51,6 +51,7 @@ export const buildEffect = (effect: Effect, resolve: ResolveNode): EffectScene =
     for (const child of instance.children) gather(child)
   }
   for (const instance of effect.children) gather(instance)
+
   // What the game builds from is the array, whose order the tree doesn't keep.
   const sorted = flat
     .map((instance, walked) => ({ instance, order: instance.sort ?? flat.length + walked }))
@@ -59,10 +60,12 @@ export const buildEffect = (effect: Effect, resolve: ResolveNode): EffectScene =
 
   for (const instance of sorted) {
     indices.set(instance, scene.nodes.length)
+
     const node = instance.flags ? undefined : resolve(instance.crc)
     const descriptor: NodeDescriptor | undefined = instance.flags
       ? { name: '', lifeSpan: 3, category: 'folder', kind: 'folder' }
       : node && describeNode(node)
+
     scene.nodes.push({
       instance,
       descriptor,
@@ -78,12 +81,16 @@ export const buildEffect = (effect: Effect, resolve: ResolveNode): EffectScene =
 
   sorted.forEach((instance, index) => {
     const node = scene.nodes[index]!
+
     for (const child of instance.children) {
       const at = indices.get(child)!
+
       scene.nodes[at]!.parent = index
       node.children.push(at)
     }
+
     node.children.sort((a, b) => a - b)
+
     for (const target of instance.targets) {
       const at = indices.get(target)
       if (at !== undefined) node.targets.push(at)
@@ -99,13 +106,18 @@ export const buildEffect = (effect: Effect, resolve: ResolveNode): EffectScene =
 export const lookupOver = (effects: readonly Effect[], resolve: ResolveNode): EffectLookup => {
   const byName = new Map<string, Effect>()
   for (const effect of effects) if (!byName.has(effect.name)) byName.set(effect.name, effect)
+
   const built = new Map<string, EffectScene>()
+
   return (name) => {
     const known = built.get(name)
     if (known) return known
+
     const effect = byName.get(name)
     if (!effect) return undefined
+
     const scene = buildEffect(effect, resolve)
+
     built.set(name, scene)
     return scene
   }

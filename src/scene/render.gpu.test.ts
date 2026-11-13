@@ -9,11 +9,13 @@ let report: RenderReport
 
 before(async () => {
   browser = await launch()
+
   const { value } = await runFixture<RenderReport>(
     browser,
     new URL('./render.fixture.ts', import.meta.url),
     { width: 32, height: 32, context: { antialias: false, alpha: false } },
   )
+
   report = value
 })
 
@@ -28,8 +30,10 @@ test('a hook that draws nothing changes no pixel, even leaving GL state wrecked'
 
 test('hooks run in frame order, and a host draws with the game path depth', () => {
   assert.deepEqual(report.hookOrder, ['begin', 'opaque', 'end'])
+
   // Half green over red: the far triangle at `opaque` lost to the opaque square's depth.
   const [red, green, blue] = report.opaqueHookSeesDepth
+
   assert.ok(
     Math.abs(red! - 128) <= 1 && Math.abs(green! - 128) <= 1 && blue === 0,
     `${red},${green},${blue}`,
@@ -63,4 +67,13 @@ test('disposal is complete and final, and leaves other renderers alone', () => {
   assert.equal(report.liveAfterDispose.textures, 1)
   assert.equal(report.disposedThrows, true)
   assert.equal(report.otherRendererStillDraws, true)
+})
+
+test('a viewport keeps the picture in its band, unstretched, the rest of the target untouched', () => {
+  const { outsideKept, across, down } = report.letterboxed
+
+  assert.equal(outsideKept, true)
+  // Half-size 1 at 5 with a 45° half-angle: 3.2 pixels each way of the band's 16 across and 8 down.
+  assert.ok(across >= 6 && across <= 7, `across ${across}`)
+  assert.equal(down, across)
 })

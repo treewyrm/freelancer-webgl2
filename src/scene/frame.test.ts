@@ -40,7 +40,7 @@ const root: CompoundNode<RigidPart> = {
   children: [],
 }
 
-const texture = (format: 'dxt1' | 'dxt5' | 'rgb24_888'): TextureEntry => ({
+const texture = (format: 'dxt1' | 'dxt5' | 'rgb24_888' | 'rgba16_4444'): TextureEntry => ({
   name: 'skin',
   type: 'image',
   storage: 'dds',
@@ -82,12 +82,15 @@ const skinned = (fields: Partial<Material>): Material => ({
 
 test('a texture with one alpha bit is cut, and one with more is blended', () => {
   const [cut] = collectFrame(scene(skinned({}))).draws
+
   assert.deepEqual([cut!.blend, cut!.alphaReference], [false, 0x80])
 
   const [blended] = collectFrame(scene(skinned({}), { texture: () => texture('dxt5') })).draws
+
   assert.deepEqual([blended!.blend, blended!.alphaReference], [true, 0])
 
   const [opaque] = collectFrame(scene(skinned({}), { texture: () => texture('rgb24_888') })).draws
+
   assert.deepEqual([opaque!.blend, opaque!.alphaReference], [false, 0])
 })
 
@@ -104,14 +107,17 @@ test("an animated texture loops on the host's clock, binds its frame's atlas, an
       : /^skin_[0-3]$/.test(name)
         ? { ...texture('dxt5'), name }
         : undefined
+
   const at = (time: number) => {
     const { draws, unsupported } = collectFrame({
       ...scene(skinned({}), { texture: library }),
       time,
     })
+
     assert.deepEqual(unsupported, [])
     return [draws[0]!.texture?.name, draws[0]!.blend, draws[0]!.alphaReference]
   }
+
   assert.deepEqual([0, 0.05, 0.11, 0.15].map(at), [
     ['skin_0', false, 0],
     ['skin_1', false, 0],
@@ -126,17 +132,43 @@ test('an animated texture without its atlas is reported', () => {
       ? { name, type: 'animated', rate: 15, frames: [{ index: 0, u1: 0, v1: 0, u2: 1, v2: 1 }] }
       : undefined
   const frame = collectFrame(scene(skinned({}), { texture: library }))
+
   assert.deepEqual([frame.draws[0]!.texture, frame.unsupported], [undefined, ['texture skin']])
+})
+
+test('A4R4G4B4 carries four alpha bits, so it blends', () => {
+  const [draw] = collectFrame(scene(skinned({}), { texture: () => texture('rgba16_4444') })).draws
+
+  assert.deepEqual([draw!.blend, draw!.alphaReference], [true, 0])
+})
+
+test("a HUD icon blends by the engine's alpha, or by its own translucency whatever that says", () => {
+  const hud = (opacity: number, alpha?: number, format: 'dxt1' | 'dxt5' = 'dxt1') =>
+    collectFrame(
+      scene(skinned({ type: 'HUDIconMaterial', opacity }), {
+        texture: () => texture(format),
+        ...(alpha === undefined ? {} : { instance: { ambient: { x: 1, y: 1, z: 1 }, alpha } }),
+      }),
+    ).draws[0]!
+
+  assert.deepEqual([hud(1).blend, hud(1, 1).blend], [false, false])
+  // The override below 1, an engine alpha of 0 among them.
+  assert.deepEqual([hud(1, 0.5).blend, hud(1, 0).blend, hud(1, 0).diffuse[3]], [true, true, 0])
+  // Its own Oc below 1, or a Dt with more than one alpha bit, holds under an override of 1.
+  assert.deepEqual([hud(0.5, 1).blend, hud(0.5, 1).diffuse[3]], [true, 1])
+  assert.equal(hud(1, 1, 'dxt5').blend, true)
 })
 
 test('opacity under 1 blends, whatever the texture', () => {
   const [draw] = collectFrame(scene(skinned({ opacity: 0.5 }))).draws
+
   assert.equal(draw!.blend, true)
   assert.equal(draw!.diffuse[3], 0.5)
 })
 
 test('Two draws again reversed, with normals negated and no alpha cut', () => {
   const draws = collectFrame(scene(skinned({ type: 'DcDtTwo' }))).draws
+
   assert.deepEqual(
     draws.map(({ cull, negateNormals, alphaReference }) => [cull, negateNormals, alphaReference]),
     [
@@ -149,6 +181,7 @@ test('Two draws again reversed, with normals negated and no alpha cut', () => {
 test('glass draws inner faces opaque, then outer blended and reflecting', () => {
   const material: Material = { name: 'L_glass', type: 'DcDtOcOt', opacity: 0.5 }
   const draws = collectFrame(scene(material, { environment: 'envmapbasic' })).draws
+
   assert.deepEqual(
     draws.map(({ cull, blend, environment, diffuse }) => [cull, blend, environment, diffuse[3]]),
     [
@@ -160,19 +193,24 @@ test('glass draws inner faces opaque, then outer blended and reflecting', () => 
 
 test('the archetype decides the reflection, and it normalizes normals', () => {
   const [plain] = collectFrame(scene(skinned({}))).draws
+
   assert.deepEqual([plain!.environment, plain!.normalizeNormals], [undefined, false])
+
   const [shiny] = collectFrame(scene(skinned({}), { environment: 'envmapbasic' })).draws
+
   assert.deepEqual([shiny!.environment, shiny!.normalizeNormals], ['envmapbasic', true])
 })
 
 test('the flags choose wrap and UV set', () => {
   const material = skinned({ diffuseTexture: { name: 'skin', flags: 0x5a } })
   const { sampler, uvSet } = collectFrame(scene(material)).draws[0]!.texture!
+
   assert.deepEqual([sampler.wrapU, sampler.wrapV, uvSet], ['clamp', 'clamp', 1])
 })
 
 test('what M3 has yet to cover is reported, and draws nothing', () => {
   const frame = collectFrame(scene({ name: 'planet', type: 'StarsphereMaterial' }))
+
   assert.deepEqual(frame.draws, [])
   assert.deepEqual(frame.unsupported, ['planet'])
 })
@@ -223,12 +261,14 @@ test('every single-pass type draws, and a two-sided one twice', () => {
     ['DcDtEcOcOtTwo', 2],
   ] as const) {
     const { draws, unsupported } = collectFrame(scene(skinned({ type })))
+
     assert.deepEqual([type, draws.length, unsupported], [type, count, []])
   }
 })
 
 test('below full opacity a one-bit texture blends, and is not cut', () => {
   const [draw] = collectFrame(scene(skinned({ opacity: 0.5 }))).draws
+
   assert.deepEqual([draw!.blend, draw!.alphaReference], [true, 0])
 })
 
@@ -237,6 +277,7 @@ test('the type drawn is the one the map gives, by the lowercased name', () => {
   const [mask] = collectFrame(
     scene(skinned({ name: 'Alpha_Mask_x', type: 'DcDtBt' }), opaque),
   ).draws
+
   assert.equal(mask!.materialName, 'Alpha_Mask_x')
   assert.equal(
     collectFrame(scene(skinned({ name: 'L_GLASS', type: 'DcDtOcOt' }), opaque)).draws.length,
@@ -246,23 +287,29 @@ test('the type drawn is the one the map gives, by the lowercased name', () => {
 
 test('an unregistered type is told apart from one not built yet, and NullMaterial is neither', () => {
   const unregistered = collectFrame(scene(skinned({ type: 'DcDtEtTwo' })))
+
   assert.deepEqual(
     [unregistered.draws, unregistered.unregistered, unregistered.unsupported],
     [[], ['hull'], []],
   )
 
   const unbuilt = collectFrame(scene(skinned({ type: 'StarsphereMaterial' })))
+
   assert.deepEqual([unbuilt.draws, unbuilt.unregistered, unbuilt.unsupported], [[], [], ['hull']])
 
   const nothing = collectFrame(scene(skinned({ name: 'null', type: 'DcDt' })))
+
   assert.deepEqual([nothing.draws, nothing.unregistered, nothing.unsupported], [[], [], []])
 })
 
 test('a mesh with vertex colours says so on its draws', () => {
   const [plain] = collectFrame(scene(skinned({}))).draws
+
   assert.equal(plain!.colorVertex, false)
+
   const coloured = { ...mesh, format: mesh.format | VertexFormat.Diffuse }
   const [draw] = collectFrame(scene(skinned({}), { mesh: () => coloured })).draws
+
   assert.equal(draw!.colorVertex, true)
 })
 
@@ -271,6 +318,7 @@ test('setting a diffuse overwrites the ambient, and neither set is white', () =>
   const other = { x: 0.1, y: 0.2, z: 0.3 }
   const ambientOf = (fields: Partial<Material>) =>
     collectFrame(scene(skinned(fields))).draws[0]!.ambient
+
   assert.deepEqual(ambientOf({ diffuse: colour, ambient: other }), colour)
   assert.deepEqual(ambientOf({ ambient: other }), other)
   assert.deepEqual(ambientOf({}), { x: 1, y: 1, z: 1 })
@@ -279,6 +327,7 @@ test('setting a diffuse overwrites the ambient, and neither set is white', () =>
 test('a blended batched type loses the environment stage and normalized normals', () => {
   const environment = { environment: 'cube', texture: () => texture('rgb24_888') }
   const [plain] = collectFrame(scene(skinned({}), environment)).draws
+
   assert.deepEqual([plain!.environment, plain!.normalizeNormals], ['cube', true])
 
   for (const type of ['DcDtOcOt', 'DcDtEcOcOt', 'DcDtOcOtTwo', 'DcDtEcOcOtTwo'])
@@ -289,6 +338,7 @@ test('a blended batched type loses the environment stage and normalized normals'
 test('an opaque batched type submits at once, losing only the stage', () => {
   const environment = { environment: 'cube', texture: () => texture('rgb24_888') }
   const [draw] = collectFrame(scene(skinned({ type: 'DcDtOcOt' }), environment)).draws
+
   assert.deepEqual([draw!.environment, draw!.normalizeNormals], [undefined, true])
 })
 
@@ -315,6 +365,7 @@ test('blended batched draws wait for the end, far before near, keeping their pas
       },
     ],
   })
+
   assert.deepEqual(
     frame.draws.map(({ materialName, world, cull }) => [materialName, world.w.z, cull]),
     [
@@ -341,6 +392,7 @@ test('a blended type that is not batched keeps its place', () => {
       },
     ],
   })
+
   assert.deepEqual(
     frame.draws.map(({ world }) => world.w.z),
     [-5, -50],
@@ -357,6 +409,7 @@ test('DcDtEt adds its Et, ignoring Ec and Oc, and never blends', () => {
     emissionTexture: named('glow'),
   })
   const [draw] = collectFrame(scene(material)).draws
+
   assert.equal(draw!.second?.operation, 'add')
   assert.deepEqual([draw!.blend, draw!.alphaReference, draw!.diffuse[3]], [false, 0, 1])
   assert.deepEqual(draw!.emissive, { x: 0, y: 0, z: 0 })
@@ -367,14 +420,17 @@ test('stage 1 taken shuts out the reflection, and a DcDtEt without Et leaves it 
   const [withEt] = collectFrame(
     scene(skinned({ type: 'DcDtEt', emissionTexture: named('glow') }), environment),
   ).draws
+
   assert.deepEqual([withEt!.environment, withEt!.normalizeNormals], [undefined, false])
 
   const [withoutEt] = collectFrame(scene(skinned({ type: 'DcDtEt' }), environment)).draws
+
   assert.deepEqual([withoutEt!.environment, withoutEt!.second], ['cube', undefined])
 
   const [detail] = collectFrame(
     scene(skinned({ type: 'BtDetailMapMaterial', detailTexture: named('bt') }), environment),
   ).draws
+
   assert.deepEqual([detail!.environment, detail!.second?.operation], [undefined, 'modulate2x'])
 })
 
@@ -382,6 +438,7 @@ test('BtDetailMapMaterial keeps Ec and Oc, and takes the stage even without a Bt
   const [draw] = collectFrame(
     scene(skinned({ type: 'BtDetailMapMaterial', emission: { x: 1, y: 0, z: 0 }, opacity: 0.5 })),
   ).draws
+
   assert.deepEqual([draw!.blend, draw!.diffuse[3]], [false, 0.5])
   assert.deepEqual(draw!.emissive, { x: 1, y: 0, z: 0 })
   assert.deepEqual(draw!.second, { operation: 'modulate2x' })
@@ -389,6 +446,7 @@ test('BtDetailMapMaterial keeps Ec and Oc, and takes the stage even without a Bt
 
 test('a UV set the mesh has not got is kept, as retail keeps its coordinate index', () => {
   const material = skinned({ type: 'DcDtEt', emissionTexture: named('glow', 0x5a) })
+
   assert.equal(collectFrame(scene(material)).draws[0]!.second?.texture?.uvSet, 1)
 })
 
@@ -409,8 +467,11 @@ test('a nomad surface draws once, blended, both sides, writing no depth, with it
       texture: (name) => (name === 'NomadRGB1_NomadAlpha1' ? ramp : texture('dxt1')),
     }),
   )
+
   assert.equal(frame.draws.length, 1)
+
   const [draw] = frame.draws
+
   assert.deepEqual(
     [draw!.cull, draw!.depthWrite, draw!.blend, draw!.nomad, draw!.alphaReference],
     ['none', false, true, true, 0],
@@ -425,6 +486,7 @@ test('a nomad surface draws once, blended, both sides, writing no depth, with it
 test('fade reaches a nomad surface through a smoothstep, truncated to a byte', () => {
   const alphaAt = (fade: number) =>
     collectFrame(scene(skinned({ name: 'nomad_hull' }), { fade })).draws[0]!.diffuse[3]
+
   assert.equal(alphaAt(1), 1)
   assert.equal(alphaAt(0), 0)
   // 1 - (3 - 1) * 0.25 = 0.5, and int(127.5) is 127.
@@ -438,6 +500,7 @@ test('other draws write depth', () => {
 test('a .3db is placed as one part, at the transform', () => {
   const single = root.part
   const placed = placeParts(single, Matrix4.translation({ x: 1, y: 2, z: 3 }))
+
   assert.equal(placed.length, 1)
   assert.equal(placed[0]!.world.w.x, 1)
 })
@@ -447,6 +510,7 @@ describe('a cloaked model', () => {
 
   test('keeps its texture, multiplies alpha, blends, and neither cuts nor reflects', () => {
     const [draw] = collectFrame(scene(skinned({ opacity: 0.5 }), cloaked)).draws
+
     assert.equal(draw!.texture?.name, 'skin')
     assert.equal(draw!.diffuse[3], 0.25)
     assert.deepEqual([draw!.blend, draw!.alphaReference], [true, 0])
@@ -457,24 +521,29 @@ describe('a cloaked model', () => {
     const [draw] = collectFrame(
       scene(skinned({}), { cloaked: true, fade: 1, texture: () => texture('dxt5') }),
     ).draws
+
     assert.deepEqual([draw!.blend, draw!.diffuse[3]], [false, 1])
   })
 
   test('keeps a two-sided pair and a stage 1', () => {
     assert.equal(collectFrame(scene(skinned({ type: 'DcDtTwo' }), cloaked)).draws.length, 2)
+
     const [emission] = collectFrame(
       scene(skinned({ type: 'DcDtEt', emissionTexture: named('glow') }), cloaked),
     ).draws
+
     assert.deepEqual([emission!.second?.operation, emission!.diffuse[3]], ['add', 0.5])
   })
 
   test('undoes nothing but the reflection on a batched material', () => {
     const [draw] = collectFrame(scene(skinned({ type: 'DcDtOcOt', opacity: 0.5 }), cloaked)).draws
+
     assert.deepEqual([draw!.diffuse[3], draw!.environment], [0.5, undefined])
   })
 
   test('leaves a nomad surface to the value alone', () => {
     const [draw] = collectFrame(scene(skinned({ name: 'nomad_hull' }), cloaked)).draws
+
     assert.deepEqual([draw!.nomad, draw!.diffuse[3]], [true, 127 / 255])
   })
 })
@@ -496,6 +565,7 @@ test('a single-pass material takes its UV animation by name, at the host clock',
     ...scene(skinned({}), { materialAnimations: [scroll] }),
     time: 1,
   })
+
   assert.deepEqual(frame.draws[0]!.uvTransform, { offset: [0.5, 0], scale: [1, 1] })
 })
 
@@ -503,10 +573,13 @@ test('a material with none, or of another class, has no transform', () => {
   const [other] = collectFrame(
     scene(skinned({ name: 'other' }), { materialAnimations: [scroll] }),
   ).draws
+
   assert.equal(other!.uvTransform, undefined)
+
   const [emission] = collectFrame(
     scene(skinned({ type: 'DcDtEt' }), { materialAnimations: [scroll] }),
   ).draws
+
   assert.equal(emission!.uvTransform, undefined)
 })
 
@@ -519,13 +592,17 @@ describe('the classes that take a per-object colour', () => {
     const [drawn] = collectFrame(
       scene(icon, { ...opaque, instance: { ambient, alpha: 0.25 } }),
     ).draws
+
     assert.deepEqual([drawn!.ambient, drawn!.diffuse[3], drawn!.blend], [ambient, 0.25, true])
+
     const [own] = collectFrame(scene(skinned({ name: 'ui_x' }), opaque)).draws
+
     assert.deepEqual([own!.blend, own!.cull, own!.alphaReference], [false, 'back', 0])
   })
 
   test('an exclusion zone always blends, under a white ambient', () => {
     const [drawn] = collectFrame(scene(skinned({ name: 'exclusion_x' }), opaque)).draws
+
     assert.equal(drawn!.blend, true)
     assert.deepEqual(drawn!.sceneAmbient, { x: 1, y: 1, z: 1 })
   })
@@ -538,6 +615,7 @@ describe('the classes that take a per-object colour', () => {
       }),
       time: 1,
     }).draws
+
     assert.deepEqual([drawn!.depthWrite, drawn!.depthFunc], [false, 'lequal'])
     assert.deepEqual(drawn!.uvTransform?.offset, [0.5, 0])
   })
@@ -547,6 +625,7 @@ describe('the classes that take a per-object colour', () => {
       const [drawn] = collectFrame(
         scene(skinned({ name }), { ...opaque, environment: 'cube' }),
       ).draws
+
       assert.deepEqual([name, drawn!.environment], [name, 'cube'])
     }
   })
@@ -555,10 +634,13 @@ describe('the classes that take a per-object colour', () => {
 test('a host`s own [MaterialMap] replaces retail`s', () => {
   const rules = [{ on: 'name', pattern: /^mine/, to: 'DcDtTwo' }] as const
   const draws = collectFrame(scene(skinned({ name: 'mine_hull' }), { materialMap: rules })).draws
+
   assert.equal(draws.length, 2)
+
   const untouched = collectFrame(
     scene(skinned({ name: 'nomad_hull' }), { materialMap: rules }),
   ).draws
+
   assert.equal(untouched[0]!.nomad, false)
 })
 
@@ -568,6 +650,7 @@ describe('the classes with fixed tables', () => {
   test('EcEt adds its Et on stage 0, lit, twice when Two, and reflects', () => {
     const glow = named('glow')
     const [draw] = collectFrame(scene(skinned({ type: 'EcEt', emissionTexture: glow }), env)).draws
+
     assert.deepEqual(
       [draw!.texture?.name, draw!.blendMode, draw!.blend, draw!.unlit, draw!.environment],
       ['glow', 'add', true, false, 'cube'],
@@ -577,6 +660,7 @@ describe('the classes with fixed tables', () => {
 
   test('LightMap multiplies the frame, unlit, at or below', () => {
     const [draw] = collectFrame(scene(skinned({ type: 'LightMap' }), env)).draws
+
     assert.deepEqual(
       [draw!.blendMode, draw!.unlit, draw!.depthFunc, draw!.environment],
       ['multiply', true, 'lequal', 'cube'],
@@ -585,6 +669,7 @@ describe('the classes with fixed tables', () => {
 
   test('engine glow has no texture and doesn`t blend, and takes the reflection', () => {
     const [draw] = collectFrame(scene(skinned({ type: 'EngineGlowMaterial' }), env)).draws
+
     assert.deepEqual(
       [draw!.texture, draw!.blend, draw!.unlit, draw!.environment],
       [undefined, false, false, 'cube'],
@@ -593,18 +678,21 @@ describe('the classes with fixed tables', () => {
 
   test('Nebula adds by alpha, unlit, and Two draws twice', () => {
     const [draw] = collectFrame(scene(skinned({ type: 'Nebula' }), env)).draws
+
     assert.deepEqual([draw!.blendMode, draw!.unlit], ['alphaAdd', true])
     assert.equal(collectFrame(scene(skinned({ type: 'NebulaTwo' }), env)).draws.length, 2)
   })
 
   test('other draws blend by alpha, and are lit', () => {
     const [draw] = collectFrame(scene(skinned({ opacity: 0.5 }), env)).draws
+
     assert.deepEqual([draw!.blendMode, draw!.unlit], ['alpha', false])
   })
 })
 
 test('a nomad surface vanishes on an environment-mapped object', () => {
   const [draw] = collectFrame(scene(skinned({ name: 'nomad_hull' }), { environment: 'cube' })).draws
+
   assert.equal(draw!.diffuse[3], 0)
 })
 
@@ -616,6 +704,7 @@ test('an override type named by a material is reported, and draws nothing', () =
     'WireMaterial',
   ]) {
     const { draws, unsupported } = collectFrame(scene(skinned({ type })))
+
     assert.deepEqual([type, draws, unsupported], [type, [], ['hull']])
   }
 })
@@ -645,6 +734,7 @@ test('a planet surface tiles its mask on UV0, and each class has its own passes'
     )
   const a = ['less', 0xfe, false, 'less', true, false]
   const b = ['greater', 1, true, 'lequal', true, false]
+
   assert.deepEqual(passes('DetailMapMaterial'), [
     ['greater', 0, false, 'less', true, false, 'dm', 0, 3],
   ])
@@ -667,6 +757,7 @@ test('an atmosphere draws scaled, unwritten, with its UVs from the unscaled obje
     scene(skinned({ type: 'AtmosphereMaterial', fade: 1.1, alpha: 0.6, scale: 2 })),
   )
   const [draw] = frame.draws
+
   assert.deepEqual([draw!.blend, draw!.depthWrite, draw!.depthFunc], [true, false, 'lequal'])
   assert.equal(draw!.world.x.x, 2)
   assert.ok(draw!.atmosphere)
@@ -681,12 +772,15 @@ test('a starsphere stands at the camera and ignores depth, light and the queue',
     models: [{ ...base.models[0]!, sky: 'starsphere' }, base.models[0]!],
   })
   const [first] = sky.draws
+
   // Queued glass flushes last, and the sky's copy of it stays first.
   assert.equal(first!.depthFunc, 'always')
   assert.equal(first!.depthWrite, false)
   assert.equal(first!.lightless, true)
   assert.deepEqual(first!.sceneAmbient, { x: 1, y: 1, z: 1 })
+
   const { w } = Matrix4.multiply(sky.view, first!.world)
+
   assert.deepEqual([w.x, w.y, w.z], [0, 0, 0])
   assert.equal(sky.draws[1]!.depthFunc, 'less')
   // The opaque hook waits for the first blended draw that isn't sky.
@@ -697,6 +791,7 @@ test('a mod can change the least alpha of glass and the planes of a backdrop', (
   const glass: Material = { name: 'L_glass', type: 'DcDtOcOt', opacity: 0.5 }
   const limits = { glassLeastAlpha: 0.3 }
   const draws = collectFrame({ ...scene(glass), limits }).draws
+
   assert.deepEqual(
     draws.map(({ diffuse }) => diffuse[3]),
     [0.5, 0.5],
@@ -706,8 +801,11 @@ test('a mod can change the least alpha of glass and the planes of a backdrop', (
   const models = [{ ...base.models[0]!, sky: 'backdrop' as const }]
   const planes = { backdropNear: 2, backdropFar: 500000 }
   const [draw] = collectFrame({ ...base, models, limits: planes }).draws
+
   assert.deepEqual(draw!.projection, projectionMatrix({ ...base.camera, near: 2, far: 500000 }, 1))
+
   const [retail] = collectFrame({ ...base, models }).draws
+
   assert.deepEqual(
     retail!.projection,
     projectionMatrix({ ...base.camera, near: 1, far: 200000 }, 1),
@@ -723,6 +821,7 @@ test('a backdrop keeps the view, and has planes of its own', () => {
     models: [{ ...base.models[0]!, sky: 'backdrop' }],
   })
   const [draw] = frame.draws
+
   assert.equal(draw!.depthFunc, 'always')
   assert.equal(draw!.lightless, undefined)
   assert.equal(draw!.sceneAmbient, undefined)

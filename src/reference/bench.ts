@@ -1,6 +1,6 @@
 /**
  * `npm run bench`: what a retail system's effects cost a frame, on the hardware GPU. Not a test, as
- * timings can't be pinned; it decides whether transform feedback comes back (PLAN.md, M7).
+ * timings can't be pinned; it decides whether transform feedback comes back (ARCHITECTURE.md, Skinning and effects).
  */
 import { readFileSync } from 'node:fs'
 import { mkdir, writeFile } from 'node:fs/promises'
@@ -13,6 +13,7 @@ const data = process.env['FREELANCER_DATA'] ?? join(homedir(), 'Downloads/Freela
 
 const read = async (path: string) => {
   const file = readFileSync(join(data, path.replace(/\\/g, '/')))
+
   return new Uint8Array(file.buffer, file.byteOffset, file.byteLength)
 }
 
@@ -51,6 +52,7 @@ const frames = Number(process.env['BENCH_FRAMES'] ?? 600)
 const cpuThrottling = Number(process.env['BENCH_THROTTLE'] ?? 1)
 const browser = await launch()
 const reports: (BenchReport & { name: string; renderer: string })[] = []
+
 try {
   for (const { name, ...scene } of SCENES) {
     const { value, renderer } = await runFixture<BenchReport>(
@@ -65,6 +67,7 @@ try {
         cpuThrottling,
       },
     )
+
     reports.push({ name, renderer, ...value })
     for (const line of value.skipped) console.log(`${name}: left out ${line}`)
   }
@@ -73,6 +76,7 @@ try {
 }
 
 const ms = (value: number) => value.toFixed(2)
+
 console.log(
   `\n${reports[0]?.renderer}, CPU ${cpuThrottling}x slower, ${frames} frames at 60 Hz;` +
     ' milliseconds, mean (p95)\n',

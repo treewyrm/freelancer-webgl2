@@ -5,6 +5,7 @@ import { spherePatch } from './sphere.js'
 
 const floats = (level: number, radius = 1): Float32Array => {
   const { vertices } = spherePatch(radius, level).mesh
+
   return new Float32Array(vertices.buffer, vertices.byteOffset, vertices.byteLength / 4)
 }
 
@@ -21,6 +22,7 @@ test('each level has the vertices and triangles retail allocates', () => {
     [10, 1089],
   ] as const) {
     const { mesh, reference } = spherePatch(1000, level)
+
     assert.equal(reference.vertexCount, vertices)
     assert.equal(mesh.indices.length, 2 ** level * 6)
     assert.equal(reference.indexCount, mesh.indices.length)
@@ -43,11 +45,15 @@ test('an even level alternates its diagonal, and an odd one fans round each cent
 
 test('vertices lie on the sphere, the normal is the unit position, and S and T run +X and +Y', () => {
   const stride = vertexLayout(spherePatch(1, 4).mesh.format).stride / 4
+
   assert.equal(stride, 8)
+
   for (const level of [3, 4, 9]) {
     const data = floats(level, 200)
+
     for (let at = 0; at < data.length; at += stride) {
       const [x, y, z, nx, ny, nz, s, t] = data.slice(at, at + stride) as unknown as number[]
+
       assert.ok(Math.abs(Math.hypot(x!, y!, z!) - 200) < 1e-3)
       assert.ok(Math.abs(Math.hypot(nx!, ny!, nz!) - 1) < 1e-6)
       assert.ok(Math.abs(x! - nx! * 200) < 1e-3)
@@ -63,6 +69,7 @@ test('every triangle winds outward, as a retail mesh does', () => {
     const { indices } = spherePatch(1, level).mesh
     const data = floats(level)
     const point = (index: number) => [...data.slice(index * 8, index * 8 + 3)] as number[]
+
     for (let at = 0; at < indices.length; at += 3) {
       const [ax, ay, az] = point(indices[at]!) as [number, number, number]
       const [bx, by, bz] = point(indices[at + 1]!) as [number, number, number]
@@ -74,6 +81,7 @@ test('every triangle winds outward, as a retail mesh does', () => {
         u[2] * v[0] - u[0] * v[2],
         u[0] * v[1] - u[1] * v[0],
       ]
+
       assert.ok(normal[0]! * ax + normal[1]! * ay + normal[2]! * az > 0)
     }
   }
@@ -88,6 +96,7 @@ test('the same radius and level are the same object, so buffers are shared', () 
 test('a patch plans like any mesh', () => {
   const { mesh, reference } = spherePatch(1, 5)
   const { indices, groups } = planReference(mesh, reference)
+
   assert.deepEqual(indices, mesh.indices)
   assert.deepEqual(groups, [{ materialId: 0, byteOffset: 0, count: 192 }])
 })

@@ -78,7 +78,7 @@ No file names these; the engine applies them.
 | Skinned `DcDt` | M5 | Yes | Yes | `character_reed` | `character_reed` |
 | `FxBasicAppearance` | M6 | Yes | Yes | `effect_sprites`, `effect_folder`, `effect_motion` | `effect_sprites`, `effect_folder` |
 | `FxRectAppearance`, `FxPerpAppearance` | M6 | Yes | Yes | `effect_sprites`, `effect_motion` | `effect_sprites` |
-| `FLBeamAppearance` | M6 | From the ledger; see [ADAPTING.md](ADAPTING.md#alchemy-m6) | Yes | `effect_beams`, `effect_motion` by shape | `effect_beams` |
+| `FLBeamAppearance` | M6 | From the ledger; see [APPEARANCES.md](retail/APPEARANCES.md#flbeamappearance) | Yes | `effect_beams`, `effect_motion` by shape | `effect_beams` |
 | `FLDustAppearance` | M6, M7 | From the ledger | Yes | `effect_dust`: nothing under a THN host | |
 | `FxParticleAppearance` | M6 | Yes | Yes | `effect_child` | `effect_child` |
 | `FxOrientedAppearance` | M6 | Yes | Yes; crashes at retail's `poolSize` of 0 | `effect_oriented`, at 1000 | `effect_oriented`, at 1000 |

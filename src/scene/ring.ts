@@ -40,10 +40,12 @@ export const textureShape = (
 ): TextureShape => {
   const width = f(texture.width)
   const height = f(texture.height)
+
   if (x <= 1 && y <= 1) {
     x = f(width * x)
     y = f(height * y)
   }
+
   if (w === 0 || h === 0) {
     w = width
     h = height
@@ -51,8 +53,10 @@ export const textureShape = (
     w = f(width * w)
     h = f(height * h)
   }
+
   const right = f(x + w)
   const bottom = f(y + h)
+
   return {
     texture,
     u0: f(f(x + UV_INSET) / width),
@@ -145,19 +149,25 @@ export const buildRing = (
   const positions: Vector3[] = []
   const step = f(TWO_PI / segments)
   let angle = 0
+
   for (let segment = 0; segment < segments; segment++) {
     const sin = Math.sin(angle)
     const cos = Math.cos(angle)
+
     const at = (radius: number) => {
       const { x, y, z } = Matrix4.transformPoint(
         { x: f(sin * radius), y: 0, z: f(radius * cos) },
         transform,
       )
+
       return { x: f(x), y: f(y), z: f(z) }
     }
+
     positions.push(at(outer), at(inner))
     angle = f(angle + step)
   }
+
+  // Wraps past the last segment back to the first, so the final piece closes the ring.
   const vertex = (index: number) => positions[index >= count ? index - count : index]!
 
   const color = exterior.color ?? { x: 0, y: 0, z: 0 }
@@ -172,21 +182,28 @@ export const buildRing = (
   let end = 0
   let previous = 0
   const pieces: RingPiece[] = []
+
   for (let index = 0; index < PIECES; index++) {
+    // Pieces end at multiples of `segments / 8`, each starting on the last one's end segment.
     end += span
+
     const first = previous
     const last = Math.trunc(LAST_BIAS + end)
+
     previous = last
+
     const corners = Array.from({ length: (last - first + 1) * 2 }, (_, at) =>
       vertex(first * 2 + at),
     )
     const min = { x: Infinity, y: Infinity, z: Infinity }
     const max = { x: -Infinity, y: -Infinity, z: -Infinity }
+
     for (const point of corners)
       for (const axis of ['x', 'y', 'z'] as const) {
         min[axis] = Math.min(min[axis], point[axis])
         max[axis] = Math.max(max[axis], point[axis])
       }
+
     const center = {
       x: f((max.x + min.x) * 0.5),
       y: f((max.y + min.y) * 0.5),
@@ -196,10 +213,14 @@ export const buildRing = (
 
     const vertices = new Uint8Array(corners.length * STRIDE)
     const floats = new Float32Array(vertices.buffer)
+
+    // Strip order: outer then inner vertex per segment. Per vertex: xyz at byte 0, BGRA at 12, uv0 at
+    // 16, uv1 at 24; U flips left/right by segment parity, V top/bottom by outer/inner.
     corners.forEach((point, at) => {
       const segment = first + (at >> 1)
       const odd = (segment & 1) !== 0
       const outerEdge = (at & 1) === 0
+
       floats.set([point.x, point.y, point.z], (at * STRIDE) / 4)
       vertices.set(bytes, at * STRIDE + 12)
       floats.set(
@@ -212,6 +233,7 @@ export const buildRing = (
         (at * STRIDE + 16) / 4,
       )
     })
+
     const mesh: VMeshData = {
       name: `ring piece ${index}`,
       version: 1,
@@ -240,8 +262,10 @@ export const buildRing = (
       boundingBox: { min, max },
       boundingSphere: { center, radius },
     }
+
     pieces.push({ first, last, center, radius, mesh, reference })
   }
+
   return {
     pieces,
     zone,
@@ -270,13 +294,17 @@ export const ringImmersion = (
   const local = Matrix4.transformPoint(point, Matrix4.invert(zoneTransform(zone)))
   const y = Math.abs(local.y)
   let factor = 1
+
   if (!(y < half)) {
     const ramp = 1 - (y - half) / transitionDistance
+
     factor = f(ramp)
     if (!(ramp > 0)) return 0
   }
+
   const radial = local.x * local.x + local.z * local.z
   const radialF = f(radial)
+
   if (radial > softOuter) return 0
   if (radialF > outerSquared) return ((softOuter - radialF) / (softOuter - outerSquared)) * factor
   if (radialF > innerSquared) return factor

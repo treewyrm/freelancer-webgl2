@@ -4,6 +4,8 @@
  *   npm run reference -- mount li_elite
  *   npm run reference -- collect li_elite
  *   npm run reference -- mount space_order
+ *   npm run reference -- mount base_li01_01
+ *   npm run reference -- mount cutscene_m13
  *   npm run reference -- restore
  *
  * The menu is three bases, each one room naming a `.thn`, and which one plays is not ours to choose,
@@ -34,6 +36,8 @@ import { Document } from '@treewyrm/freelancer/ini'
 import { Directory } from '@treewyrm/freelancer/utf'
 import { scenes } from './scenes.js'
 import { saveFile, saveText, systemIni, systems, universeSection } from './systems.js'
+import { baseSaveText } from './retail-room.js'
+import { cutscenes, heldText } from './cutscene.js'
 
 const GUEST = '/Volumes/[C] Windows 11'
 
@@ -60,7 +64,9 @@ const INITIAL_WORLD = join(game, 'initialworld.ini')
 const assertNotCorpus = (): void => {
   if (!existsSync(game)) throw new Error(`no game at ${game}: set FREELANCER_GAME`)
   if (!existsSync(corpus)) return
+
   const inside = relative(realpathSync(corpus), realpathSync(game))
+
   if (inside === '' || !inside.startsWith('..'))
     throw new Error(`${game} is inside the corpus at ${corpus}`)
 }
@@ -73,11 +79,14 @@ const asText = (file: string): string =>
 
 const mountSystem = (name: string): void => {
   const system = systems.get(name)!
+
   mkdirSync(LAB_SYSTEMS, { recursive: true })
   writeFileSync(join(LAB_SYSTEMS, `${name}.ini`), systemIni(system))
+
   // Its own field and nebula files, each in a `lab` folder beside retail's.
   for (const { path, text } of system.files ?? []) {
     const file = labFile(path)
+
     mkdirSync(dirname(file), { recursive: true })
     writeFileSync(file, `${text}\r\n`, 'latin1')
   }
@@ -85,27 +94,74 @@ const mountSystem = (name: string): void => {
   // Every mounted system is listed, so that one save doesn't lose another's.
   const universe = `${UNIVERSE}.retail`
   if (!existsSync(universe)) copyFileSync(UNIVERSE, universe)
+
   const mounted = readdirSync(LAB_SYSTEMS)
     // The Mac leaves `._` files beside what it writes on the guest's volume.
     .filter((file) => file.endsWith('.ini') && !file.startsWith('.'))
     .map((file) => universeSection(file.slice(0, -'.ini'.length)))
+
   writeFileSync(UNIVERSE, `${asText(universe)}\r\n${mounted.join('\r\n')}\r\n`, 'latin1')
 
   writeFileSync(join(SAVES, saveFile(name)), saveText(system, asText(INITIAL_WORLD)), 'latin1')
+
   // The game tries every `*.fl` as a save, the Mac's `._` copies included.
   for (const directory of [SAVES, LAB_SYSTEMS])
     for (const file of readdirSync(directory))
       if (file.startsWith('._')) rmSync(join(directory, file))
+
   console.log(`load ${saveFile(name)} to fly in ${name}; the menu is untouched`)
 }
 
+/** M8: a save docked at a retail base, which lands in its `start_room`. Nothing else is touched. */
+const BASES: ReadonlyMap<string, { system: string; base: string; room: string }> = new Map([
+  ['base_li01_01', { system: 'Li01', base: 'Li01_01_Base', room: 'Cityscape' }],
+])
+
+const mountBase = (name: string): void => {
+  const { system, base, room } = BASES.get(name)!
+
+  writeFileSync(
+    join(SAVES, saveFile(name)),
+    baseSaveText(name, system, base, asText(INITIAL_WORLD)),
+    'latin1',
+  )
+  for (const file of readdirSync(SAVES)) if (file.startsWith('._')) rmSync(join(SAVES, file))
+  console.log(`load ${saveFile(name)} to land in ${base}'s ${room}; press F9 ten seconds in`)
+}
+
+const mountCutscene = (name: string): void => {
+  const { script, capture } = cutscenes.get(name)!
+
+  mkdirSync(SCRIPTS, { recursive: true })
+  writeFileSync(join(SCRIPTS, `${name}.thn`), heldText(readFileSync(join(corpus, script))))
+
+  for (const room of ROOMS) {
+    const backup = `${room}.retail`
+    if (!existsSync(backup)) copyFileSync(room, backup)
+    writeFileSync(room, `[Room_Info]\nscene = ambient, Scripts\\Reference\\${name}.thn\n`)
+  }
+
+  console.log(`${name} is on the menu; press F9 past ${capture} s`)
+}
+
 const mount = (name: string): void => {
+  if (cutscenes.has(name)) {
+    assertNotCorpus()
+    return mountCutscene(name)
+  }
+
+  if (BASES.has(name)) {
+    assertNotCorpus()
+    return mountBase(name)
+  }
+
   if (systems.has(name)) {
     assertNotCorpus()
     return mountSystem(name)
   }
+
   const scene = scenes.get(name)
-  const names = [...scenes.keys(), ...systems.keys()]
+  const names = [...scenes.keys(), ...systems.keys(), ...BASES.keys(), ...cutscenes.keys()]
   if (!scene) throw new Error(`no scene named ${name}: ${names.join(', ')}`)
   assertNotCorpus()
 
@@ -121,20 +177,26 @@ const mount = (name: string): void => {
   // Written as text, which the game reads as readily as BINI. A scene without any puts retail's back.
   const backup = `${EFFECT_SHAPES}.retail`
   if (existsSync(backup)) renameSync(backup, EFFECT_SHAPES)
+
   if (scene.preload?.length) {
     copyFileSync(EFFECT_SHAPES, backup)
+
     const text = Buffer.from(Document.read(readFileSync(backup)).write('text')).toString('latin1')
     const added = scene.preload.map(
       ({ file, texture }) => `\r\n[Texture]\r\nfile = ${file}\r\ntex_shape = ${texture}\r\n`,
     )
+
     writeFileSync(EFFECT_SHAPES, text + added.join(''), 'latin1')
   }
 
   const solars = `${SOLAR_ARCH}.retail`
   if (existsSync(solars)) renameSync(solars, SOLAR_ARCH)
+
   const labSkies = (scene.sky ?? []).filter(({ category }) => category === 'Solar')
+
   if (labSkies.length) {
     copyFileSync(SOLAR_ARCH, solars)
+
     const text = Buffer.from(Document.read(readFileSync(solars)).write('text')).toString('latin1')
     const sections = labSkies.flatMap(({ archetype, file }) => [
       '[Solar]',
@@ -146,13 +208,17 @@ const mount = (name: string): void => {
       'mass = 1000',
       'solar_radius = 10',
     ])
+
     writeFileSync(SOLAR_ARCH, `${text}\r\n${sections.join('\r\n')}\r\n`, 'latin1')
   }
+
   if (scene.generated) {
     const { model, library } = generateBands(scene.generated)
+
     writeFileSync(join(SCRIPTS, 'bands.3db'), model)
     writeFileSync(join(SCRIPTS, 'bands.mat'), library)
     copyFileSync(SOLAR_ARCH, solars)
+
     const text = Buffer.from(Document.read(readFileSync(solars)).write('text')).toString('latin1')
     const libraries = BAND_LIBRARIES.map((path) => path.replaceAll('/', '\\'))
     const lines = [
@@ -169,19 +235,24 @@ const mount = (name: string): void => {
       'mass = 1000',
       'solar_radius = 10',
     ]
+
     writeFileSync(SOLAR_ARCH, `${text}\r\n${lines.join('\r\n')}\r\n`, 'latin1')
   }
+
   // Any `*_ale.ini` will do: the `[VisEffect]` table is global.
   const visEffects = `${MISC_ALE}.retail`
   if (existsSync(visEffects)) renameSync(visEffects, MISC_ALE)
+
   if (scene.effect) {
     const nickname = `lab_${scene.effect.kind}`
     const alchemy = GENERATED_EFFECTS[scene.effect.kind]()
+
     writeFileSync(
       join(SCRIPTS, `${nickname}.ale`),
       new Directory('\\', writeAlchemy(alchemy)).write(),
     )
     copyFileSync(MISC_ALE, visEffects)
+
     const text = Buffer.from(Document.read(readFileSync(visEffects)).write('text')).toString(
       'latin1',
     )
@@ -192,40 +263,52 @@ const mount = (name: string): void => {
       `effect_crc = ${getResourceId(nickname, true) | 0}`,
       `textures = ${EFFECT_TEXTURES}`,
     ]
+
     writeFileSync(MISC_ALE, `${text}\r\n${section.join('\r\n')}\r\n`, 'latin1')
   }
+
   const dacom = `${DACOM}.retail`
   if (existsSync(dacom)) renameSync(dacom, DACOM)
+
   if (scene.effect?.pools) {
     copyFileSync(DACOM, dacom)
+
     let text = readFileSync(dacom, 'latin1')
+
     for (const [type, size] of Object.entries(scene.effect.pools)) {
       const line = new RegExp(`^(${type}\\.poolSize\\s*=\\s*)\\d+`, 'm')
       if (!line.test(text)) throw new Error(`no ${type}.poolSize in ${DACOM}`)
       text = text.replace(line, `$1${size}`)
     }
+
     writeFileSync(DACOM, text, 'latin1')
   }
+
   const extras = [
     scene.preload?.length && 'preloads',
     scene.generated && 'a generated model',
     scene.effect && 'a generated effect',
   ]
   const also = extras.filter(Boolean).join(' and ')
+
   console.log(`menu now plays ${name}${also ? `, with ${also}` : ''}`)
 }
 
 /** Restores everything a mount changed: menu, tables, lab systems and their saves. */
 const restore = (): void => {
   assertNotCorpus()
+
   for (const file of [...ROOMS, EFFECT_SHAPES, SOLAR_ARCH, MISC_ALE, DACOM, UNIVERSE])
     if (existsSync(`${file}.retail`)) renameSync(`${file}.retail`, file)
+
   rmSync(SCRIPTS, { recursive: true, force: true })
   rmSync(LAB_SYSTEMS, { recursive: true, force: true })
+
   for (const [name, { files = [] }] of systems) {
     rmSync(join(SAVES, saveFile(name)), { force: true })
     for (const { path } of files) rmSync(dirname(labFile(path)), { recursive: true, force: true })
   }
+
   console.log('menu restored')
 }
 
@@ -233,12 +316,14 @@ const restore = (): void => {
 const collect = (name: string): void => {
   const executable = join(dirname(game), 'EXE')
   const output = join(references, name)
+
   mkdirSync(output, { recursive: true })
   // A rerun's screenshot has a new frame number, and an old one would be read in its place.
   for (const entry of readdirSync(output)) if (entry.endsWith('.bmp')) rmSync(join(output, entry))
 
   const log = join(executable, 'd3d8log.jsonl')
   const capture = readCapture(readFileSync(log, 'utf8'))
+
   copyFileSync(log, join(output, 'd3d8log.jsonl'))
   copyFileSync(options, join(output, 'PerfOptions.ini'))
 

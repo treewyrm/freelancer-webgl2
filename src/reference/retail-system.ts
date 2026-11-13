@@ -1,8 +1,4 @@
-/**
- * A retail system's INI as a `ReferenceSystem`, for the bench: what it costs, not how it looks. Test-only.
- *
- * Objects lose their `rotate`, which moves no effect's cost, all the bench reads.
- */
+/** A retail system's INI as a `ReferenceSystem`, for the bench and `npm run view`. Test-only. */
 import { Document, type Section } from '@treewyrm/freelancer/ini'
 import type { ReferenceSystem } from './systems.js'
 
@@ -18,11 +14,13 @@ const numbers = (section: Section, key: string): number[] =>
 
 const text = (section: Section, key: string): string | undefined => {
   const value = section.getValue(key)?.value
+
   return value === undefined ? undefined : String(value)
 }
 
 const triple = (section: Section, key: string, fallback: Vector = [0, 0, 0]): Vector => {
   const [x = fallback[0], y = fallback[1], z = fallback[2]] = numbers(section, key)
+
   return [x, y, z]
 }
 
@@ -60,21 +58,27 @@ export const readRetailSystem = async (
   const skipped: string[] = []
 
   const background = of('background')[0]
+  const info = of('systeminfo')[0]
+
   const objects: ReferenceSystem['objects'] = of('object').flatMap((section) => {
     const nickname = section.getNickname() ?? '?'
     const archetype = text(section, 'archetype')
+
     if (!archetype || !archetypes.has(archetype.toLowerCase())) {
       skipped.push(`object ${nickname}: archetype ${archetype} not in solararch.ini`)
       return []
     }
+
     const star = text(section, 'star')
     const loadout = text(section, 'loadout')
     const ring = section.properties.find(({ name }) => name.toLowerCase() === 'ring')
+
     return [
       {
         nickname,
         archetype,
         position: triple(section, 'pos'),
+        ...(section.getValue('rotate') !== undefined && { rotate: triple(section, 'rotate') }),
         ...(star && { star }),
         ...(loadout && { loadout }),
         ...(ring && {
@@ -90,6 +94,7 @@ export const readRetailSystem = async (
     const edgeFraction = numbers(section, 'edge_fraction')[0]
     const spacedust = text(section, 'spacedust')
     const maxParticles = numbers(section, 'spacedust_maxparticles')[0]
+
     return {
       nickname: section.getNickname() ?? '?',
       position: triple(section, 'pos'),
@@ -106,6 +111,7 @@ export const readRetailSystem = async (
   })
 
   const left = new Map(Object.entries(leaveOut).map(([file, why]) => [file.toLowerCase(), why]))
+
   const fileZones = (kind: string) =>
     of(kind).flatMap((section) => {
       const file = text(section, 'file')!
@@ -113,6 +119,7 @@ export const readRetailSystem = async (
       if (why) skipped.push(`${kind} ${file}: ${why}`)
       return why ? [] : [{ file, zone: text(section, 'zone')! }]
     })
+
   const dust = of('dust')[0]
   const spacedust = dust && text(dust, 'spacedust')
 
@@ -121,6 +128,9 @@ export const readRetailSystem = async (
     system: {
       name: path,
       ambient: triple(of('ambient')[0] ?? sections[0]!, 'color'),
+      ...(info?.getValue('space_color') !== undefined && {
+        spaceColor: triple(info, 'space_color'),
+      }),
       background: {
         basic: (background && text(background, 'basic_stars')) ?? '',
         complex: (background && text(background, 'complex_stars')) ?? '',
@@ -129,6 +139,7 @@ export const readRetailSystem = async (
       lights: of('lightsource').map((section) => {
         const attenuation = numbers(section, 'attenuation')
         const curve = text(section, 'atten_curve')
+
         return {
           nickname: section.getNickname() ?? '?',
           position: triple(section, 'pos'),

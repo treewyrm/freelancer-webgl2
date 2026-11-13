@@ -73,7 +73,9 @@ const inside = (x: number, y: number, { left, top, right, bottom }: Box) =>
 const screenshotOf = (name: string): Buffer | undefined => {
   const directory = join(references, name)
   if (!existsSync(directory)) return undefined
+
   const file = readdirSync(directory).find((entry) => entry.endsWith('.bmp'))
+
   return file ? readFileSync(join(directory, file)) : undefined
 }
 
@@ -90,6 +92,7 @@ after(() => browser.close())
 
 const read = async (path: string) => {
   const file = readFileSync(join(data, path))
+
   return new Uint8Array(file.buffer, file.byteOffset, file.byteLength)
 }
 
@@ -136,6 +139,7 @@ for (const [name, draws] of [
           read,
         },
       )
+
       await saveArtifact(`picture-${name}`, png)
 
       assert.equal(value.error, 0)
@@ -151,10 +155,12 @@ for (const [name, draws] of [
       let difference = 0
       let oursOnly = 0
       let theirsOnly = 0
+
       for (let y = 0; y < HEIGHT; y++)
         for (let x = 0; x < WIDTH; x++) {
           const canopy = (CANOPY as Record<string, Box | undefined>)[name]
           if (MENU.some((box) => inside(x, y, box)) || (canopy && inside(x, y, canopy))) continue
+
           const from = 54 + (HEIGHT - 1 - y) * stride + x * 3
           const at = (y * WIDTH + x) * 4
           const theirs = [shot[from + 2]!, shot[from + 1]!, shot[from]!]
@@ -165,12 +171,14 @@ for (const [name, draws] of [
           if (hasTheirs && !hasMine) theirsOnly++
 
           const worst = Math.max(...mine.map((channel, c) => Math.abs(channel - theirs[c]!)))
+
           compared++
           difference += worst
           if (worst <= 2) close++
         }
 
       const mean = difference / compared
+
       console.log(
         ((close / compared) * 100).toFixed(3),
         mean.toFixed(3),
@@ -178,7 +186,9 @@ for (const [name, draws] of [
         theirsOnly,
         compared,
       )
+
       const message = `${close} of ${compared} within 2, mean ${mean.toFixed(3)}, silhouette ${oursOnly}/${theirsOnly}`
+
       // Stated tolerance: measured 99.9% and a mean of 0.2 on both scenes. The rest is rounding and
       // the rig's own path to the screen, so these leave little room for a real change.
       assert.ok(compared > (WIDER[name]?.compared ?? 15000), message)

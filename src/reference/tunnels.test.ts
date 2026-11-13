@@ -33,6 +33,7 @@ const SCENE = 46
 
 const read = async (path: string) => {
   const file = readFileSync(join(data, path))
+
   return new Uint8Array(file.buffer, file.byteOffset, file.byteLength)
 }
 
@@ -41,6 +42,7 @@ test(
   { skip },
   async () => {
     const tunnels = await loadGateTunnels(read)
+
     assert.deepEqual(
       [...tunnels.keys()],
       [
@@ -50,11 +52,14 @@ test(
         'gate_tunnel_liberty',
       ],
     )
+
     const bretonia = tunnels.get('gate_tunnel_bretonia')!
+
     assert.equal(bretonia.writeDepth, false)
     assert.equal(bretonia.controlPoints, 9)
     assert.equal(bretonia.farRadiusFactor, 0)
     assert.deepEqual(bretonia.maxRgb, { x: 0, y: 0, z: Math.fround(100 * Math.fround(1 / 255)) })
+
     for (const [nickname, { layers }] of tunnels) {
       assert.deepEqual(
         layers.map(({ texture }) => texture?.name.toLowerCase()),
@@ -73,14 +78,19 @@ test(
   async () => {
     for (const [nickname, settings] of await loadGateTunnels(read)) {
       const tunnel = new GateTunnel(settings)
+
       tunnel.setState(1)
       tunnel.setState(2)
       for (let at = 0; at < 600; at++) tunnel.update(1 / 60)
+
       const draws = tunnel.draws()
+
       assert.ok(draws.length > 10, nickname)
+
       for (const { mesh } of draws) {
         // Each vertex is six words, the fourth its colour's bytes.
         const floats = new Float32Array(mesh.vertices.buffer)
+
         assert.ok(
           floats.every((value, at) => at % 6 === 3 || Number.isFinite(value)),
           nickname,
@@ -92,6 +102,7 @@ test(
 
 test("reads the hole's jump effect: its tunnel, ambient and white clear", { skip }, async () => {
   const hole = (await loadJumpEffects(read)).get('jump_effect_hole')!
+
   assert.deepEqual(hole, {
     tunnel: 'gate_tunnel_bretonia',
     ambient: { x: 25, y: 25, z: 50 },
@@ -109,6 +120,7 @@ interface Vertex {
 
 const argbOf = (packed: string | undefined): number[] => {
   const c = Number(BigInt.asUintN(32, BigInt(packed!)))
+
   return [c >>> 24, (c >>> 16) & 255, (c >>> 8) & 255, c & 255]
 }
 
@@ -117,8 +129,10 @@ const theirVertices = ({ vertexData }: CaptureDraw): Vertex[] =>
 
 const ourVertices = ({ mesh, count }: Draw): Vertex[] => {
   const floats = new Float32Array(mesh.vertices.buffer)
+
   return Array.from({ length: count }, (_, at) => {
     const [b, g, r, a] = mesh.vertices.subarray(at * 24 + 12, at * 24 + 16)
+
     return {
       p: [...floats.subarray(at * 6, at * 6 + 3)],
       u: floats[at * 6 + 4]!,
@@ -137,6 +151,7 @@ const ringsOf = (vertices: readonly Vertex[]) =>
     const radius =
       ring.reduce((sum, { p }) => sum + Math.hypot(...p.map((c, axis) => c - centre[axis]!)), 0) /
       12
+
     return { centre, radius }
   })
 
@@ -157,6 +172,7 @@ const clockOf = (draws: readonly CaptureDraw[]) => {
   const [first] = theirVertices(draws[0]!)
   const seconds = first!.u / Math.fround(0.1)
   const phase = Math.fround((first!.v - seconds * Math.fround(0.07)) / 10 - Math.fround(0.1))
+
   return { seconds, phase }
 }
 
@@ -173,15 +189,20 @@ const load = async () => {
   const tunnel = new GateTunnel(settings, { random: () => 16384 })
   const hole = systems.get('jump_hole')!.objects[0]!
   const [x, y, z] = hole.position
+
   tunnel.frame = await jumpOutFrame(read, hole.archetype, { x, y, z })
   tunnel.setState(1)
   tunnel.setState(2)
+
   const { seconds, phase } = clockOf(retail)
+
   tunnel.phase = phase
+
   for (const layer of tunnel.layers) {
     layer.uOffset = Math.fround(layer.uOffset + seconds * layer.du)
     layer.vOffset = Math.fround(layer.vOffset + seconds * layer.dv)
   }
+
   // A step of nothing places the ship at the phase.
   tunnel.update(0)
 
@@ -218,6 +239,7 @@ const load = async () => {
       background: descriptor.background,
     },
   })
+
   return { capture, frame, retail, ours, tunnel, settings, phase }
 }
 
@@ -226,13 +248,16 @@ test(
   { skip: skipRun },
   async () => {
     const { frame, retail, ours, tunnel } = await load()
+
     assert.equal(ours.draws.length, SCENE)
     assertFrameMatches(ours, retail.slice(0, SCENE), indexTextures(data))
+
     // Twelve strips a layer, thirteen pairs to a ring, from the far end in.
     for (const draw of retail.slice(0, STRIPS)) {
       assert.equal(draw.primitive, 'tristrip')
       assert.equal(draw.vertices, 26)
     }
+
     // Depth tested `LEQUAL`, not written, no fog: what the frame leaves, now captured.
     for (const draw of retail.slice(0, STRIPS)) {
       assert.equal(draw.states['ZFUNC'], 4)
@@ -242,15 +267,20 @@ test(
         [1, 1],
       )
     }
+
     // The hull lit by the tunnel's light alone, a directional one.
     const light = tunnel.light!
+
     for (const draw of retail.slice(STRIPS, SCENE)) {
       assert.equal(draw.lights.length, 1)
       assert.equal(draw.lights[0]!.type, 3)
     }
+
     for (const draw of ours.draws.slice(STRIPS)) assert.deepEqual(draw.lights, [light])
+
     // White, `jump_background_color`, in the letterbox's viewport, after the screen's black.
     const clears = frame.events.filter((event) => event.kind === 'clear' && event.n === 0)
+
     assert.deepEqual(
       clears.map((clear) => clear.kind === 'clear' && [clear.flags, clear.colour >>> 0]),
       [
@@ -269,9 +299,12 @@ test(
     for (const { draws } of captured().frames) {
       const [light] = draws[STRIPS]!.lights
       const [r, g, b] = light!.diffuse.map((c) => Math.round(c * 255))
+
       assert.equal(r, g)
+
       // `0.8 × dim` and `dim`, each times 255 and truncated.
       const dim = b! / 255
+
       assert.ok(Math.abs(r! - 0.8 * dim * 255) <= 1, `${r} against ${b}`)
       assert.ok(Math.abs(Math.hypot(...light!.direction) - 1) < 1e-5)
     }
@@ -285,11 +318,13 @@ test(
     const { frames } = captured()
     const settings = (await loadGateTunnels(read)).get('gate_tunnel_bretonia')!
     const [near, far] = settings.layers
+
     const clocks = frames.map(({ draws }) => {
       const clock = clockOf(draws)
       // The second layer's first vertex: its offsets at the same time.
       const [first] = theirVertices(draws[STRIPS / 2]!)
       const start = clock.phase + 0.1
+
       assert.ok(Math.abs(first!.u - (far!.uOffset + clock.seconds * far!.du)) < 1e-4)
       assert.ok(
         Math.abs(first!.v - (start * far!.vScale + far!.vOffset + clock.seconds * far!.dv)) < 1e-4,
@@ -297,19 +332,24 @@ test(
       assert.ok(Math.abs(near!.uOffset) < 1e-9)
       return clock
     })
+
     // `Update` steps the phase at the speed the clock reaches at the step's end.
     const { minSpeed, maxSpeed, timeToMaxSpeed } = settings
+
     for (let at = 1; at < clocks.length; at++) {
       const { seconds, phase } = clocks[at]!
       const step = seconds - clocks[at - 1]!.seconds
       const speed = (phase - clocks[at - 1]!.phase) / step
       const expected = Math.min(seconds / timeToMaxSpeed, 1) * (maxSpeed - minSpeed) + minSpeed
+
       assert.ok(Math.abs(speed / expected - 1) < 0.005, `${speed} against ${expected}`)
     }
+
     // From 0 at the jump: the speed's integral, to the step's error.
     const { seconds, phase } = clocks.at(-1)!
     const ramp = (maxSpeed - minSpeed) / timeToMaxSpeed
     const integral = minSpeed * seconds + (ramp * seconds * seconds) / 2
+
     assert.ok(Math.abs(phase / integral - 1) < 0.01, `${phase} against ${integral}`)
   },
 )
@@ -319,35 +359,45 @@ test(
   { skip: skipRun },
   async () => {
     const { retail, ours, settings } = await load()
+
     for (let n = 0; n < STRIPS; n++) {
       const what = `strip ${n}`
       const theirs = theirVertices(retail[n]!)
       const mine = ourVertices(ours.draws[n]!)
+
       assert.equal(mine.length, theirs.length, what)
       theirs.forEach((vertex, at) => {
         const our = mine[at]!
+
         assert.ok(Math.abs(vertex.u - our.u) < 1e-4, `${what} u ${at}`)
         assert.ok(Math.abs(vertex.v - our.v) < 1e-4, `${what} v ${at}`)
         assert.equal(vertex.argb[0], our.argb[0], `${what} alpha ${at}`)
       })
+
       const layer = settings.layers[n < STRIPS / 2 ? 0 : 1]!
       const rings = ringsOf(theirs)
+
       ringsOf(mine).forEach((our, end) => {
         const { centre, radius } = rings[end]!
+
         // Down the hole's `Hporient`, turned to +Z: z is the path's, which no `rand()` moves.
         assert.ok(Math.abs(centre[2]! - our.centre[2]!) < 0.02, `${what} z ${centre[2]}`)
         // x and y wander within half the ranges, about the hardpoint, 0.15 and -0.44.
         assert.ok(Math.abs(centre[0]!) < settings.range.x / 2, what)
         assert.ok(Math.abs(centre[1]!) < settings.range.y / 2, what)
+
         // Our radius is 75 all along: retail's, at the same place in the window, is 50 to 100.
         const ratio = radius / our.radius
+
         assert.ok(ratio > 50 / 75 - 1e-3 && ratio < 100 / 75 + 1e-3, `${what} radius ${ratio}`)
       })
     }
+
     // The two layers share their rings, the first 1.5 times as wide.
     for (let n = 0; n < STRIPS / 2; n++) {
       const first = ringsOf(theirVertices(retail[n]!))
       const second = ringsOf(theirVertices(retail[n + STRIPS / 2]!))
+
       first.forEach(({ centre, radius }, end) => {
         assert.ok(Math.hypot(...centre.map((c, axis) => c - second[end]!.centre[axis]!)) < 0.05)
         assert.ok(Math.abs(radius / second[end]!.radius - 1.5) < 1e-3)
@@ -362,16 +412,21 @@ test(
   async () => {
     const { retail, settings } = await load()
     const [near, far] = settings.layers
+
     for (let n = 0; n < STRIPS / 2; n++) {
       const first = theirVertices(retail[n]!)
       const second = theirVertices(retail[n + STRIPS / 2]!)
+
       first.forEach(({ argb: [, r0, g0, b0] }, at) => {
         const [, r1, g1, b1] = second[at]!.argb
+
         // This tunnel's red and green offsets are 0 to 0: the first layer is blue alone.
         assert.deepEqual([r0, g0], [0, 0])
         // Its 200 of blue and the second's 200 of green are the same product.
         assert.equal(b0, g1)
+
         const shade = b0! / 255 / near!.color.z
+
         assert.ok(shade > 0.5 - 0.01 && shade <= 1, `shade ${shade}`)
         // The second's blue, 255 times it with the red curve's 0: its own, 30 to 100, would add 15.
         assert.ok(Math.abs(b1! - far!.color.z * shade * 255) <= 2, `blue ${b1}`)
@@ -392,9 +447,11 @@ test(
     const ours = tunnel.ship!
     const close = (a: Vector3, b: Vector3, by: number) =>
       Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z) < by
+
     // 0.13 further on than ours, 1% of a frame's travel, the rings at 0.02: unexplained.
     assert.ok(Math.abs(ship.w.z - ours.w.z) < 0.2, `${ship.w.z} against ${ours.w.z}`)
     assert.ok(Math.abs(ship.w.x) < 250 && Math.abs(ship.w.y) < 250)
+
     // Right, up and back. The view's mirror is the view's, so through it the ship's frame is ours.
     for (const axis of ['x', 'y', 'z'] as const)
       assert.ok(close(ship[axis], ours[axis], 0.01), axis)

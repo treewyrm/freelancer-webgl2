@@ -34,6 +34,8 @@ export const KIND_DUST = 3
 export const KIND_ORIENTED = 4
 
 export interface EffectDrawCommon {
+  /** The appearance, as its file names it. */
+  node: EffectNode
   /** The appearance's world, as last composed: the game draws with it unadvanced. */
   world: Matrix4
   texture?: { name: string; entry: Texture }
@@ -117,29 +119,37 @@ const spriteTexture = (
   const name = descriptor.texture
   const plain = { frames: [rectOf(FULL, descriptor)] }
   if (!name) return plain
+
   const entry = texture(name)
+
   if (!entry) {
     unsupported.add(`texture ${name}`)
     return plain
   }
+
   if (entry.type === 'cube') return plain
   if (entry.type !== 'animated') return { ...plain, texture: { name, entry } }
   if (!entry.frames.length) return plain
+
   const count = entry.frames.length
   const current =
     advanced && !descriptor.useCommonTexFrame ? playbackFrame(entry, node.age, 'clamp') : 0
+
   const at = (frame: number) => {
     const bound = frameAtlas(entry, frame, texture)
     if (!bound) unsupported.add(`texture ${entry.name}`)
     return bound
   }
+
   if (descriptor.useCommonTexFrame) {
     const position = descriptor.commonTexFrame
       ? curveAt(descriptor.commonTexFrame, sparam, node.age)
       : 0
     const frame = count === 1 ? 0 : pickFrame(Math.trunc(position * (count - 1)), count, current)
+
     return { texture: at(frame), frames: [rectOf(entry.frames[frame]!, descriptor)] }
   }
+
   return {
     texture: at(current),
     frames: entry.frames.map((frame) => rectOf(frame, descriptor)),
@@ -246,33 +256,42 @@ const beamVertices = (
   const { sparam, lod } = instance.context
   const extent = descriptor.lodCurve ? floatAt(descriptor.lodCurve, sparam, lod) : 1
   const live: number[] = []
+
   for (let i = lane.head - 1; i >= lane.tail; i--) {
     const o = i * RECORD
     const age = lane.records[o + AGE]! + (lane.clock - lane.records[o + BORN]!)
     if (age <= lane.records[o + LIFE]!) live.push(i)
   }
+
   if (!live.length) return undefined
 
+  // The i-th newest live point now: birth position plus velocity (floats 3..5) × time since birth.
   const position = (i: number): Vector3 => {
     const o = live[i]! * RECORD
     const elapsed = lane.clock - lane.records[o + BORN]!
+
     return {
       x: lane.records[o + POSITION]! + lane.records[o + 3]! * elapsed,
       y: lane.records[o + POSITION + 1]! + lane.records[o + 4]! * elapsed,
       z: lane.records[o + POSITION + 2]! + lane.records[o + 5]! * elapsed,
     }
   }
+
   const ageOf = (i: number) => {
     const o = live[i]! * RECORD
+
     return lane.records[o + AGE]! + (lane.clock - lane.records[o + BORN]!)
   }
+
   const keyOf = (i: number) => {
     const life = lane.records[live[i]! * RECORD + LIFE]!
+
     return life > 0 ? Math.min(1, Math.max(0, ageOf(i) / life)) : 0
   }
 
   const points: BeamPoint[] = []
   const toggle = lane.births % 2
+
   const emit = (i: number, { x, y, z }: Vector3) => {
     const key = keyOf(i)
     const width =
@@ -281,6 +300,7 @@ const beamVertices = (
       extent
     const { x: r, y: g, z: b } = descriptor.color ? colorAt(descriptor.color, sparam, key) : GREY
     const a = descriptor.alpha ? floatAt(descriptor.alpha, sparam, key) : 1
+
     points.push({
       x,
       y,
@@ -300,6 +320,7 @@ const beamVertices = (
   // An `FLBeamField` it links is the head, wherever it stands.
   let anchor: Vector3 | undefined
   const inverse = frameInverse(node.world)
+
   for (const field of node.fields as FieldNode[])
     if (!field.dead && field.descriptor?.kind === 'beam-field') {
       anchor = Matrix4.transformPoint(field.world.w, inverse)
@@ -307,6 +328,7 @@ const beamVertices = (
     }
 
   let head: Vector3 | undefined
+
   if (anchor && !near(anchor, position(0))) head = anchor
   else if (live.length < 2) return undefined
   else if (!descriptor.disablePlaceHolder) {
@@ -314,6 +336,7 @@ const beamVertices = (
     const p0 = position(0)
     const p1 = position(1)
     const r = ageOf(0) / (ageOf(1) - ageOf(0))
+
     if (!near(p0, p1) && Number.isFinite(r))
       head = {
         x: p0.x - (p1.x - p0.x) * r,
@@ -324,24 +347,30 @@ const beamVertices = (
 
   // Without `DupeFirstParticle`, positions lag one point behind properties, and the oldest's is dropped.
   const shifted = head !== undefined && !descriptor.dupeFirstParticle
+
   if (head) emit(0, head)
+
   let last = head
+
   if (!shifted) {
     last = position(0)
     emit(0, last)
   }
+
   for (let i = 1; i < live.length; i++) {
     const at = position(shifted ? i - 1 : i)
     if (last && near(at, last)) continue
     emit(i, at)
     last = at
   }
+
   if (points.length < 2) return undefined
 
   const fan = descriptor.quadTexture
   const perSegment = (fan ? 12 : 6) * 2
   const vertices = new Float32Array((points.length - 1) * perSegment * FLOATS)
   let v = 0
+
   const write = (point: BeamPoint, axis: Vector3, side: number) => {
     vertices.set(
       [
@@ -359,6 +388,7 @@ const beamVertices = (
     )
     v += FLOATS
   }
+
   // The centre takes UV (0.5, 0.5) literally, whatever the frame, and the far end's colour.
   const centre = (a: BeamPoint, b: BeamPoint) => {
     vertices.set(
@@ -367,10 +397,13 @@ const beamVertices = (
     )
     v += FLOATS
   }
+
+  // Per point pair and axis: a quad as two triangles, or with `QuadTexture` four round the midpoint.
   for (const axis of axes)
     for (let i = 0; i + 1 < points.length; i++) {
       const a = points[i]!
       const b = points[i + 1]!
+
       if (fan) {
         write(a, axis, -1)
         write(a, axis, 1)
@@ -393,6 +426,7 @@ const beamVertices = (
         write(b, axis, -1)
       }
     }
+
   return { vertices, count: v / FLOATS }
 }
 
@@ -413,16 +447,19 @@ const orientedVertices = (
   const out: number[] = []
   const list = (property: AnimatedFloat | undefined, key: number) =>
     property ? floatAt(property, sparam, key) : 1
+
   for (let i = lane.tail; i < lane.head; i++) {
     const o = i * RECORD
     const elapsed = lane.clock - lane.records[o + BORN]!
     const age = lane.records[o + AGE]! + elapsed
     const life = lane.records[o + LIFE]!
     if (age > life) continue
+
     const key = life > 0 ? Math.min(1, Math.max(0, age / life)) : 0
     let alpha = list(descriptor.alpha, key)
     const scale = list(descriptor.scale, key) * extent
     if (alpha === 0 || scale < 1e-11) continue
+
     const matrix = localMatrix(descriptor.particleTransform, sparam, key) ?? Matrix4.identity
     const p = {
       x: lane.records[o]! + lane.records[o + 3]! * elapsed + matrix.w.x,
@@ -431,7 +468,10 @@ const orientedVertices = (
     }
     const width = list(descriptor.width, key) * scale
     const height = list(descriptor.height, key) * scale
+
     if (descriptor.viewingAngleFade) {
+      // n = x × y, the face normal. c = 1 − |cos(eye, n)|, so alpha falls as the face turns edge-on:
+      // full to c = 0.866025, then ((0.984808 − c) / 0.118783)², gone past 0.984808.
       const a = matrix.x
       const b = matrix.y
       const n = { x: a.y * b.z - a.z * b.y, y: a.z * b.x - a.x * b.z, z: a.x * b.y - a.y * b.x }
@@ -442,6 +482,7 @@ const orientedVertices = (
       if (c > 0.866025) alpha *= ((0.984808 - c) * 8.41876) ** 2
       if (alpha === 0) continue
     }
+
     const { x: r, y: g, z: b } = descriptor.color ? colorAt(descriptor.color, sparam, key) : GREY
     const corner = (cx: number, cy: number) =>
       out.push(
@@ -455,6 +496,7 @@ const orientedVertices = (
         cx < 0 ? rect.u1 : rect.u2,
         cy > 0 ? rect.v1 : rect.v2,
       )
+
     corner(-1, 1)
     corner(1, 1)
     corner(1, -1)
@@ -462,6 +504,7 @@ const orientedVertices = (
     corner(1, -1)
     corner(-1, -1)
   }
+
   return out.length ? { vertices: new Float32Array(out), count: out.length / FLOATS } : undefined
 }
 
@@ -478,6 +521,7 @@ export const collectEffect = (
 
   const visit = (node: RunNode) => {
     if (node.dead) return
+
     const shown = !visible || visible(node.run.scene.nodes[node.index]!)
     if (shown && node.descriptor?.category === 'appearance') appear(node as AppearanceNode)
     // What a hidden particle appearance started is its picture, and what's under it in the file isn't.
@@ -487,13 +531,16 @@ export const collectEffect = (
   const appear = (node: AppearanceNode) => {
     const { descriptor } = node
     if (descriptor.kind === 'particle-appearance') return
+
     if (descriptor.kind === 'mesh-appearance') {
       // The game's factory fails on every one of these and crashes on spawn (`0x6224ed9`).
       unsupported.add(`FxMeshAppearance ${descriptor.name}`)
       return
     }
+
     const lane = node.lane!
     if (!lane.count) return
+
     const {
       texture: bound,
       frames,
@@ -506,7 +553,12 @@ export const collectEffect = (
       unsupported,
       descriptor.kind !== 'beam-appearance',
     )
-    const common = { world: node.world, texture: bound, blend: descriptor.blend }
+    const common = {
+      node: node.run.scene.nodes[node.index]!,
+      world: node.world,
+      texture: bound,
+      blend: descriptor.blend,
+    }
 
     if (descriptor.kind === 'beam-appearance') {
       // `S · W`'s first two columns, added in the frame, so `W` reaches them twice (`0x620592d`).
@@ -525,6 +577,7 @@ export const collectEffect = (
 
     const lists = listsOf(descriptor)
     if (!lists) return
+
     const extent =
       descriptor.kind === 'dust-appearance' || !descriptor.lodCurve
         ? 1
@@ -547,6 +600,7 @@ export const collectEffect = (
 
     const eye = Matrix4.transformPoint(camera.w, frameInverse(node.world))
     const basic = descriptor.kind === 'basic-appearance'
+
     draws.push({
       ...common,
       type: 'sprite',

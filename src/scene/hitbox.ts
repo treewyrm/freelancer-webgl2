@@ -4,7 +4,7 @@
  * object in the system and takes its hits nearest first. Each convex hull the ray enters is a hit of
  * its own, so one object can give several. Pure.
  */
-import { Matrix4, type Vector3 } from '@treewyrm/freelancer/math'
+import { Matrix4, Ray, Vector3 } from '@treewyrm/freelancer/math'
 import { HullType, type Hull, type Node, type Surface } from '@treewyrm/freelancer/surface'
 import type { RayHit } from './corona.js'
 
@@ -39,71 +39,46 @@ export interface HitboxObject {
   hitbox: Hitbox
 }
 
-const sub = (a: Vector3, b: Vector3): Vector3 => ({ x: a.x - b.x, y: a.y - b.y, z: a.z - b.z })
-const dot = (a: Vector3, b: Vector3): number => a.x * b.x + a.y * b.y + a.z * b.z
-const cross = (a: Vector3, b: Vector3): Vector3 => ({
-  x: a.y * b.z - a.z * b.y,
-  y: a.z * b.x - a.x * b.z,
-  z: a.x * b.y - a.y * b.x,
-})
+/** Whether a segment, `length` along a unit ray, comes within a node's sphere. */
+const reaches = (node: Node, ray: Ray, length: number): boolean => {
+  const span = Ray.sphere(ray, node)
 
-/** Whether the segment from `start`, along unit `dir` for `length`, comes within a node's sphere. */
-const reaches = ({ center, radius }: Node, start: Vector3, dir: Vector3, length: number) => {
-  const offset = sub(center, start)
-  const along = Math.min(Math.max(dot(offset, dir), 0), length)
-  const x = offset.x - dir.x * along
-  const y = offset.y - dir.y * along
-  const z = offset.z - dir.z * along
-  return x * x + y * y + z * z <= radius * radius
+  return span !== undefined && span.min <= length && span.max >= 0
 }
 
 /**
- * How far along the ray it enters a convex hull, its faces wound counter-clockwise from outside, or
- * nothing. A ray starting inside one is taken as not hitting it: what IVP's solver does there isn't
- * read, and only a camera inside a hitbox would show it.
+ * How far along a unit ray it enters a convex hull, its faces wound counter-clockwise from outside,
+ * within `length`, or nothing. A ray starting inside one is taken as not hitting it: what IVP's
+ * solver does there isn't read, and only a camera inside a hitbox would show it.
  */
 const enters = (
   hull: Hull,
   points: readonly Vector3[],
-  start: Vector3,
-  dir: Vector3,
+  ray: Ray,
   length: number,
 ): number | undefined => {
-  let near = -Infinity
-  let far = Infinity
-  for (const {
-    points: [ia, ib, ic],
-  } of hull.faces) {
-    const a = points[ia]!
-    const normal = cross(sub(points[ib]!, a), sub(points[ic]!, a))
-    const facing = dot(normal, dir)
-    const height = dot(normal, sub(start, a))
-    if (facing === 0) {
-      if (height > 0) return undefined
-      continue
-    }
-    const t = -height / facing
-    if (facing < 0) near = Math.max(near, t)
-    else far = Math.min(far, t)
-    if (near > far) return undefined
-  }
-  return near >= 0 && near <= length ? near : undefined
+  const span = Ray.hull(ray, points, faces(hull))
+
+  return span && span.min >= 0 && span.min <= length ? span.min : undefined
 }
 
-/** How far along the segment it enters a ball, from outside, or nothing. */
-const entersBall = (centre: Vector3, radius: number, from: Vector3, to: Vector3) => {
-  const delta = sub(to, from)
-  const length = Math.sqrt(dot(delta, delta))
+function* faces({ faces }: Hull): Generator<readonly [number, number, number]> {
+  for (const { points } of faces) yield points
+}
+
+/** How far along a unit ray it enters a ball from outside, within `length`, or nothing. */
+const entersBall = (center: Vector3, radius: number, ray: Ray, length: number) => {
+  const span = Ray.sphere(ray, { center, radius })
+
+  return span && span.min > 0 && span.min <= length ? span.min : undefined
+}
+
+/** The unit ray from `from` toward `to`, and how far `to` is along it; none where they meet. */
+const rayBetween = (from: Vector3, to: Vector3): { ray: Ray; length: number } | undefined => {
+  const delta = Vector3.subtract(to, from)
+  const length = Vector3.magnitude(delta)
   if (!(length > 0)) return undefined
-  const dir = { x: delta.x / length, y: delta.y / length, z: delta.z / length }
-  const offset = sub(from, centre)
-  const b = dot(offset, dir)
-  const c = dot(offset, offset) - radius * radius
-  if (c <= 0) return undefined
-  const disc = b * b - c
-  if (disc < 0) return undefined
-  const t = -b - Math.sqrt(disc)
-  return t >= 0 && t <= length ? t : undefined
+  return { ray: { origin: from, direction: Vector3.divideScalar(delta, length) }, length }
 }
 
 /**
@@ -117,35 +92,49 @@ export const castRay = (
   limit: number,
 ): RayHit[] => {
   const found: { distance: number; hit: RayHit }[] = []
+  const cast = rayBetween(from, to)
+
   for (const { object, position, radius, hitbox } of objects) {
     const hit: RayHit = { position, radius, ...(object !== undefined && { object }) }
-    if (hitbox.ball !== undefined) {
-      const distance = entersBall(position, hitbox.ball, from, to)
+
+    if (hitbox.ball !== undefined && cast) {
+      const distance = entersBall(position, hitbox.ball, cast.ray, cast.length)
       if (distance !== undefined) found.push({ distance, hit })
     }
+
     for (const { surface, world } of hitbox.surfaces ?? []) {
       const inverse = Matrix4.invert(world)
-      const start = Matrix4.transformPoint(from, inverse)
-      const delta = sub(Matrix4.transformPoint(to, inverse), start)
-      const length = Math.sqrt(dot(delta, delta))
-      if (!(length > 0)) continue
-      const dir = { x: delta.x / length, y: delta.y / length, z: delta.z / length }
+      const local = rayBetween(
+        Matrix4.transformPoint(from, inverse),
+        Matrix4.transformPoint(to, inverse),
+      )
+      if (!local) continue
+
+      const { ray, length } = local
+
       const visit = (node: Node) => {
-        if (!reaches(node, start, dir, length)) return
+        if (!reaches(node, ray, length)) return
+
         const { hull } = node
+
         if (hull && hull.type === HullType.Enabled) {
-          const distance = enters(hull, surface.points, start, dir, length)
+          const distance = enters(hull, surface.points, ray, length)
+
           if (distance !== undefined) {
             const shield = hitbox.shield?.(hull.id) ?? false
+
             found.push({ distance, hit: shield ? { ...hit, shield } : hit })
           }
         }
+
         if (node.left) visit(node.left)
         if (node.right) visit(node.right)
       }
+
       visit(surface.root)
     }
   }
+
   return found
     .sort((a, b) => a.distance - b.distance)
     .slice(0, limit)

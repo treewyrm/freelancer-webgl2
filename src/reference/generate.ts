@@ -46,6 +46,8 @@ const bandsMesh = ({
   const indices = new Uint16Array(SECTORS * 6 * materials.length)
   let index = 0
 
+  // Each band is two rings of SECTORS + 1 vertices, upper then lower, the seam vertex doubled.
+  // `theta` runs from the pole, `phi` about Y, and a vertex is position, normal, then UV sets as f32.
   materials.forEach((_, band) => {
     const base = band * perBand
     const latitude = (at: number) => (Math.PI * at) / materials.length
@@ -69,8 +71,11 @@ const bandsMesh = ({
         ].forEach((value, c) => bytes.setFloat32(at + c * 4, value, true))
       }
     })
+
     for (let s = 0; s < SECTORS; s++) {
       const [a, b, c, d] = [s, s + 1, s + SECTORS + 1, s + SECTORS + 2]
+
+      // `a`, `b` are the upper ring's `s` and `s + 1`, `c`, `d` the lower's.
       // Counter-clockwise from outside, in the file's own winding.
       indices.set([a, c, b, b, c, d], index)
       index += 6
@@ -106,6 +111,7 @@ const bandsMesh = ({
     },
     boundingSphere: { center: { x: 0, y: 0, z: 0 }, radius: RADIUS },
   }
+
   return { mesh, reference }
 }
 
@@ -127,10 +133,13 @@ export const bandsMeshData = (generated: Generated): VMeshData => bandsMesh(gene
 export const generateBands = (generated: Generated): GeneratedFiles => {
   const { materials, animations = [] } = generated
   const model = writeRigidModel(bandsModel(generated))
+
   model.children.push(writeVMeshLibrary([bandsMeshData(generated)]))
+
   const library = new Directory('\\\\', [
     writeMaterialLibrary(materials),
     ...(animations.length ? [writeMaterialAnimLibrary(animations)] : []),
   ])
+
   return { model: model.write(), library: library.write() }
 }

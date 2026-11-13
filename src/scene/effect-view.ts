@@ -16,6 +16,8 @@ export interface EffectType {
   radius: number
   /** `visibility = EXIST_OFFSCREEN`: unseen, it runs on instead of ending. */
   existOffscreen: boolean
+  /** `update = UPDATE_OFFSCREEN`: unseen, its effect still steps (`0x4f8ae9`). */
+  updateOffscreen: boolean
   /** `pbubble`: past near, how far it shows narrows from far by `generic_effect_perf`. */
   pbubble: { near: number; far: number }
   /**
@@ -46,6 +48,9 @@ const ROWS: readonly (readonly [number, number, number, number, 0 | 1, number, n
   [0.5, 0.5, 4, 50, 1, 100, 500], [0, 0, 5, -1, 0, 100, 500], [1, 0.5, 2, 15, 1, 100, 500],
   [1, 1, 0, -1, 1, 100, 500], [1, 1, 0, -1, 1, 100, 500],
 ]
+
+// `UPDATE_OFFSCREEN` by row (`+0x15` of each), read from the unpacked `Freelancer.exe`.
+const UPDATE_OFFSCREEN = new Set([2, 3, 24, 25, 26, 35, 36, 37, 38, 45])
 
 // `run_time` by row: 15, or -1 where it lasts (`.data` `0x612a80`, `+0x18` of each row).
 const NO_RUN_TIME = new Set([
@@ -110,6 +115,7 @@ export const EFFECT_TYPE_NAMES: readonly string[] = [
  */
 export const effectTypeIndex = (name: string): number | undefined => {
   const at = EFFECT_TYPE_NAMES.indexOf(name)
+
   return at < 0 ? undefined : at
 }
 
@@ -121,6 +127,7 @@ const LOD_TYPE_NAMES = ['trail', 'weapon', 'small', 'medium', 'large', 'small_di
  */
 export const effectLodType = (name: string): number | undefined => {
   const at = LOD_TYPE_NAMES.findIndex((lod) => `eft_lod_${lod}` === name.toLowerCase())
+
   return at < 0 ? undefined : at + 1
 }
 
@@ -130,6 +137,7 @@ export const effectLodType = (name: string): number | undefined => {
  */
 export const effectLodRow = (name: string): number | undefined => {
   const at = LOD_TYPE_NAMES.findIndex((lod) => `lod_type_${lod}` === name.toLowerCase())
+
   return at < 0 ? undefined : at + 1
 }
 
@@ -141,6 +149,7 @@ export const RETAIL_EFFECT_TYPES: readonly Readonly<EffectType>[] = ROWS.map(
     lodType,
     radius,
     existOffscreen: existOffscreen === 1,
+    updateOffscreen: UPDATE_OFFSCREEN.has(index),
     pbubble: { near, far },
     runTime: NO_RUN_TIME.has(index) ? -1 : 15,
   }),
@@ -195,8 +204,11 @@ export interface EffectView {
 // `EffectLodRowBlend` (`0x42da00`): undefined when it's too small to show.
 const lodBlend = (row: EffectLodSizes, radius: number, distance: number, xScale: number) => {
   if (distance < 1e-5) return 1
+
+  // `size` is the radius in pixels; the blend is where it falls between the row's two LOD sizes.
   const size = (radius / distance) * xScale
   if (!(size > row.minScreenSize)) return undefined
+
   const blend = (size - row.minLodScreenSize) / (row.maxLodScreenSize - row.minLodScreenSize)
   if (blend > 1) return 1
   return Math.fround(blend < 0 ? 0 : blend)
@@ -226,12 +238,15 @@ export const viewEffect = (
 
   if (watched) {
     if ((watched.cloak ?? 0) >= 1) return unseen
+
     if (field) {
       const within = findNebula(nebulae, watched.position, watched.nebula)
+
       if (!within) {
         if (field.enclosure === 2) return unseen
       } else {
         if (within.state !== field.state) return unseen
+
         // `G_FieldRadiusSq`: the fog's end in the edge or core, and 0 from outside.
         const radius = field.enclosure === 0 ? 0 : field.state.end
         const dx = Math.fround(position.x - camera.position.x)
@@ -243,15 +258,18 @@ export const viewEffect = (
   }
 
   if (!((generic ? info.genericPriority : info.priority) >= perf)) return unseen
+
   const { radius } = info
   const at = Matrix4.transformPoint(position, view)
   const depth = Math.fround(-at.z)
   if (!(camera.near < Math.fround(depth + radius))) return unseen
+
   const { near, far } = info.pbubble
   if (!((far - near) * (1 - perf) + near > depth - radius)) return unseen
 
   let lod = 1
   const row = info.lodType > 0 && info.lodType < 7 ? effectLods[info.lodType] : undefined
+
   if (row && viewportWidth !== undefined) {
     // `XScale`, half the viewport over tan(fovx½).
     const xScale = Math.fround(viewportWidth / 2 / Math.tan((camera.fovh * Math.PI) / 180))
@@ -274,5 +292,6 @@ export const withinSides = (
   const tanY = tanX / aspect
   const sideX = (Math.abs(at.x) + tanX * at.z) / Math.hypot(1, tanX)
   const sideY = (Math.abs(at.y) + tanY * at.z) / Math.hypot(1, tanY)
+
   return sideX <= radius && sideY <= radius
 }

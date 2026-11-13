@@ -13,6 +13,7 @@ const compile = (gl: WebGL2RenderingContext, type: GLenum, source: string): WebG
 
   if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
     const log = gl.getShaderInfoLog(shader)
+
     gl.deleteShader(shader)
     throw new Error(`Shader compilation failed: ${log}`)
   }
@@ -38,6 +39,7 @@ export const createProgram = <U extends string = never>(
   }
 
   const handle = gl.createProgram()
+
   gl.attachShader(handle, vertex)
   gl.attachShader(handle, fragment)
   gl.linkProgram(handle)
@@ -48,6 +50,7 @@ export const createProgram = <U extends string = never>(
 
   if (!gl.getProgramParameter(handle, gl.LINK_STATUS)) {
     const log = gl.getProgramInfoLog(handle)
+
     gl.deleteProgram(handle)
     throw new Error(`Program link failed: ${log}`)
   }

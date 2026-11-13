@@ -4,6 +4,7 @@
  */
 import { Matrix4, type Vector3 } from '@treewyrm/freelancer/math'
 import type { SceneLight, Spot } from './frame.js'
+import { clampByte, unitByte } from './retail.js'
 
 /** An `[IGraph]`'s `point = x, value` keys, in file order. A colour graph's values are `0xAARRGGBB`. */
 export interface Graph {
@@ -54,6 +55,7 @@ export const equipmentLight = ({
   cone = 180,
 }: EquipmentLight): SpaceLight | undefined => {
   if (!(intensity > 0)) return undefined
+
   // `LightColorByte`: rounded, and only the low byte kept.
   const byte = (value: number) => Math.floor(Math.fround(value) * 255 + 0.5) & 0xff
   const position = Matrix4.transformPoint({ x: 0, y: 0, z: 0 }, world)
@@ -66,11 +68,14 @@ export const equipmentLight = ({
     range: intensity,
     attenuation: { x: 1, y: 0, z: Math.fround(16 / (intensity * intensity)) },
   }
+
   // `EngineLightSetConeAngle` (`0x411670`): the inner cone half the outer.
   if (cone < 180) {
     const phi = Math.fround(Math.fround(cone) * Math.fround(Math.PI / 180))
+
     light.spot = { phi, theta: Math.fround(phi * 0.5), falloff: 1 }
   }
+
   return light
 }
 
@@ -104,6 +109,7 @@ const keyOf = (
   intensityScale: number,
 ) => {
   const byte = (value: number) => Math.trunc(value) & 0xff
+
   return {
     time: Math.fround(Math.fround(time) * timeScale),
     color: { x: byte(color.x), y: byte(color.y), z: byte(color.z) },
@@ -116,6 +122,7 @@ const keyOf = (
 /** `EngineLightSetRadius` (`0x411300`): a point light of that range, falling off by 16 / range². */
 const pointOfRadius = (position: Vector3, color: Vector3, radius: number): SpaceLight => {
   const range = Math.fround(radius)
+
   return {
     type: 'point',
     position,
@@ -139,15 +146,19 @@ export const effectLight = ({
   elapsed,
 }: EffectLight): SpaceLight | undefined => {
   if (!(radius > 0)) return undefined
+
   const frames = animation?.frames ?? []
   // Before its first step, and with no animation, as the `[Effect]` says.
   if (!frames.length || !(elapsed > 0)) return pointOfRadius(position, color, radius)
+
   const keys = frames.map((frame) => keyOf(frame, Math.fround(timeScale), Math.fround(rangeScale)))
   // Its last key ends it, as `LightAnimationLoad` marks every animation's last.
   if (elapsed >= keys[keys.length - 1]!.time) return undefined
+
   // The last key before now, but from the first: before it, the first two extrapolate.
   let at = 0
   for (let index = 0; index < keys.length; index++) if (elapsed > keys[index]!.time) at = index
+
   const from = keys[at]!
   // One key alone has no next: retail reads past it. Held here.
   const to = keys[at + 1] ?? from
@@ -160,6 +171,7 @@ export const effectLight = ({
     z: channel(from.color.z, to.color.z),
   }
   const intensity = (to.intensity - from.intensity) * blend + from.intensity
+
   return pointOfRadius(position, lit, Math.fround(intensity * Math.fround(radius)))
 }
 
@@ -169,39 +181,50 @@ export interface ObjectLighting {
   ambient: Vector3
 }
 
-// `FindBracketingKeys`, interpolating, as `G_bGraphInterpolate` is 1.
+// `FindBracketingKeys`, interpolating, as `G_bGraphInterpolate` is 1. A binary search for the keys
+// either side of `x`, returned as `[lo, hi, span]`; before the first or past the last, one key twice.
 const interpolate = (points: Graph['points'], x: number): [number, number, number] => {
   let lo = 0
   let hi = points.length - 1
+
   if (x <= points[0]![0]) hi = 0
   else if (x >= points[hi]![0]) lo = hi
   else
     while (hi - lo > 1) {
       const mid = Math.trunc((hi + lo) / 2)
+
       if (!(x < points[mid]![0])) lo = mid
       else hi = mid
     }
+
   const span = points[hi]![0] - points[lo]![0]
+
   return [lo, hi, span]
 }
 
 // `FGraphData::Evaluate` and `EvaluateColor` map the caller's range onto the keys' own extent.
 const graphX = ({ points }: Graph, t: number, max: number, clamp: boolean): number => {
   let at: number
+
   if (clamp) {
     // `GraphRangeWrap`, clamping into `[0, max - 0.001]`.
     const least = 0 < t ? t : 0
+
     at = Math.fround(least < max - 0.001 ? least : max - 0.001)
   } else {
     const fraction = t / Math.fround(max)
+
     at = Math.fround(Math.abs(fraction - Math.floor(fraction)) * Math.fround(max))
   }
+
   let least = points[0]![0]
   let most = least
+
   for (const [x] of points) {
     least = Math.min(least, x)
     most = Math.max(most, x)
   }
+
   return (at / max) * (most - least) + least
 }
 
@@ -210,6 +233,7 @@ export const evaluateGraph = (graph: Graph, t: number, max: number): number => {
   const x = graphX(graph, t, max, true)
   const [lo, hi, span] = interpolate(graph.points, x)
   const weight = span > 0 ? (graph.points[hi]![0] - x) / span : 1
+
   return (1 - weight) * graph.points[hi]![1] + graph.points[lo]![1] * weight
 }
 
@@ -226,6 +250,7 @@ export const evaluateColorGraph = (graph: Graph, t: number, period: number): Vec
   const low = graph.points[lo]![1] >>> 0
   const channel = (shift: number) =>
     Math.trunc(((high >>> shift) & 0xff) * (1 - weight) + ((low >>> shift) & 0xff) * weight) & 0xff
+
   return { x: channel(16), y: channel(8), z: channel(0) }
 }
 
@@ -279,8 +304,10 @@ class LightGrid {
     if (existing) return existing
     if (this.cells >= POOL) return undefined
     this.cells++
+
     const half = Math.trunc(parent.half / 2)
     const made = this.cell(parent.x + dx * half, parent.z + dz * half, half)
+
     parent.children[slot] = made
     return made
   }
@@ -289,19 +316,24 @@ class LightGrid {
   private insert(start: Cell, entry: Entry): void {
     const { range } = entry
     let cell: Cell | undefined = start
+
+    // Children 0..3 stand at (+x, -z), (-x, -z), (+x, +z) and (-x, +z); the last is walked by looping.
     while (range <= cell.half) {
       const x = entry.x - cell.x
       const z = entry.z - cell.z
+
       if (x < range) {
         if (z < range) this.descend(cell, 1, -1, -1, entry)
         if (-z < range) this.descend(cell, 3, -1, 1, entry)
       }
+
       if (range <= -x) return
       if (z < range) this.descend(cell, 0, 1, -1, entry)
       if (range <= -z) return
       cell = this.child(cell, 2, 1, 1)
       if (!cell) return
     }
+
     if (this.entries >= POOL) return
     this.entries++
     cell.entries.unshift(entry)
@@ -316,12 +348,15 @@ class LightGrid {
   collect(cell: Cell | undefined, x: number, z: number, radius: number, into: Cell[]): void {
     if (!cell) return
     if (cell.entries.length) into.push(cell)
+
     const dx = x - cell.x
     const dz = z - cell.z
+
     if (dx < radius) {
       if (dz < radius) this.collect(cell.children[1], x, z, radius, into)
       if (-dz < radius) this.collect(cell.children[3], x, z, radius, into)
     }
+
     if (-dx < radius) {
       if (dz < radius) this.collect(cell.children[0], x, z, radius, into)
       if (-dz < radius) this.collect(cell.children[2], x, z, radius, into)
@@ -342,10 +377,12 @@ const turns = (light: SpaceLight): boolean =>
 /** `EngineLightAffectsPoint` (`0x410a40`). */
 const reaches = (light: SpaceLight, point: Vector3, radius: number): boolean => {
   if (light.type === 'directional' && !turns(light)) return true
+
   const dx = point.x - light.position.x
   const dy = point.y - light.position.y
   const dz = point.z - light.position.z
   const reach = light.range + radius
+
   return reach * reach > dx * dx + dz * dz + dy * dy
 }
 
@@ -357,33 +394,42 @@ const collectLights = (
   most: number,
 ): number[] => {
   const cells: Cell[] = []
+
   grid.collect(grid.root, Math.trunc(position.x), Math.trunc(position.z), Math.trunc(radius), cells)
 
   // Insertion by range, descending, where an equal range goes in front of those already there.
   const sorted: Entry[] = []
+
   for (const cell of cells)
     for (const entry of cell.entries) {
       if (sorted.some(({ light }) => light === entry.light)) continue
+
       let lo = 0
       let hi = sorted.length
+
       while (lo < hi) {
         const mid = Math.trunc((lo + hi) / 2)
+
         if (entry.range < sorted[mid]!.range) lo = mid + 1
         else hi = mid
       }
+
       if (hi >= SORTED_LIMIT) continue
       sorted.splice(hi, 0, entry)
       sorted.length = Math.min(sorted.length, SORTED_LIMIT)
     }
 
   const kept: number[] = []
+
   for (const { light, x, z, range } of sorted) {
     if (kept.length >= most) break
+
     const dx = position.x - x
     const dz = position.z - z
     const reach = range + radius
     if (reach * reach > dz * dz + dx * dx) kept.push(light)
   }
+
   return kept
 }
 
@@ -402,10 +448,11 @@ const nearbyLights = (
 const FORWARD: Vector3 = { x: 0, y: 0, z: -1 }
 
 // `EngineLightPackColorBytes` then back: the colour is whole 1/255 steps.
-const quantize = (value: number): number => Math.min(Math.max(Math.trunc(value), 0), 255) / 255
+const quantize = (value: number): number => clampByte(value) / 255
 
 const unit = ({ x, y, z }: Vector3): Vector3 => {
   const length = Math.hypot(x, y, z)
+
   return { x: x / length, y: y / length, z: z / length }
 }
 
@@ -418,17 +465,21 @@ const effectiveColor = (light: SpaceLight, distance: number, time: number): Vect
     y: quantize(light.color.y),
     z: quantize(light.color.z),
   }
+
   if (light.colorCurve) {
     const { graph, period } = light.colorCurve
     const tint = evaluateColorGraph(graph, Math.fround(time), period)
+
     color = {
       x: (tint.x / 255) * color.x,
       y: (tint.y / 255) * color.y,
       z: (tint.z / 255) * color.z,
     }
   }
+
   if (light.attenuationCurve && light.type !== 'ambient')
     color = scale(color, evaluateGraph(light.attenuationCurve, distance, light.range))
+
   return color
 }
 
@@ -444,10 +495,13 @@ export const directionalLightsAt = (
 ): { found: number; lights: SceneLight[] } => {
   const found = collectLights(grid, position, 100, 16)
   const lit: SceneLight[] = []
+
   for (const index of found) {
     if (lit.length >= MOST_LIGHTS) break
+
     const light = lights[index]!
     if (light.type !== 'directional') continue
+
     const dx = position.x - light.position.x
     const dy = position.y - light.position.y
     const dz = position.z - light.position.z
@@ -455,8 +509,10 @@ export const directionalLightsAt = (
     const direction = turns(light)
       ? unit({ x: dx, y: dy, z: dz })
       : unit(light.direction ?? FORWARD)
+
     lit.push({ color: effectiveColor(light, distance, time), direction })
   }
+
   return { found: found.length, lights: lit }
 }
 
@@ -502,14 +558,18 @@ export const lightObject = (
 ): ObjectLighting => {
   // `EngineLightApplyList` reads the bytes it was given back as floats, and adds ambient lights to them.
   const sum = systemAmbient(ambient)
+
   if (nebula) {
     const { ambient: to, factor } = nebula
     const byte = (value: number) => Math.trunc(value) & 0xff
+
     sum.x = towards(Math.round(sum.x * 255), byte(to.x), factor)
     sum.y = towards(Math.round(sum.y * 255), byte(to.y), factor)
     sum.z = towards(Math.round(sum.z * 255), byte(to.z), factor)
   }
+
   const lit: SceneLight[] = []
+
   for (const index of nearbyLights(grid, lights, position, radius)) {
     const light = lights[index]!
     // `EngineLightApplyNearby` (`0x4104e0`).
@@ -522,12 +582,14 @@ export const lightObject = (
     if (light.type === 'ambient') {
       const curve = light.ambientCurve ?? light.attenuationCurve
       const by = curve ? Math.fround(evaluateGraph(curve, distance, light.range)) : 1
+
       sum.x += color.x * by
       sum.y += color.y * by
       sum.z += color.z * by
       // It has no D3D type to draw as, so adds only to the ambient.
       continue
     }
+
     // Under a byte's worth, it's left off.
     if (color.z + color.y + color.x < 1 / 255) continue
     // A cone from `[LightSource]` has no angles, and D3D's spot falloff gives nothing outside 0°.
@@ -537,6 +599,7 @@ export const lightObject = (
     const direction = turns(light)
       ? unit({ x: dx, y: dy, z: dz })
       : unit(light.direction ?? FORWARD)
+
     if (light.type === 'directional') lit.push({ color, direction })
     else
       lit.push({
@@ -548,6 +611,8 @@ export const lightObject = (
         ...(light.type === 'cone' && { spot: light.spot }),
       })
   }
-  const byte = (value: number) => Math.min(Math.max(Math.trunc(value * 255), 0), 255) / 255
+
+  const byte = (value: number) => unitByte(value) / 255
+
   return { lights: lit, ambient: { x: byte(sum.x), y: byte(sum.y), z: byte(sum.z) } }
 }

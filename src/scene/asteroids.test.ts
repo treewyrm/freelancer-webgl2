@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { Matrix3, Matrix4 } from '@treewyrm/freelancer/math'
+import { Matrix3, Matrix4, Quat, type Vector3 } from '@treewyrm/freelancer/math'
 import { Primitive, type VMeshData, type VMeshRef } from '@treewyrm/freelancer/vmesh'
 import type { Camera } from './camera.js'
 import {
@@ -12,7 +12,9 @@ import {
   mergeCube,
   nearField,
   nearFieldFraction,
+  outsideSquared,
   RETAIL_CUBE_ROTATIONS,
+  type CubeExclusion,
   type CubeField,
 } from './asteroids.js'
 import { zoneOf } from './nebula.js'
@@ -28,6 +30,7 @@ test('a cube centres on half a cube either side of zero, as Common snaps it', ()
 
 test("a cube's id packs its grid cell and signs, and is 0 past the grid", () => {
   const id = cubeId({ x: -1000, y: -600, z: -1000 })
+
   // |x| >> 7 = 7, |y| >> 7 = 4, |z| >> 7 = 7, each with its sign bit.
   assert.equal(id, (((7 | 0x400) << 21) | ((7 | 0x400) << 10) | (4 | 0x200)) >>> 0)
   assert.equal(cubeId({ x: 200000, y: 0, z: 0 }), 0)
@@ -37,19 +40,25 @@ test("a cube's emptiness and turn are its id's alone, at the frequency asked", (
   const id = cubeId({ x: -1000, y: -600, z: -1000 })
   const a = cubeOrientation(id, RETAIL_CUBE_ROTATIONS, 0)!
   const b = cubeOrientation(id, RETAIL_CUBE_ROTATIONS, 0)!
+
   assert.deepEqual(a, b)
+
   // A rotation: its columns are unit and square.
   for (const column of [a.x, a.y, a.z])
     assert.ok(Math.abs(Math.hypot(column.x, column.y, column.z) - 1) < 1e-6)
+
   assert.equal(cubeOrientation(id, RETAIL_CUBE_ROTATIONS, 1), undefined)
+
   // Over many cubes some are left empty, not all: the ids along one axis differ in high bits only,
   // which the LCG mixes poorly, so the share is retail's, not the frequency itself.
   let empty = 0
+
   for (let x = 0; x < 1000; x++)
     if (
       !cubeOrientation(cubeId({ x: x * 400 - 199800, y: 200, z: 200 }), RETAIL_CUBE_ROTATIONS, 0.5)
     )
       empty++
+
   assert.ok(empty > 0 && empty < 1000, `${empty}`)
 })
 
@@ -58,9 +67,12 @@ test("an asteroid's turn is about X, then Y, then Z, applied to its vertices", (
     Matrix4.transformDirection({ x: 0, y: 0, z: 1 }, entryOrientation(x, y, z))
   // A quarter turn about X takes +Z to -Y.
   const r = turn(90, 0, 0)
+
   assert.ok(Math.abs(r.y + 1) < 1e-6 && Math.abs(r.z) < 1e-6, JSON.stringify(r))
+
   // About Y, +Z to +X.
   const s = turn(0, 90, 0)
+
   assert.ok(Math.abs(s.x - 1) < 1e-6, JSON.stringify(s))
 })
 
@@ -87,6 +99,55 @@ test('the walk is near the field or not at all', () => {
   assert.deepEqual(fieldCubes(field(), { ...camera, position: { x: 0, y: 0, z: 9000 } }, 4 / 3), [])
 })
 
+test('test_asteroid_placement draws no cube, however near', () => {
+  assert.ok(fieldCubes(field(), camera, 4 / 3).length > 0)
+  assert.deepEqual(fieldCubes(field({ testPlacement: true }), camera, 4 / 3), [])
+})
+
+test('a box exclusion is always asked, however far its centre sees the camera (`0x62bc4e0`)', () => {
+  // Li01's lanes through the Badlands: a long thin box, the camera 100 beside its end. From its
+  // centre the camera is some 5000 outside, past the walk's (1650 · 1.25)² cut-off.
+  const lane: CubeExclusion = {
+    zone: zoneOf({
+      type: 'box',
+      center: { x: 0, y: 0, z: -25000 },
+      orientation: Quat.identity,
+      size: { x: 800, y: 800, z: 50000 },
+    }),
+  }
+  const eye = { ...camera, position: { x: 500, y: 0, z: 0 } }
+  const inLane = ({ position: { x, y, z } }: { position: Vector3 }) =>
+    Math.abs(x) < 400 && Math.abs(y) < 400 && z < 0 && z > -50000
+  const open = fieldCubes(field(), eye, 4 / 3)
+
+  assert.ok(open.some(inLane), 'cubes stand where the lane will be')
+  assert.equal(outsideSquared(lane, eye.position), 0)
+  assert.deepEqual(fieldCubes(field({ exclusions: [lane] }), eye, 4 / 3).filter(inLane), [])
+})
+
+test('a sphere is measured by its radius and an ellipsoid by its reach toward the camera', () => {
+  const at = { x: 0, y: 0, z: 3000 }
+  const sphere = zoneOf({ type: 'sphere', center: { x: 0, y: 0, z: 0 }, radius: 1000 })
+  const ellipsoid = zoneOf({
+    type: 'ellipsoid',
+    center: { x: 0, y: 0, z: 0 },
+    orientation: Quat.identity,
+    radii: { x: 500, y: 500, z: 2000 },
+  })
+  const cylinder = zoneOf({
+    type: 'cylinder',
+    center: { x: 0, y: 0, z: 0 },
+    orientation: Quat.identity,
+    radius: 100,
+    height: 100,
+  })
+
+  assert.equal(outsideSquared({ zone: sphere }, at), 2000 * 2000)
+  assert.equal(outsideSquared({ zone: ellipsoid }, at), 1000 * 1000)
+  assert.equal(outsideSquared({ zone: cylinder }, at), 0)
+  assert.equal(outsideSquared({ zone: sphere }, { x: 0, y: 0, z: 10 }), 0)
+})
+
 test('near_field_fraction is 1 at the surface, 0 a distance past it, and over 1 within', () => {
   // 1000 inside: unclamped, 2.
   assert.equal(nearFieldFraction(field(), { x: 0, y: 0, z: 0 }, 1000), 2)
@@ -106,13 +167,16 @@ test('cubes fill the view ahead, out to fill_dist, fading over the last half cub
   // A fill of 1500 reaches 2000 from a point 500 behind the camera: the row at -1400, 1900 deep,
   // is in the last half cube.
   const cubes = fieldCubes(field({ fillDistance: 1500 }), camera, 4 / 3)
+
   assert.ok(cubes.length > 50, `${cubes.length}`)
+
   for (const { position, alpha } of cubes) {
     // Ahead, but for the camera's own cube, and no further than the reach.
     assert.ok(position.z < 400, JSON.stringify(position))
     assert.ok(-position.z <= 1500 + 400, JSON.stringify(position))
     assert.ok(alpha > 0 && alpha <= 1)
   }
+
   assert.ok(cubes.some(({ alpha }) => alpha < 1))
 })
 
@@ -120,6 +184,7 @@ test('an exclusion zone takes its cubes, or thins them to its own frequency', ()
   const hole = zoneOf({ type: 'sphere', center: { x: 0, y: 0, z: -1200 }, radius: 600 })
   const inHole = ({ position: p }: { position: { x: number; y: number; z: number } }) =>
     Math.hypot(p.x, p.y, p.z + 1200) < 600
+
   assert.ok(fieldCubes(field(), camera, 4 / 3).some(inHole))
   assert.ok(!fieldCubes(field({ exclusions: [{ zone: hole }] }), camera, 4 / 3).some(inHole))
   // Its own frequency of 1 empties them too; of 0, none.
@@ -143,6 +208,7 @@ const rock = (format: number): { mesh: VMeshData; reference: VMeshRef } => {
   const vertices = new Float32Array(3 * floats).map(
     (_, at) => (at % floats) + Math.floor(at / floats) * 100,
   )
+
   return {
     mesh: {
       name: 'rock',
@@ -175,11 +241,22 @@ test("a cube copies each asteroid as retail's FVF 0x252 does: position, normal, 
     { ...rock(0x212), ...at },
     { ...rock(0x112), ...at },
   ])!
+
   assert.equal(merged.mesh.format, 0x112)
+
   const floats = new Float32Array(merged.mesh.vertices.buffer)
+
   // The 0x212 rock's second UV set (its slots 8 and 9) is dropped.
   assert.deepEqual([...floats.subarray(0, 8)], [0, 1, 2, 3, 4, 5, 6, 7])
   assert.deepEqual([...floats.subarray(8 * 3, 8 * 4)], [0, 1, 2, 3, 4, 5, 6, 7])
   assert.deepEqual([...merged.mesh.indices], [0, 1, 2, 3, 4, 5])
   assert.equal(merged.mesh.groups[0]!.materialId, 7)
+})
+
+test('counts the centres it asks of the zone, of which it draws no more', () => {
+  const counted = { tested: 0 }
+  const cubes = fieldCubes(field(), camera, 4 / 3, counted)
+
+  assert.ok(counted.tested > 0)
+  assert.ok(cubes.length <= counted.tested + 1, `${cubes.length} of ${counted.tested}`)
 })

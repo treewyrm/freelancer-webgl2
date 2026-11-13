@@ -112,13 +112,21 @@ export const smallestDustZone = (
 ): DustZone | undefined => {
   let best: DustZone | undefined
   let least = 1e20
+
   for (const candidate of zones) {
     const { radius } = candidate.zone
     if (!(radius < least) || !candidate.zone.holds(point)) continue
     best = candidate
     least = radius
   }
+
   return best
+}
+
+/** Dead, and its instance released: out of the walk, its share of the pools given back. */
+const end = (held: Held): void => {
+  held.dead = true
+  held.effect.instance.release()
 }
 
 export class SpaceDust {
@@ -177,7 +185,7 @@ export class SpaceDust {
    */
   #kill(held: Held | undefined): void {
     if (!held || held.dead) return
-    if (!held.placement) return
+    if (!held.placement) return end(held)
     held.effect.instance.stop()
     if (held.runTime < 0 || held.runTime > 1) held.runTime = 1
     this.#link(held)
@@ -208,14 +216,27 @@ export class SpaceDust {
     this.#fadingParticles = 0
   }
 
-  /** The dust's frame: the camera's, `offset` along its Z (`FUN_0054c320`). */
+  /** Every effect it holds, released at once: for a host done with this dust. */
+  release(): void {
+    for (const held of [this.#system, this.#zone, this.#fading, ...this.#ending])
+      if (held && !held.dead) end(held)
+
+    this.#system = this.#zone = this.#fading = undefined
+    this.#ending = []
+  }
+
+  /**
+   * The dust's frame: the camera's, `offset` along its Z (`FUN_0054c320`). That axis is the
+   * orientation's third column, `(x.z, y.z, z.z)`.
+   */
   frame({ position, orientation }: Camera): DustFrame {
     const along = this.limits.offset
     const point = {
-      x: f(f(orientation.z.x * along) + position.x),
-      y: f(f(orientation.z.y * along) + position.y),
+      x: f(f(orientation.x.z * along) + position.x),
+      y: f(f(orientation.y.z * along) + position.y),
       z: f(f(orientation.z.z * along) + position.z),
     }
+
     return { world: Matrix4.fromRotationTranslation(orientation, point), position: point }
   }
 
@@ -234,19 +255,23 @@ export class SpaceDust {
     { detail = 1, background = true, runTimes }: DustOptions = {},
   ): void {
     const limits = this.limits
+
     // No early return: what's dropped is started again below, each frame (`0x54becb`).
     if (!background && (this.#system || this.#zone || this.#fading)) {
       this.#dropZones()
       this.#kill(this.#system)
       this.#system = undefined
     }
+
     const placement = this.frame(camera)
     const point = placement.position
+
     if (detail > limits.detailThreshold) {
       const found = smallestDustZone(zones, point)
       const name = found?.dust ?? ''
       const particles = found ? found.maxParticles || limits.defaultZoneParticles : 0
       const blend = found ? f(immersion(found.zone, found.edgeFraction ?? 0, point)) : 1
+
       // `StringAlloc` interns without case, so the pointers compare that way.
       if (name.toLowerCase() !== this.#zoneName.toLowerCase()) {
         this.#zoneName = name
@@ -255,17 +280,22 @@ export class SpaceDust {
         this.#fadingParticles = this.#zoneParticles
         this.#zone = name ? this.#create(name, runTimes) : undefined
       }
+
       this.#zoneParticles = particles
+
       if (this.#fading) {
         const fade = this.#fadingParticles * limits.intensityPerParticle * (1 - blend)
+
         if (!(fade <= limits.fadeCutoff)) this.#place(this.#fading, placement, f(fade))
         else {
           this.#kill(this.#fading)
           this.#fading = undefined
         }
       }
+
       if (this.#zone) {
         const level = this.#zoneParticles * limits.intensityPerParticle * blend
+
         this.#place(this.#zone, placement, f(level))
       }
     } else this.#dropZones()
@@ -273,6 +303,7 @@ export class SpaceDust {
     if (this.#system) {
       const { full, none } = this.#systemParticles
       const level = ((1 - detail) * none + full * detail) * limits.systemIntensityPerParticle
+
       this.#place(this.#system, placement, f(level))
     } else if (this.system) this.#system = this.#create(this.system, runTimes)
 
@@ -282,6 +313,7 @@ export class SpaceDust {
   /** Every effect held or ending, linked and alive. */
   #walked(): Held[] {
     const held = [this.#fading, this.#zone, this.#system, ...this.#ending]
+
     return held.filter((each): each is Held => !!each && each.linked && !each.dead)
   }
 
@@ -293,22 +325,26 @@ export class SpaceDust {
   #run(camera: Camera, step: number): void {
     const dt = step > this.limits.maxStep ? this.limits.maxStep : step
     const view = viewMatrix(camera)
+
     for (const held of this.#walked()) {
       if (held.runTime > 0) {
         held.runTime = f(held.runTime - dt)
+
         if (held.runTime <= 0) {
-          held.dead = true
+          end(held)
           continue
         }
       }
+
       held.effect.instance.advance(dt, {
         sparam: held.intensity,
         lod: held.lod,
         ...(held.placement && { placement: held.placement.world }),
         view,
       })
-      if (held.effect.instance.finished) held.dead = true
+      if (held.effect.instance.finished) end(held)
     }
+
     this.#ending = this.#ending.filter(({ dead }) => !dead)
   }
 
@@ -336,7 +372,7 @@ export class SpaceDust {
         const view = views[at]
         if (!view) return
         held.lod = view.lod
-        if (view.fate === 'die') held.dead = true
+        if (view.fate === 'die') end(held)
       })
     this.#ending = this.#ending.filter(({ dead }) => !dead)
   }

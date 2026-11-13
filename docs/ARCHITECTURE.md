@@ -1,6 +1,6 @@
 # Architecture
 
-**A proposal until M2 has tested it.** Revise it whenever the code teaches otherwise.
+Revise it whenever the code teaches otherwise.
 
 ## Shape
 
@@ -36,7 +36,7 @@ appear only in the comparator that translates a capture, so that nothing else in
 ## Materials
 
 **One small program per family, not a fixed-function emulator.** A generic combiner shader driven by
-state tables would be the same transcription as `freelancer-render`, in GLSL.
+state tables would only transcribe the original, in GLSL.
 
 - A material module turns library data into a program, parameters and state, in GL terms.
 - Shared GLSL fragments cover what really is common: the fixed-function lighting model, fog, alpha test.
@@ -54,15 +54,19 @@ its own `collect`. Previews have no game frame to match: there the host chooses 
 
 ## Skinning and effects
 
-Both keep the extension's GPU-heavy design ([ADAPTING.md](ADAPTING.md)). Skinned meshes are ordinary
-draws with a bone table. An effect's simulation is CPU state advanced by the host's `dt`, and each appearance
-adds a draw to `Frame.effects`, in the game's tree order. A particle nothing pushes is its birth record,
-which the vertex stage carries to now, along with its curves. A pushed one steps on the CPU.
+Skinned meshes are ordinary draws with a bone table, root-relative and sized from the model. An
+effect's simulation is CPU state advanced by the host's `dt`, as retail's is, and each appearance adds a
+draw to `Frame.effects`, in the game's tree order. A particle nothing pushes is its birth record, which
+the vertex stage carries to now, along with its curves. A pushed one steps on the CPU.
+
+No transform feedback and no fixed-step closed form: `npm run bench` puts every effect in a retail
+system under 0.75 ms a frame on a CPU throttled 4x. Bring either back only on a measurement from a real
+scene.
 
 ## Host boundary
 
-- **Input is explicit.** The host passes time and a random seed; nothing reads a clock or
-  `Math.random`. This makes frames reproducible and comparable with captures.
+- **Input is explicit.** The host passes time and a random source; nothing reads a clock. A class
+  given no `random` falls back to `Math.random`, so a host wanting reproducible frames passes one.
 - **What retail hardcodes is a default, not a constant**, where a mod can patch it: `RETAIL_FRAME_LIMITS`,
   `RETAIL_SPACE_LIMITS`, `RETAIL_SPHERE_LEVELS`, `RETAIL_SWITCH_FOVX`, `RETAIL_POOLS`. A host passes its own, so an editor's settings can match the mod.
 - **The host owns** canvas size, scheduling, file loading, resolution order and editor state.

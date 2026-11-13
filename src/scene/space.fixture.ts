@@ -45,8 +45,12 @@ export interface SpaceReport {
    * the main list over a square in front of it; and a grey one without alpha over dim green.
    */
   suns: { behind: number[][]; over: number[]; screen: number[] }
+  /** A white screen quad over the view at W 150: plain, then under black fog from 0 to 300. */
+  quadFog: number[][]
   /** A white corona added over a green square in front of its sun: the middle, then a bare corner. */
   corona: number[][]
+  /** The same, then a blue quad at window depth 0.8 from the `end` hook, `LESS`: the middle. */
+  coronaDepth: number[]
   /**
    * From the ship, down a straight gate tunnel over the jump's white clear: the middle, open, then a
    * corner on its wall, an opaque blue layer under a green one at 31 / 255 added `ONE, INVSRCALPHA`.
@@ -110,6 +114,7 @@ const square = (
 ): SpaceObject => {
   const material: Material = { ...MATERIAL, diffuse: { x: color[0], y: color[1], z: color[2] } }
   const position = { x: 0, y: 0, z: -distance }
+
   return {
     position,
     sphere: { center: position, radius: 1.5 * scale },
@@ -131,6 +136,50 @@ const square = (
   }
 }
 
+/** A blue quad over the whole view at clip depth `z`, tested `LESS`, as a host's overlay is. */
+const depthQuad = (gl: WebGL2RenderingContext, z: number) => {
+  const shader = (type: number, source: string) => {
+    const made = gl.createShader(type)!
+
+    gl.shaderSource(made, source)
+    gl.compileShader(made)
+    return made
+  }
+
+  const program = gl.createProgram()!
+
+  gl.attachShader(
+    program,
+    shader(
+      gl.VERTEX_SHADER,
+      `#version 300 es
+      void main() {
+        vec2 corner = vec2(gl_VertexID & 1, gl_VertexID >> 1) * 4.0 - 1.0;
+        gl_Position = vec4(corner, ${z.toFixed(3)}, 1.0);
+      }`,
+    ),
+  )
+  gl.attachShader(
+    program,
+    shader(
+      gl.FRAGMENT_SHADER,
+      `#version 300 es
+      precision mediump float;
+      out vec4 color;
+      void main() { color = vec4(0.0, 0.0, 1.0, 1.0); }`,
+    ),
+  )
+  gl.linkProgram(program)
+  gl.useProgram(program)
+  gl.disable(gl.BLEND)
+  gl.disable(gl.CULL_FACE)
+  gl.enable(gl.DEPTH_TEST)
+  gl.depthFunc(gl.LESS)
+  gl.depthMask(false)
+  gl.drawArrays(gl.TRIANGLES, 0, 3)
+  gl.deleteProgram(program)
+}
+
 const SOLAR = { solar: { large: true } }
 const RED: [number, number, number] = [1, 0, 0]
 const GREEN: [number, number, number] = [0, 1, 0]
@@ -138,11 +187,14 @@ const GREEN: [number, number, number] = [0, 1, 0]
 export default (async (gl) => {
   const renderer = createRenderer(gl)
   const { width, height } = gl.canvas
+
   const read = (x: number, y: number): number[] => {
     const pixel = new Uint8Array(4)
+
     gl.readPixels(x, y, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixel)
     return [...pixel.subarray(0, 3)]
   }
+
   const shot = (
     objects: SpaceObject[],
     lighting?: Pick<SpaceScene, 'ambient' | 'lights'>,
@@ -218,6 +270,7 @@ export default (async (gl) => {
     zone: zoneOf({ type: 'sphere', center: { x: 0, y: 0, z: 0 }, radius: 400 }),
     fog: { distance: 200, color: { x: 0.5, y: 0.25, z: 1 } },
   } as const
+
   const fogShot = (objects: SpaceObject[], effects: SpaceScene['effects'], nebulae = [nebula]) => {
     renderer.render(
       collectSpaceFrame({
@@ -238,6 +291,7 @@ export default (async (gl) => {
     )
     return read(width >> 1, height >> 1)
   }
+
   // Red at half alpha, over black, at the nebula's centre.
   const quad = sceneOf([
     {
@@ -256,11 +310,14 @@ export default (async (gl) => {
       targets: ['a'],
     },
   ]).scene
+
   const effect = () => {
     const instance = new EffectInstance(quad)
+
     instance.advance(1 / 60)
     return [{ type: 0, instance, texture: () => undefined }]
   }
+
   const fogged = {
     // 50 from the camera, 250 from the centre.
     square: fogShot([square([1, 1, 1], -250, -250, 30)], []),
@@ -271,6 +328,7 @@ export default (async (gl) => {
   // The quad at the origin, and a white square in its plane, 300 ahead.
   // Black, as the effect adds.
   const plane = square([0, 0, 0], -0.5, 0, 30)
+
   const coplanarAt = (effectDepthFunc?: 'less') => {
     const frame = collectSpaceFrame({
       camera: {
@@ -286,9 +344,11 @@ export default (async (gl) => {
       objects: [plane],
       effects: effect(),
     })
+
     renderer.render(effectDepthFunc ? { ...frame, effectDepthFunc } : frame)
     return read(width >> 1, height >> 1)
   }
+
   const coplanar = { space: coplanarAt(), less: coplanarAt('less') }
 
   // A 1×1 texture of one colour.
@@ -304,6 +364,7 @@ export default (async (gl) => {
       levels: [new Uint8Array([r, g, b, 255])],
     }) as Texture
   const white = textureShape(solid('white', [255, 255, 255]), {})
+
   // Its band, 50 to 150 from its centre, passes through the middle of the view.
   const ringShot = (exterior: RingExterior) => {
     const ring = buildRing(exterior, {
@@ -314,6 +375,7 @@ export default (async (gl) => {
       innerRadius: 50,
       height: 10,
     })
+
     renderer.render(
       collectSpaceFrame({
         camera: {
@@ -332,6 +394,7 @@ export default (async (gl) => {
     )
     return read(width >> 1, height >> 1)
   }
+
   const red = { x: 1, y: 0, z: 0 }
   const ring = {
     // No detail: the opacity halves, so half red over black.
@@ -365,6 +428,7 @@ export default (async (gl) => {
         ambient: { x: 1, y: 1, z: 1 },
       },
     )
+
     renderer.render(
       collectSpaceFrame({
         camera: {
@@ -399,6 +463,7 @@ export default (async (gl) => {
     )
     return read(width >> 1, height >> 1)
   }
+
   const band = { drawn: bandShot(0), culled: bandShot(2) }
 
   // A red nebula of 2100 about a point 2000 ahead, the camera 100 into its fog of 1000, and a green
@@ -429,18 +494,21 @@ export default (async (gl) => {
     )
     return read(width >> 1, height >> 1)
   }
+
   const sheets = { unfilled: sheetsShot(false), filled: sheetsShot(true) }
 
   // A sun `distance` straight ahead, its glow a square of one texel twice `radius` across.
   const sunAt = (distance: number, texture: Texture, radius = 1000): SpaceObject => {
     const star: Star = { radius, glow: { shape: textureShape(texture, {}) } }
     const position = { x: 0, y: 0, z: -distance }
+
     return {
       ...square([0, 0, 0], distance, distance, 1, SOLAR),
       star,
       sphere: { center: position, radius: starRadius(star) },
     }
   }
+
   const redGlow = solid('red', [255, 0, 0])
   // 128 grey in a 24-bit Targa, which uploads as R5G6B5: 16 / 31 and 32 / 63.
   const greyGlow = {
@@ -455,12 +523,47 @@ export default (async (gl) => {
     screen: shot([sunAt(400, greyGlow), square([0, 0.5, 0], 500, 500, 1000)])[0]!,
   }
 
+  // One white quad over the whole view, 150 deep, as a light's flare is queued.
+  const quadFrame = collectSpaceFrame({
+    camera: {
+      position: { x: 0, y: 0, z: 0 },
+      orientation: Matrix3.identity,
+      fovh: 45,
+      near: 1,
+      far: 1,
+    },
+    aspect: width / height,
+    ambient: { x: 0, y: 0, z: 0 },
+    lights: [],
+    objects: [],
+  })
+  const screenQuads = [
+    {
+      texture: solid('white', [255, 255, 255]),
+      quads: [
+        {
+          ...{ x0: -1, y0: -1, x1: width + 1, y1: height + 1 },
+          ...{ z: 0.5, rhw: 1 / 150, u0: 0, v0: 0, u1: 1, v1: 1, color: 0xffffffff },
+        },
+      ],
+    },
+  ]
+
+  renderer.render({ ...quadFrame, screenQuads })
+
+  const plainQuad = read(width >> 1, height >> 1)
+  const blackFog = { color: { x: 0, y: 0, z: 0 }, start: 0, end: 300 }
+
+  renderer.render({ ...quadFrame, screenQuads, effectFog: blackFog })
+
+  const quadFog = [plainQuad, read(width >> 1, height >> 1)]
+
   // A sun 4000 ahead behind a green square, its glow unshaped: only its corona, 8 pixels across.
   const coronaSun: SpaceObject = {
     ...sunAt(4000, redGlow),
     star: { radius: 1000, lensGlow: { shape: textureShape(solid('white', [255, 255, 255]), {}) } },
   }
-  renderer.render(
+  const coronaFrame = () =>
     collectSpaceFrame({
       camera: {
         position: { x: 0, y: 0, z: 0 },
@@ -476,9 +579,16 @@ export default (async (gl) => {
       viewport: { width, height },
       sunEffect: 1,
       step: 0.1,
-    }),
-  )
+    })
+
+  renderer.render(coronaFrame())
+
   const corona = [read(width >> 1, height >> 1), read(4, 4)]
+
+  // What a host draws over it: a quad nearer than the square, 0.8 to its 0.998.
+  renderer.render(coronaFrame(), { end: () => depthQuad(gl, 0.6) })
+
+  const coronaDepth = read(width >> 1, height >> 1)
 
   // Every curve at its most: brightness 1, no wander, a radius of 50 all along. The window ends
   // 0.1 of the path ahead, 178, where the opening still covers the middle pixel.
@@ -506,10 +616,13 @@ export default (async (gl) => {
     },
     { random: () => 0x7fff },
   )
+
   tunnel.setState(1)
   tunnel.setState(2)
   tunnel.update(1 / 60)
+
   const ship = tunnel.ship!.w
+
   renderer.render(
     collectSpaceFrame({
       camera: { position: ship, orientation: Matrix3.identity, fovh: 45, near: 1, far: 1 },
@@ -525,6 +638,7 @@ export default (async (gl) => {
       },
     }),
   )
+
   const tunnelPixels = [read(width >> 1, height >> 1), read(0, 0)]
 
   // A spear across the view at 10 ahead: -Z along +X, its length 100 each way at its first full size.
@@ -545,8 +659,10 @@ export default (async (gl) => {
     y: { x: 0, y: 0, z: 1 },
     z: { x: -1, y: 0, z: 0 },
   }
+
   const shotScene = (position: { x: number; y: number; z: number }) => {
     const beam = new BeamEffect(arch, { orientation: across, position, speed: 1e5 })
+
     return {
       camera: {
         position: { x: 0, y: 0, z: 0 },
@@ -563,19 +679,26 @@ export default (async (gl) => {
       step: 0.05,
     }
   }
+
   const shotFrame = (scene: SpaceScene) => {
     // A shot's first frame is its smallest: this is its second.
     collectSpaceFrame(scene)
     return collectSpaceFrame(scene)
   }
+
   const greenBehind = square([0, 1, 0], 20, 20, 100)
+
   renderer.render(shotFrame({ ...shotScene({ x: 0, y: 0, z: -10 }), objects: [greenBehind] }))
+
   const over = read(width >> 1, height >> 1)
   const beside = read(width >> 1, 2)
+
   renderer.render(shotFrame({ ...shotScene({ x: 0, y: 0, z: -30 }), objects: [greenBehind] }))
+
   const hidden = read(width >> 1, height >> 1)
   // Past the fog's end, in its black: what's added is nothing.
   const foggedShot = shotFrame({ ...shotScene({ x: 0, y: 0, z: -10 }), objects: [] })
+
   renderer.render({
     ...foggedShot,
     beams: {
@@ -583,6 +706,7 @@ export default (async (gl) => {
       fog: { start: 0, end: 1, color: { x: 0, y: 0, z: 0 } } as never,
     },
   })
+
   const foggedBeam = read(width >> 1, height >> 1)
 
   // A red tractor across the view, no stray, its loot far past the tip.
@@ -601,27 +725,39 @@ export default (async (gl) => {
     lineTexture: solid('line', [255, 255, 255]),
     tractorLimits: { jitter: 0, endJitter: 0 },
   })
+
   renderer.render(collectSpaceFrame(tractorScene(-10)))
+
   const tractorOver = read(width >> 1, height >> 1)
   const tractorBeside = read(width >> 1, 2)
+
   renderer.render(collectSpaceFrame(tractorScene(-300)))
+
   const tractorHidden = read(width >> 1, height >> 1)
 
   // A frame's own mesh goes when it's drawn, so the live count doesn't grow with the frames.
   const buffers: WebGLBuffer[] = []
   const createBuffer = gl.createBuffer.bind(gl)
+
   gl.createBuffer = () => {
     const buffer = createBuffer()
+
     buffers.push(buffer)
     return buffer
   }
+
   const liveBuffers = () => buffers.filter((buffer) => gl.isBuffer(buffer)).length
   const burst = shotScene({ x: 0, y: 0, z: -10 })
+
   renderer.render(collectSpaceFrame({ ...burst, objects: [] }))
+
   const liveOnce = liveBuffers()
+
   for (let frame = 0; frame < 40; frame++)
     renderer.render(collectSpaceFrame({ ...burst, objects: [] }))
+
   const beamBuffers = liveBuffers() - liveOnce
+
   gl.createBuffer = createBuffer
 
   // Red is 5 ahead, and the mesh, green, 50: only the depth clear lets it show. Glass at half blends
@@ -644,9 +780,13 @@ export default (async (gl) => {
     })
   const cockpitModel = square([0, 1, 0], 50, 50, 100).model
   const sphere = { center: { x: 0, y: 0, z: 0 }, radius: 100 }
+
   renderer.render(pass({ cockpit: { model: cockpitModel, sphere } }))
+
   const cockpitMesh = read(width >> 1, height >> 1)
+
   renderer.render(pass({}))
+
   const bare = read(width >> 1, height >> 1)
   const glass = {
     ...square([0, 0, 1], 2, 2, 100).model,
@@ -657,9 +797,13 @@ export default (async (gl) => {
       opacity: 0.5,
     }),
   }
+
   renderer.render(pass({ hud: true, cockpit: { model: glass, sphere } }))
+
   const glassOver = read(width >> 1, height >> 1)
+
   renderer.render(pass({ hud: true, effectsOff: true, cockpit: { model: glass, sphere } }))
+
   const glassAtEnd = read(width >> 1, height >> 1)
 
   renderer.dispose()
@@ -669,6 +813,8 @@ export default (async (gl) => {
     beamBuffers,
     tractor: { over: tractorOver, beside: tractorBeside, hidden: tractorHidden },
     corona,
+    coronaDepth,
+    quadFog,
     tunnel: tunnelPixels,
     suns,
     sheets,

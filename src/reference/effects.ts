@@ -104,6 +104,7 @@ const transform = (position?: Triple, rotation: Triple = [0, 0, 0]): Property =>
 
 const named = (type: string, name: string, properties: Property[]): Node => {
   const node = { type, properties: [] } as unknown as Node
+
   setNodeName(node, name)
   node.properties.push(...properties)
   return node
@@ -170,6 +171,7 @@ const basic = (name: string, extra: Property[] = [], alpha = 1, span = FOREVER) 
 
 const crcOf = (node: Node): number => {
   const name = node.properties.find((one) => one.name === 'Node_Name')
+
   return getResourceId(name!.value as string, true)
 }
 
@@ -182,6 +184,7 @@ interface Pair {
   beside?: boolean
 }
 
+// `sort` counts creation order and `id` is that plus one.
 const instanceOf = (counter: { sort: number }, node: Node): NodeInstance => ({
   crc: crcOf(node),
   flags: 0,
@@ -203,11 +206,16 @@ const effectOf = (name: string, under: Pair[], beside: Pair[] = []): Effect => {
     targets: [],
   }
   const top: NodeInstance[] = [root]
+
+  // Wires emitters to their appearances and those to their fields through `targets`; the
+  // appearances sit beside the root when `beside`, else with the fields and emitters in `into`.
   const link = (pair: Pair, into: NodeInstance[]) => {
     const apps = [pair.app].flat().map((node) => instanceOf(counter, node))
     const fields = (pair.fields ?? []).map((node) => instanceOf(counter, node))
     for (const app of apps) app.targets = fields
+
     const emitters = [pair.emitter].flat().map((node) => instanceOf(counter, node))
+
     for (const emitter of emitters) emitter.targets = apps
     ;(pair.beside ? top : into).push(...apps)
     into.push(...fields, ...emitters)
@@ -236,7 +244,10 @@ const alchemyOf = (
   effects: { version: VERSION, effects: [effect, ...others.map((other) => other.effect)] },
 })
 
-/** Where each of `sprites` stands: clear of the menu, a grid of 8 at 60 from the camera. */
+/**
+ * Where each of `sprites` stands: clear of the menu, a grid of 8 at 60 from the camera. Five to a
+ * row, 8 apart, rows going down.
+ */
 const grid = (at: number): Triple => [-6 + (at % 5) * 8, 14 - Math.floor(at / 5) * 8, 0]
 
 /** Each routine at rest. A velocity of 0.001 gives the ones that read it a heading, and barely moves. */
@@ -272,7 +283,7 @@ const sprites = (): Alchemy => {
       (name) => basic(name, [float('BasicApp_Rotate', 0.5), float('BasicApp_HToVAspect', 0.5)]),
       1,
     ),
-    // The decomp and retail disagree on this one: see ADAPTING.md.
+    // The decomp and retail disagree on this one: see DECOMP-ERRORS.md.
     pair('lab_triangle', (name) => basic(name, [flag('BasicApp_QuadTexture', false)]), 2),
     pair(
       'lab_tri_texture',
@@ -311,6 +322,7 @@ const sprites = (): Alchemy => {
       9,
     ),
   ]
+
   return alchemyOf(effectOf('lab_sprites', pairs), pairs)
 }
 
@@ -324,6 +336,7 @@ const folder = (): Alchemy => {
     app: basic('lab_beside.app'),
     emitter: oneShot('lab_beside.emt', [6, 0, 0]),
   }
+
   return alchemyOf(effectOf('lab_folder', [under], [beside]), [under, beside])
 }
 
@@ -367,6 +380,7 @@ const motion = (): Alchemy => {
     emitter: oneShot('lab_perp_x.emt', [10, 10, 0], { pressure: 1, rotation: [0, 0, -90] }),
   }
   const pairs = [blur, stretch, beam, perpX]
+
   return alchemyOf(effectOf('lab_motion', pairs), pairs)
 }
 
@@ -406,6 +420,7 @@ const beams = (): Alchemy => {
       fields: [anchor('dupe', 24)],
     },
   ]
+
   return alchemyOf(effectOf('lab_beams', pairs), pairs)
 }
 
@@ -448,6 +463,7 @@ const child = (): Alchemy => {
       emitter: oneShot('lab_dying.emt', [24, 2, 0], { life: 2 }),
     },
   ]
+
   return alchemyOf(effectOf('lab_child', pairs), pairs, [
     { effect: effectOf('lab_child_life', [life]), pairs: [life] },
     { effect: effectOf('lab_child_death', [death]), pairs: [death] },
@@ -480,6 +496,7 @@ const oriented = (): Alchemy => {
       emitter: oneShot('lab_keyed.emt', [18, 10, 0]),
     },
   ]
+
   return alchemyOf(effectOf('lab_oriented', pairs), pairs)
 }
 
@@ -533,6 +550,7 @@ const fields = (): Alchemy => {
     emitter: oneShot('lab_blown.emt', [-10, -12, 0], { frequency: 3, initial: 0, life: 0.5 }),
   }
   const pairs = [aged, air]
+
   return alchemyOf(effectOf('lab_fields', pairs), pairs)
 }
 
@@ -549,6 +567,7 @@ const pool = (): Alchemy => {
       emitter: oneShot('lab_pool_b.emt', [8, 0, 0], { initial: 100 }),
     },
   ]
+
   return alchemyOf(effectOf('lab_pool', pairs), pairs)
 }
 
@@ -580,6 +599,7 @@ const dust = (): Alchemy => {
       curve('SphereEmitter_MaxRadius', 40),
     ]),
   }
+
   return alchemyOf(effectOf('lab_dust', [pair]), [pair])
 }
 
@@ -594,4 +614,5 @@ export const GENERATED_EFFECTS = {
   pool,
   dust,
 } as const
+
 export type GeneratedEffect = keyof typeof GENERATED_EFFECTS

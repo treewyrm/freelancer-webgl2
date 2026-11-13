@@ -32,6 +32,7 @@ const modelViewOf = ({ world }: CaptureDraw): Matrix4 => {
     z: -w[at + 2]!,
     w: last,
   })
+
   return { x: column(0, 0), y: column(4, 0), z: column(8, 0), w: column(12, 1) }
 }
 
@@ -88,11 +89,13 @@ test(
           camera: CAMERA,
           width: draws[0]!.viewport[2]!,
         })
+
         assert.equal(parts.length, retail.length)
         assert.equal(parts[0]!.mesh, spherePatch(radius, level).mesh)
 
         parts.forEach(({ world }, face) => {
           const theirs = modelViewOf(retail[face]!)
+
           for (const axis of ['x', 'y', 'z', 'w'] as const)
             for (const cell of ['x', 'y', 'z'] as const)
               assert.ok(
@@ -106,6 +109,7 @@ test(
 
 test('the faces carry M0..M5, by which textures retail bound', { skip }, () => {
   const draws = frames().at(-1)!.draws
+
   const planet = (primitives: number, radius: number, sides: string[]) => {
     const retail = facesOf(surfaceOf(draws, primitives))
     const parts = placeSphere(
@@ -113,17 +117,21 @@ test('the faces carry M0..M5, by which textures retail bound', { skip }, () => {
       baseOf(modelViewOf(retail.at(-1)!)),
       { camera: CAMERA, width: draws[0]!.viewport[2]! },
     )
+
     return parts.map(({ materialId }, face) => ({
       material: sides.findIndex((side) => getResourceId(side) === materialId),
       texture: retail[face]!.stages[0]!.texture!.pointer,
     }))
   }
+
   for (const faces of [planet(512, 1000, SIDES), planet(64, 200, SIDES)]) {
     const textureOf = new Map<number, number>()
+
     for (const { material, texture } of faces) {
       if (textureOf.has(material)) assert.equal(texture, textureOf.get(material))
       textureOf.set(material, texture)
     }
+
     // `side1`, `side2` and `cap` are three textures, so nothing's right by every face being alike.
     assert.equal(new Set(textureOf.values()).size, new Set(textureOf.keys()).size)
   }
@@ -131,9 +139,11 @@ test('the faces carry M0..M5, by which textures retail bound', { skip }, () => {
 
 test('the patches are the ones retail drew, index for index', { skip }, () => {
   const draws = frames().at(-1)!.draws
+
   for (const { radius, primitives, level } of PLANETS) {
     const [draw] = surfaceOf(draws, primitives)
     const { mesh, reference } = spherePatch(radius, level)
+
     assert.equal(draw!.vertices, reference.vertexCount)
     assert.equal(draw!.indices, mesh.indices.length)
     // The log stops at 1024.
@@ -145,10 +155,12 @@ test('level 5 is the patch retail drew, vertex for vertex', { skip }, () => {
   const [draw] = surfaceOf(frames().at(-1)!.draws, 64)
   const { vertices } = spherePatch(200, 5).mesh
   const ours = new Float32Array(vertices.buffer, vertices.byteOffset, vertices.byteLength / 4)
+
   assert.equal(draw!.vertexData!.length, 41)
   draw!.vertexData!.forEach(({ p, t0 }, at) => {
     for (const [c, value] of p.entries())
       assert.ok(Math.abs(ours[at * 8 + c]! - value) < 2e-4, `vertex ${at}: ${p}`)
+
     assert.ok(Math.abs(ours[at * 8 + 6]! - t0![0]!) < 1e-6)
     assert.ok(Math.abs(ours[at * 8 + 7]! - t0![1]!) < 1e-6)
   })
@@ -180,12 +192,14 @@ const REAL_PLANETS = [
 
 const menuFrame = () => {
   const { draws } = frames().at(-1)!
+
   const models = REAL_PLANETS.map(({ file, primitives, libraries }): SceneModel => {
     const directories = libraries.map(readDirectory)
     const materials = directories.flatMap((library) => [...readMaterialLibrary(library)])
     const textures = directories.flatMap((library) => [...readTextureLibrary(library)])
     const material = (id: number) => getMaterial(materials, id)
     const retail = facesOf(surfaceOf(draws, primitives))
+
     return {
       parts: placeSphere(readSphere(readDirectory(file)), baseOf(modelViewOf(retail.at(-1)!)), {
         camera: CAMERA,
@@ -202,6 +216,7 @@ const menuFrame = () => {
         },
     }
   })
+
   return {
     frame: collectFrame({
       camera: CAMERA,
@@ -218,12 +233,14 @@ const skipData = skip || (existsSync(data) ? false : 'no retail DATA')
 
 test("the menu's planets are retail draw for draw, shell included", { skip: skipData }, () => {
   const { frame, retail } = menuFrame()
+
   assert.deepEqual(frame.unsupported, [])
   assert.equal(frame.draws.length, retail.length)
   assertFrameMatches(frame, retail, indexTextures(data), { streamed: true })
   frame.draws.forEach(({ world, materialName }, n) => {
     const modelView = Matrix4.multiply(frame.view, world)
     const theirs = modelViewOf(retail[n]!)
+
     for (const axis of ['x', 'y', 'z', 'w'] as const)
       for (const cell of ['x', 'y', 'z'] as const)
         assert.ok(
@@ -238,6 +255,7 @@ test('the shell has the UVs retail wrote, vertex for vertex', { skip: skipData }
   const { vertices } = spherePatch(200, 5).mesh
   const patch = new Float32Array(vertices.buffer, vertices.byteOffset, vertices.byteLength / 4)
   let checked = 0
+
   frame.draws.forEach(({ atmosphere }, n) => {
     const written = retail[n]!.vertexData
     if (!atmosphere || !written) return
@@ -247,6 +265,7 @@ test('the shell has the UVs retail wrote, vertex for vertex', { skip: skipData }
       const facing = x * nx! + y * ny! + z * nz!
       const { threshold: t, gain, v } = atmosphere
       const u = facing < t ? 0 : ((facing - t) / (1 - t)) * gain
+
       assert.ok(Math.abs(u - t0![0]!) < 2e-5, `draw ${n}, vertex ${at}: ${u} against ${t0![0]}`)
       assert.ok(Math.abs(v - t0![1]!) < 1e-5, `draw ${n}, vertex ${at}: ${v} against ${t0![1]}`)
       checked++

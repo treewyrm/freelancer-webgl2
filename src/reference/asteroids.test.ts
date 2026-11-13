@@ -1,7 +1,8 @@
 /**
  * `asteroid_inside`, `asteroid_nebula` and `asteroid_outside`: a field of cubes and its band, an
  * exclusion zone around a station, and a nebula over part of the field with a hole in it, against
- * retail.
+ * retail. `ew04_inside` and `ew04_outside`: EW04's Orinoco field about a nebula at its centre, from
+ * deep in both and from outside the nebula.
  */
 import assert from 'node:assert/strict'
 import { existsSync, readFileSync } from 'node:fs'
@@ -28,6 +29,8 @@ interface AsteroidRun {
     | 'asteroid_exband_edge'
     | 'asteroid_hole'
     | 'asteroid_hole_edge'
+    | 'ew04_inside'
+    | 'ew04_outside'
   /** Retail's draws before the depth clear, the engine's effects included. */
   scene: number
   /** What isn't built: in a nebula, its fog overlay. */
@@ -76,6 +79,12 @@ const RUNS_COMPARED: AsteroidRun[] = [
   { name: 'asteroid_hole', scene: 64, unbuilt: [], band: [], cubes: [27, 33] },
   // In the hole's edge: the shell at about half, and cubes fading at the walk's reach.
   { name: 'asteroid_hole_edge', scene: 74, unbuilt: [], band: [], cubes: [27, 43] },
+  // Deep in Orinoco's field and nebula: the clear is the fog's, no sky, the ship, then 37 cubes in
+  // the nebula's fog from 0 to its 1400, lit by its ambient in full.
+  { name: 'ew04_inside', scene: 65, unbuilt: [], band: [], cubes: [24, 37] },
+  // In the field, 3500 outside the nebula at its centre: the ship, then 37 cubes fogged and lit by
+  // that nebula in full (`CliAsteroidUpdate`), no `contains_fog_zone`. The station is behind.
+  { name: 'ew04_outside', scene: 76, unbuilt: [], band: [], cubes: [35, 37] },
 ]
 
 const skipOf = (name: string) =>
@@ -93,18 +102,22 @@ const modelViewOf = (world: readonly number[]): Matrix4 => {
     z: -world[c * 4 + 2]!,
     w: world[c * 4 + 3]!,
   })
+
   return { x: column(0), y: column(1), z: column(2), w: column(3) }
 }
 
 const load = async (name: AsteroidRun['name']) => {
   const read = async (path: string) => {
     const file = readFileSync(join(data, path))
+
     return new Uint8Array(file.buffer, file.byteOffset, file.byteLength)
   }
+
   const folder = join(references, name)
   const system = systems.get(name)!
   const { draws, options } = readSpaceRun(folder, system, RUNS[name])
   const scene = await loadSystem(system, read, options)
+
   // A frame before, as the game had drawn many: in a core, the overlay's latch is already set.
   collectSpaceFrame(scene)
   return { frame: collectSpaceFrame(scene), captured: draws }
@@ -121,20 +134,25 @@ for (const { name, scene, unbuilt, cubes } of RUNS_COMPARED) {
     async () => {
       const { frame, captured } = await load(name)
       const retail = builtOf(captured) as typeof captured
+
       assert.deepEqual(frame.unsupported, ['texture envmapglass'])
       assert.equal(frame.draws.length, retail.length)
       assertFrameMatches(frame, retail, indexTextures(data), { streamed: true })
       // What a nebula holds is fogged, linearly on depth, and nothing else is: the ship in
-      // `asteroid_nebula`, not the plant listed before the nebula, nor the cubes.
+      // `asteroid_nebula`, not the plant listed before the nebula. A field's cubes take the nebula
+      // at its zone's centre: none in `asteroid_nebula`, Orinoco's in both `ew04` runs.
       frame.draws.forEach((ours, n) => {
         const { states } = retail[n]!
         const what = `draw ${n}, ${ours.materialName}`
+
         assert.equal(states['FOGENABLE'], ours.fog ? 1 : 0, what)
         if (!ours.fog) return
         assert.equal(states['FOGTABLEMODE'], 3, what)
         assert.ok(Math.abs(ours.fog.start - states['FOGSTART']!) < 1e-3, `${what} start`)
         assert.ok(Math.abs(ours.fog.end - states['FOGEND']!) < 1e-2, `${what} end ${ours.fog.end}`)
+
         const colour = states['FOGCOLOR']!
+
         assert.deepEqual(
           [ours.fog.color.x, ours.fog.color.y, ours.fog.color.z].map((c) => Math.round(c * 255)),
           [(colour >> 16) & 0xff, (colour >> 8) & 0xff, colour & 0xff],
@@ -151,9 +169,11 @@ for (const { name, scene, unbuilt, cubes } of RUNS_COMPARED) {
       const { frame, captured } = await load(name)
       const [first, count] = cubes
       const offset = unbuilt.filter((n) => n < first).length
+
       for (let k = 0; k < count; k++) {
         const ours = Matrix4.multiply(frame.view, frame.draws[first - offset + k]!.world)
         const theirs = modelViewOf(captured[first + k]!.world!)
+
         for (const axis of ['x', 'y', 'z', 'w'] as const)
           for (const cell of ['x', 'y', 'z'] as const)
             assert.ok(
@@ -165,16 +185,18 @@ for (const { name, scene, unbuilt, cubes } of RUNS_COMPARED) {
   )
 
   test(
-    `${name}: the cubes are lit as retail lit them, raised by ambient_increase, unfogged`,
+    `${name}: the cubes are lit and fogged as retail did them, raised by ambient_increase`,
     { skip: skipOf(name) },
     async () => {
       const { frame, captured } = await load(name)
       const [first, count] = cubes
       const offset = unbuilt.filter((n) => n < first).length
+
       for (let k = 0; k < count; k++) {
         const ours = frame.draws[first - offset + k]!
         const theirs = captured[first + k]!
         const ambient = theirs.states['AMBIENT']!
+
         assert.deepEqual(
           [ours.sceneAmbient!.x, ours.sceneAmbient!.y, ours.sceneAmbient!.z].map((c) =>
             Math.round(c * 255),
@@ -187,11 +209,13 @@ for (const { name, scene, unbuilt, cubes } of RUNS_COMPARED) {
             assert.ok(Math.abs(c - theirs.lights[at]!.diffuse[i]!) < 1e-5),
           ),
         )
-        assert.equal(theirs.states['FOGENABLE'], 0)
-        assert.equal(ours.fog, undefined)
+        // The fog's range and colour are held to retail's with every draw's above.
+        assert.equal(theirs.states['FOGENABLE'], ours.fog ? 1 : 0)
+
         // Whole, a cube cuts at 127; fading at the walk's reach, it blends at 5, still writing depth:
         // only a field's `max_alpha` under 1 stops that.
         const fading = theirs.states['ALPHABLENDENABLE'] === 1
+
         assert.equal(theirs.states['ZWRITEENABLE'], 1)
         assert.deepEqual(
           [theirs.states['ALPHAREF'], ours.alphaReference],
@@ -209,11 +233,14 @@ for (const { name, band } of RUNS_COMPARED)
     async () => {
       const { frame, captured } = await load(name)
       const pieces = frame.draws.filter(({ materialName }) => materialName === 'band')
+
       assert.equal(pieces.length, band.length)
+
       for (const [k, n] of band.entries()) {
         const what = `draw ${n}`
         const ours = pieces[k]!
         const { states, stages, world, vertexData } = captured[n]!
+
         assert.equal(ours.materialName, 'band', what)
         assert.deepEqual(
           ['ZENABLE', 'ZWRITEENABLE', 'CULLMODE', 'LIGHTING', 'SRCBLEND', 'DESTBLEND'].map(
@@ -236,22 +263,28 @@ for (const { name, band } of RUNS_COMPARED)
           what,
         )
         assert.equal(stages[1]!.states['COLOROP'], 1, what)
+
         // In world space on the far list's plane: the modelview is the view alone.
         const theirs = modelViewOf(world!)
+
         for (const axis of ['x', 'y', 'z', 'w'] as const)
           for (const cell of ['x', 'y', 'z'] as const)
             assert.ok(Math.abs(frame.view[axis][cell] - theirs[axis][cell]) < 1e-3, what)
 
         const floats = new Float32Array(ours.mesh.vertices.buffer)
         const bytes = ours.mesh.vertices
+
         assert.equal(ours.count, vertexData!.length, what)
         vertexData!.forEach(({ p, d, t0 }, at) => {
           const where = `${what}, vertex ${at}`
+
           p.forEach((c, axis) =>
             assert.ok(Math.abs(c - floats[at * 6 + axis]!) <= Math.abs(c) * 2.4e-7 + 1e-4, where),
           )
+
           const [b, g, r, a] = bytes.slice(at * 24 + 12, at * 24 + 16)
           const colour = ((a! << 24) | (r! << 16) | (g! << 8) | b!) >>> 0
+
           assert.equal(colour.toString(16), Number(d).toString(16), where)
           assert.deepEqual(
             [...t0!].map(Math.fround),
@@ -270,6 +303,7 @@ test(
     const { frame, captured } = await load('asteroid_nebula')
     const ours = frame.draws[30]!
     const theirs = captured[30]!
+
     assert.equal(ours.materialName, 'fog overlay')
     assert.equal(theirs.call, 'DrawIndexedPrimitiveUP')
     // `Win3DSetOrtho2DForCamera`: pixels to clip space over 1024 by 768, Y down.
@@ -277,19 +311,26 @@ test(
       theirs.projection!.map((v) => Math.fround(v)),
       [2 / 1024, 0, 0, 0, 0, -2 / 768, 0, 0, 0, 0, 1, 0, -1, 1, 0.5, 1].map(Math.fround),
     )
+
     const floats = new Float32Array(ours.mesh.vertices.buffer)
     const bytes = ours.mesh.vertices
+
     theirs.vertexData!.forEach(({ p, d }, at) => {
       const [x, y] = [floats[at * 6]!, floats[at * 6 + 1]!]
+
       // Back to pixels: the last column and row, 1023 and 767, are where it ends.
       assert.ok(Math.abs(((x + 1) * 1024) / 2 - p[0]!) < 1e-3, `vertex ${at} x`)
       assert.ok(Math.abs(((1 - y) * 768) / 2 - p[1]!) < 1e-3, `vertex ${at} y`)
+
       const [b, g, r, a] = bytes.slice(at * 24 + 12, at * 24 + 16)
       const colour = ((a! << 24) | (r! << 16) | (g! << 8) | b!) >>> 0
+
       assert.equal(colour.toString(16), Number(d).toString(16), `vertex ${at}`)
     })
+
     // Under an identity view in retail; ours undoes the frame's view.
     const identity = Matrix4.multiply(frame.view, ours.world)
+
     for (const axis of ['x', 'y', 'z', 'w'] as const)
       for (const cell of ['x', 'y', 'z', 'w'] as const)
         assert.ok(Math.abs(identity[axis][cell] - (axis[0] === cell[0] ? 1 : 0)) < 1e-6)
@@ -302,9 +343,11 @@ for (const name of ['asteroid_hole', 'asteroid_hole_edge'] as const)
     { skip: skipOf(name) },
     async () => {
       const { frame, captured } = await load(name)
+
       for (const n of [24, 25, 26]) {
         const ours = frame.draws[n]!
         const theirs = captured[n]!
+
         assert.deepEqual(
           ['ZENABLE', 'ZWRITEENABLE', 'ZFUNC', 'CULLMODE', 'LIGHTING', 'FOGENABLE', 'AMBIENT'].map(
             (key) => theirs.states[key],
@@ -312,8 +355,10 @@ for (const name of ['asteroid_hole', 'asteroid_hole_edge'] as const)
           [1, 0, 4, 2, 1, 0, 0xffffffff],
         )
         assert.equal(theirs.lights.length, 0)
+
         const ourView = Matrix4.multiply(frame.view, ours.world)
         const theirView = modelViewOf(theirs.world!)
+
         for (const axis of ['x', 'y', 'z', 'w'] as const)
           for (const cell of ['x', 'y', 'z'] as const)
             assert.ok(

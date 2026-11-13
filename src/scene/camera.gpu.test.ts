@@ -18,6 +18,7 @@ test('world +X draws on the right, retail winding is front, and nearer depth win
     new URL('./camera.fixture.ts', import.meta.url),
     { width: 64, height: 64 },
   )
+
   assert.equal(value.error, 0)
   assert.deepEqual(value.right, [255, 0, 0, 255])
   assert.deepEqual(value.left, [0, 0, 0, 255])

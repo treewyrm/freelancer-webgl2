@@ -30,6 +30,7 @@ const skip = !existsSync(data)
 
 const read = async (path: string) => {
   const file = readFileSync(join(data, path))
+
   return new Uint8Array(file.buffer, file.byteOffset, file.byteLength)
 }
 
@@ -48,12 +49,16 @@ const less = (a: readonly number[], b: readonly number[]) => a.map((value, at) =
 /** Each shot's centre and direction in a frame's batch: its first vertex, and toward its tip. */
 const shotsOf = (draw: CaptureDraw) => {
   let start = 0
+
   return SHOTS.map((shot) => {
     const vertices = draw.vertexData!.slice(start, start + shot.vertices)
+
     start += shot.vertices
+
     // The tip's vertex follows the centre's second copy: at 6 in either kind.
     const ahead = less(vertices[6]!.p, vertices[0]!.p)
     const length = Math.hypot(...ahead)
+
     return {
       ...shot,
       vertices,
@@ -72,18 +77,26 @@ const retailCodeBeam = async (): Promise<Uint16Array[]> => {
   const entry = [...library.children]
     .flatMap((node) => (node instanceof Directory ? [...node.children] : []))
     .find((node) => node.name.toLowerCase() === 'code_beam')
+
   assert.ok(entry instanceof Directory)
+
   const levels = [...entry.children].sort((a, b) => a.name.localeCompare(b.name))
+
   return levels.map((level) => {
     assert.ok(!(level instanceof Directory))
+
     const { buffer, byteOffset, byteLength } = level.data
     const bytes = new Uint8Array(buffer, byteOffset, byteLength)
+
     // An uncompressed true-colour Targa of 16 bits, bottom-left first.
     assert.deepEqual([bytes[2], bytes[16], bytes[17]], [2, 16, 0])
+
     const texels = new Uint16Array((bytes.length - 18) / 2)
+
     texels.forEach((_, at) => {
       const texel = bytes[18 + at * 2]! | (bytes[19 + at * 2]! << 8)
       const green = (texel >> 5) & 31
+
       texels[at] = ((texel >> 10) << 11) | (Math.round((green * 63) / 31) << 5) | (texel & 31)
     })
     return texels
@@ -96,6 +109,7 @@ const bytesOf = (texels: Uint16Array) =>
 const load = async () => {
   const { beams, texture } = await loadBeamEffects(read)
   const { frames } = readCapture(readFileSync(join(run, 'd3d8log.jsonl'), 'utf8'))
+
   return { beams, texture, frames }
 }
 
@@ -107,8 +121,11 @@ const grown = (archetype: BeamArchetype, position: Vector3, direction: Vector3, 
     speed,
     look: true,
   })
+
   shot.walk(0, () => 'draw', beamBatch())
+
   const batch = beamBatch()
+
   shot.walk(1, () => 'draw', batch)
   return batch
 }
@@ -124,34 +141,46 @@ test(
         [{ source: 'FX/beam.txm', name: 'code_beam', width: 64 >> at }],
       ]),
     )
+
     for (const { index: at, draws, events } of frames) {
       const retail = draws[BEAMS]!
+
       assert.equal(retail.call, 'DrawIndexedPrimitiveUP', `frame ${at}`)
       assert.equal(retail.fvf, 0x142, `frame ${at}`)
+
       // The HUD's depth clear follows it.
       const next = events[events.indexOf(retail) + 1]!
+
       assert.ok(next.kind === 'clear' && next.flags === 2, `frame ${at}`)
 
       const batch = beamBatch()
+
       for (const { nickname, position, direction, speed } of shotsOf(retail)) {
         const built = grown(beams.get(nickname)!, position, direction, speed)
         const base = batch.count
+
         batch.vertices.push(...built.vertices)
         batch.colors.push(...built.colors)
         batch.indices.push(...built.indices.map((index) => index + base))
         batch.count += built.count
       }
+
       const ours = beamDraw(batch, texture)!
+
       assertFrameMatches({ draws: [ours] } as unknown as Frame, [retail], index)
+
       const captured = retail.stages[0]!.texture!
+
       assert.deepEqual([captured.format, captured.levels], [23, 7])
       assert.equal(namesOf(index, captured).length, 1)
       assert.deepEqual(
         captured.hash,
         (await retailCodeBeam()).map((level) => contentHash(bytesOf(level))),
       )
+
       // What the batch inherits from the effects before it: clamped, linear, mips by nearest, no fog.
       const { states } = retail.stages[0]!
+
       assert.deepEqual(
         [states['ADDRESSV'], states['MAGFILTER'], states['MINFILTER'], states['MIPFILTER']],
         [3, 2, 2, 1],
@@ -174,22 +203,30 @@ test(
   { skip },
   async () => {
     const { beams, frames } = await load()
+
     for (const { index: at, draws } of frames) {
       const retail = draws[BEAMS]!
+
       for (const { nickname, vertices, position, direction, speed } of shotsOf(retail)) {
         const what = `frame ${at}, ${nickname}`
         const batch = grown(beams.get(nickname)!, position, direction, speed)
+
         assert.equal(batch.count, vertices.length, what)
         vertices.forEach(({ p, d, t0 }, n) => {
           const place = batch.vertices.slice(n * 5, n * 5 + 3)
+
           // The direction is read back from rounded vertices some 200 out.
           for (const axis of [0, 1, 2])
             assert.ok(Math.abs(place[axis]! - p[axis]!) < 5e-4, `${what}, vertex ${n}: ${place}`)
+
           assert.deepEqual(batch.vertices.slice(n * 5 + 3, n * 5 + 5), t0!.map(Math.fround), what)
+
           const [b, g, r, a] = batch.colors.slice(n * 4, n * 4 + 4)
+
           assert.equal(((a! << 24) | (r! << 16) | (g! << 8) | b!) >>> 0, Number(d), what)
         })
       }
+
       // Both shots' triangles, in the order built: bolt then spear.
       const offsets = shotsOf(retail).map(({ vertices }) => vertices.length)
       const expected = shotsOf(retail).flatMap(({ nickname, position, direction, speed }, n) =>
@@ -197,6 +234,7 @@ test(
           (index) => index + (n ? offsets[0]! : 0),
         ),
       )
+
       assert.deepEqual(retail.indexData, expected, `frame ${at}`)
     }
   },
@@ -208,11 +246,14 @@ test(
   async () => {
     const { frames } = await load()
     const places = frames.map(({ draws }) => shotsOf(draws[BEAMS]!).map(({ position }) => position))
+
     for (let at = 1; at < places.length; at++) {
       const [bolt, spear] = places[at]!.map((place, shot) => {
         const { x, y, z } = places[at - 1]![shot]!
+
         return Math.hypot(place.x - x, place.y - y, place.z - z)
       })
+
       assert.ok(Math.abs(bolt! / spear! - 0.8) < 1e-4, `${bolt} against ${spear}`)
     }
   },
@@ -222,5 +263,6 @@ test("beam_shots: code_beam uploads as retail's device holds it", { skip }, asyn
   const { texture } = await load()
   const ours = planUpload(texture).faces[0]!
   const retail = await retailCodeBeam()
+
   retail.forEach((level, at) => assert.deepEqual(ours[at], level, `level ${at}`))
 })

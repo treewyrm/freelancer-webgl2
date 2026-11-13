@@ -1,7 +1,14 @@
 /** WebGL2 renderer for Freelancer. The host supplies bytes, time, camera and a canvas. */
 export { createContext } from '#/gl/context.js'
 export { createProgram, type Program } from '#/gl/program.js'
-export { createRenderer, type FrameHooks, type HookContext, type Renderer } from '#/scene/render.js'
+export {
+  createRenderer,
+  type FrameHooks,
+  type HookContext,
+  type Renderer,
+  type RenderOptions,
+  type ViewportRect,
+} from '#/scene/render.js'
 export {
   collectFrame,
   isBuiltType,
@@ -34,6 +41,7 @@ export {
   type SpaceCockpit,
   type SpaceEffect,
   type SpaceFrame,
+  type SpaceJump,
   type SpaceLimits,
   type SpaceObject,
   type SpaceScene,
@@ -82,12 +90,41 @@ export {
   type Zone,
 } from '#/scene/nebula.js'
 export { fogOverlayDraw } from '#/scene/overlay.js'
+export {
+  collectRoomFrame,
+  lightRoomObject,
+  lightScore,
+  pickRoomLights,
+  ROOM_LIGHTS_PER_OBJECT,
+  type RoomFrame,
+  type RoomLight,
+  type RoomObject,
+  type RoomScene,
+  type RoomShadows,
+} from '#/scene/room.js'
+export {
+  coneLevel,
+  FlashLight,
+  FLASHLIGHTS_PER_SET,
+  flashlightDraws,
+  type FlashlightSet,
+  type FlashlightTextures,
+} from '#/scene/flashlight.js'
+export {
+  RETAIL_SHADOW_LIMITS,
+  shadowDraw,
+  shadowQuad,
+  type RoomShadow,
+  type ShadowLimits,
+  type ShadowQuad,
+} from '#/scene/shadow.js'
 export { starGlowDraws, starRadius, type Star, type StarGlow } from '#/scene/star.js'
 export { castRay, type Hitbox, type HitboxObject, type HitboxSurface } from '#/scene/hitbox.js'
 export {
   starCorona,
   starFlare,
   starIntensity,
+  starSettled,
   sunEffectQuality,
   sunLeastLod,
   updateStar,
@@ -116,6 +153,13 @@ export {
   type BillboardSettings,
 } from '#/scene/billboards.js'
 export {
+  DynamicAsteroids,
+  type DynamicDraw,
+  type DynamicEffect,
+  type DynamicField,
+  type DynamicSettings,
+} from '#/scene/dynamic.js'
+export {
   NebulaExterior,
   RETAIL_EXTERIOR_LIMITS,
   textureHasAlpha,
@@ -133,6 +177,7 @@ export {
 export {
   BeamEffect,
   beamArchetype,
+  beamBatch,
   lookMatrix,
   RETAIL_BEAM_LIMITS,
   type BeamArchetype,
@@ -147,6 +192,14 @@ export {
   type TractorLimits,
 } from '#/scene/tractor.js'
 export {
+  GateTunnel,
+  RETAIL_TUNNEL,
+  RETAIL_TUNNEL_LAYER,
+  type TunnelLayer,
+  type TunnelSettings,
+  type TunnelState,
+} from '#/scene/tunnel.js'
+export {
   EFFECT_TYPE_NAMES,
   effectLodRow,
   effectLodType,
@@ -160,7 +213,14 @@ export {
   type EffectViewOptions,
   type PlacedEffect,
 } from '#/scene/effect-view.js'
-export { projectionMatrix, viewMatrix, type Camera } from '#/scene/camera.js'
+export { PlacedEffects, type EffectPlacement } from '#/scene/placed.js'
+export {
+  projectionMatrix,
+  underPixel,
+  viewMatrix,
+  type Camera,
+  type Viewport,
+} from '#/scene/camera.js'
 export { attachJoint, partTransforms } from '#/scene/hierarchy.js'
 export {
   flareQuads,
@@ -224,6 +284,7 @@ export {
 } from '#/deformable/level.js'
 export {
   boneTable,
+  costumeWorlds,
   MAX_BONES,
   placeCostume,
   placeSkin,
@@ -250,6 +311,7 @@ export {
   type PoolSizes,
 } from '#/alchemy/effect.js'
 export type { TriangleDraw, EffectDraw, SpriteDraw } from '#/alchemy/draw.js'
+export type { Rgb, SpriteFrameStyle } from '#/alchemy/program.js'
 export {
   placeSphere,
   RETAIL_SPHERE_LEVELS,
@@ -277,3 +339,15 @@ export {
   type ReferencePlan,
   type VertexLayout,
 } from '#/mesh/plan.js'
+/** THN playback: thorn's clock, schedule, placement, curves, paths and spatial animation. */
+export * as thorn from '#/thorn/index.js'
+export {
+  EASE,
+  fadeWeight,
+  Mixer,
+  MotionFlag,
+  type AimOptions,
+  type MixerJoint,
+  type MixerOptions,
+  type MotionOptions,
+} from '#/deformable/mixer.js'

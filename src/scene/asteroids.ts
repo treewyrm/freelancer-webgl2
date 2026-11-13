@@ -50,6 +50,7 @@ const nudge = (value: number): number => Math.trunc(value > 0 ? value + f(0.1) :
 const cubeCoord = (coord: number, size: number): number => {
   const half = Math.trunc((size + 1) * 0.5)
   const step = Math.trunc(coord / size) * size
+
   return coord > 0 ? step + half : step - half
 }
 
@@ -67,6 +68,7 @@ export const cubeId = ({ x, y, z }: Vector3): number => {
   let gy = Math.abs(ny) >>> 7
   let gz = Math.abs(nz) >>> 7
   if (gx >= 0x400 || gy >= 0x200 || gz >= 0x400) return 0
+  // Packed `x:11 | z:11 | y:10` bits: each axis a 128-unit cell count with its sign on top.
   if (nx < 0) gx |= 0x400
   if (nz < 0) gz |= 0x400
   if (ny < 0) gy |= 0x200
@@ -83,20 +85,28 @@ const rotationOf = (ax: number, ay: number, az: number): Matrix4 => {
     [0, 1, 0],
     [0, 0, 1],
   ]
+
+  // Rotates rows `i` and `j` of `rows` in their plane, which left-multiplies the matrix.
   const turn = (i: number, j: number, angle: number, sign: 1 | -1) => {
     const [ci, si] = [c(angle), s(angle)]
+
     rows = rows.map((row) => [...row])
+
     for (let col = 0; col < 3; col++) {
       const a = rows[i]![col]!
       const b = rows[j]![col]!
+
       rows[i]![col] = f(a * ci - sign * b * si)
       rows[j]![col] = f(b * ci + sign * a * si)
     }
   }
+
   turn(1, 2, ax, 1)
   turn(0, 2, ay, -1)
   turn(0, 1, az, 1)
+
   const [r0, r1, r2] = rows as [number[], number[], number[]]
+
   return {
     x: { x: r0[0]!, y: r1[0]!, z: r2[0]!, w: 0 },
     y: { x: r0[1]!, y: r1[1]!, z: r2[1]!, w: 0 },
@@ -119,15 +129,22 @@ export const cubeOrientation = (
   frequency: number,
 ): Matrix4 | undefined => {
   let state = id >>> 0
+
+  // The MSVC `rand()` step: 15 bits from the high half of a 32-bit LCG.
   const next = () => {
     state = (Math.imul(state, 214013) + 2531011) >>> 0
     return (state >>> 16) & 0x7fff
   }
+
+  // The first draw's top two bits say how many more steps to discard.
   for (let warm = (next() >> 13) & 3; warm > 0; warm--)
     state = (Math.imul(state, 214013) + 2531011) >>> 0
+
   if (frequency >= 0 && next() * f(1 / 32768) < frequency) return undefined
+
   const pick = () => Math.min(Math.max(Math.trunc(next() * f(4 / 32768)), 0), 3)
   const [i, j, k] = [pick(), pick(), pick()]
+
   return rotationOf(rotations[0][i]!, rotations[1][j]!, rotations[2][k]!)
 }
 
@@ -155,7 +172,9 @@ const cubeFormat = (asteroids: readonly CubeAsteroid[]): VertexFormat => {
       throw new Error(
         `An asteroid's FVF 0x${mesh.format.toString(16)} lacks a normal or UV, unread`,
       )
+
   const diffuse = asteroids.every(({ mesh }) => mesh.format & VertexFormat.Diffuse)
+
   return setMapCount(
     VertexFormat.Position | VertexFormat.Normal | (diffuse ? VertexFormat.Diffuse : 0),
     1,
@@ -171,28 +190,39 @@ export const mergeCube = (
 ): { mesh: VMeshData; reference: VMeshRef } | undefined => {
   const first = asteroids[0]
   if (!first) return undefined
+
   const format = cubeFormat(asteroids)
   const stride = vertexByteLength(format)
   const layout = vertexLayout(format)
   const normal = layout.attributes.find(({ name }) => name === 'normal')
   let vertexCount = 0
   for (const { reference } of asteroids) vertexCount += reference.vertexCount
+
   const vertices = new Uint8Array(vertexCount * stride)
   const indices: number[] = []
   let base = 0
+
   for (const { mesh, reference, offset, orientation } of asteroids) {
     const source = vertexLayout(mesh.format)
+
+    // Byte ranges to move per attribute from the source stride to the cube's; floats are 4 bytes each.
     const copies = layout.attributes.map((to) => {
       const from = source.attributes.find(({ name }) => name === to.name)!
+
       return { from: from.offset, to: to.offset, bytes: to.normalizedBytes ? to.size : to.size * 4 }
     })
+
     for (let at = 0; at < reference.vertexCount; at++) {
       const read = (reference.vertexStart + at) * source.stride
       const write = (base + at) * stride
+
       for (const { from, to, bytes } of copies)
         vertices.set(mesh.vertices.subarray(read + from, read + from + bytes), write + to)
     }
+
+    // Turns this asteroid's copied positions and normals in place, then moves the positions by `offset`.
     const view = new DataView(vertices.buffer, base * stride, reference.vertexCount * stride)
+
     for (let at = 0; at < reference.vertexCount; at++) {
       const read = (offsetBytes: number) =>
         [0, 4, 8].map((k) => view.getFloat32(at * stride + offsetBytes + k, true))
@@ -202,18 +232,25 @@ export const mergeCube = (
         )
       const [px, py, pz] = read(0) as [number, number, number]
       const p = Matrix4.transformDirection({ x: px, y: py, z: pz }, orientation)
+
       write(0, { x: f(offset.x + f(p.x)), y: f(f(p.y) + offset.y), z: f(f(p.z) + offset.z) })
+
       if (normal) {
         const [nx, ny, nz] = read(normal.offset) as [number, number, number]
         const n = Matrix4.transformDirection({ x: nx, y: ny, z: nz }, orientation)
+
         write(normal.offset, { x: f(n.x), y: f(n.y), z: f(n.z) })
       }
     }
+
+    // Rebases each index from the source mesh's vertex space to this asteroid's slice of the cube.
     for (const { startIndex, elementCount, baseVertex } of getMeshDraw(mesh, reference))
       for (let at = 0; at < elementCount; at++)
         indices.push(mesh.indices[startIndex + at]! + baseVertex - reference.vertexStart + base)
+
     base += reference.vertexCount
   }
+
   const materialId = first.mesh.groups[first.reference.groupStart]?.materialId ?? 0
   const mesh: VMeshData = {
     name: 'asteroid cube',
@@ -243,6 +280,7 @@ export const mergeCube = (
     boundingBox: first.reference.boundingBox,
     boundingSphere: first.reference.boundingSphere,
   }
+
   return { mesh, reference }
 }
 
@@ -277,6 +315,11 @@ export interface CubeField {
   emptyFrequency?: number
   /** `max_alpha`, 1 when absent. */
   maxAlpha?: number
+  /**
+   * `test_asteroid_placement`, set by the key alone: no cube is drawn, though its band, billboards
+   * and dynamic asteroids are (`CliAsteroidDrawNearField`, `0x522a80`). No retail file sets it.
+   */
+  testPlacement?: boolean
   rotations?: CubeRotations
   exclusions?: readonly CubeExclusion[]
   /**
@@ -307,14 +350,18 @@ export const nearField = (field: CubeField, eye: Vector3): boolean => {
   const reach = zone.radius + margin
   const squared = d.x * d.x + d.z * d.z + d.y * d.y
   if (squared > reach * reach) return false
+
   const distance = Math.sqrt(f(squared))
   let excess = 0
+
   if (distance > f(0.0001)) {
     const length = f(distance)
     const inverse = 1 / length
+
     excess =
       length - zone.radiusAlong({ x: f(d.x * inverse), y: f(d.y * inverse), z: f(d.z * inverse) })
   }
+
   return excess <= margin
 }
 
@@ -337,6 +384,7 @@ export const nearFieldFraction = (
   const reach = zone.radius + reachBy
   const squared = d.x * d.x + d.z * d.z + d.y * d.y
   if (squared > reach * reach) return 0
+
   const root = Math.sqrt(f(squared))
   const inverse = 1 / root
   const excess =
@@ -345,17 +393,33 @@ export const nearFieldFraction = (
   return f(1 - excess / reachBy)
 }
 
-/** `AsteroidExclusionZone::update_dist`: how far outside a zone the camera is, squared. */
+/**
+ * `AsteroidExclusionZone::update_dist` (`0x62bc4e0`): how far outside a zone the camera is, squared,
+ * 0 within. A sphere by its radius and an ellipsoid by its reach toward the camera, each summing the
+ * squares in its own order; **any other shape is 0**, so a box or a cylinder is always asked.
+ */
 export const outsideSquared = ({ zone }: CubeExclusion, eye: Vector3): number => {
-  const d = {
-    x: f(eye.x - zone.position.x),
-    y: f(eye.y - zone.position.y),
-    z: f(eye.z - zone.position.z),
-  }
-  const length = f(Math.sqrt(d.z * d.z + d.y * d.y + d.x * d.x))
-  const inverse = 1 / length
-  const radius = zone.radiusAlong({ x: f(d.x * inverse), y: f(d.y * inverse), z: f(d.z * inverse) })
+  const dx = f(eye.x - zone.position.x)
+  const dy = f(eye.y - zone.position.y)
+  const dz = f(eye.z - zone.position.z)
+  let length: number
+  let radius: number
+
+  if (zone.type === 'sphere') {
+    length = f(Math.sqrt(dz * dz + dy * dy + dx * dx))
+    radius = zone.radius
+  } else if (zone.type === 'ellipsoid') {
+    // No zero-length test: at the centre the distance is NaN, which no cut-off passes over.
+    length = f(Math.sqrt(dz * dz + dx * dx + dy * dy))
+
+    const inverse = 1 / length
+
+    radius = zone.radiusAlong({ x: f(dx * inverse), y: f(dy * inverse), z: f(dz * inverse) })
+  } else return 0
+
   const distance = length - radius
+
+  // Squared when not below 0, unordered too (`JP`).
   return distance < 0 ? 0 : f(distance * distance)
 }
 
@@ -369,13 +433,16 @@ const excluded = (
   point: Vector3,
 ): { taken: boolean; frequency?: number } => {
   let frequency: number | undefined
+
   for (const { exclusion, key } of zones) {
     if (key > reach) break
+
     if (immersion(exclusion.zone, exclusion.edgeFraction ?? 0, point) !== 0) {
       if (!((exclusion.emptyFrequency ?? -1) >= 0)) return { taken: true }
       frequency = exclusion.emptyFrequency
     }
   }
+
   return frequency === undefined ? { taken: false } : { taken: false, frequency }
 }
 
@@ -383,11 +450,18 @@ const excluded = (
  * `CliAsteroidDrawNearField`: the cubes to draw, in the walk's order. A box of cubes spans the view
  * out to `fill_dist`; each is kept if it's within the side planes and the reach, the zone holds it
  * past 0.001, no exclusion takes it, and its id doesn't leave it empty. The camera's own cube is
- * drawn last if the walk missed it. Nothing past `nearField`.
+ * drawn last if the walk missed it. Nothing past `nearField`, nor with `testPlacement`.
  */
-export const fieldCubes = (field: CubeField, camera: Camera, aspect: number): CubeDraw[] => {
+export const fieldCubes = (
+  field: CubeField,
+  camera: Camera,
+  aspect: number,
+  /** Counts the centres within view depth and the frustum, which the zone and exclusions are asked. */
+  counted?: { tested: number },
+): CubeDraw[] => {
   const eye = camera.position
-  if (!nearField(field, eye)) return []
+  if (field.testPlacement || !nearField(field, eye)) return []
+
   const size = field.cubeSize
   const rotations = field.rotations ?? RETAIL_CUBE_ROTATIONS
   const maxAlpha = f(field.maxAlpha ?? 1)
@@ -400,6 +474,8 @@ export const fieldCubes = (field: CubeField, camera: Camera, aspect: number): Cu
   const scale = (a: Vector3, s: number) => ({ x: f(a.x * s), y: f(a.y * s), z: f(a.z * s) })
   const dot = (a: Vector3, b: Vector3) => a.x * b.x + a.z * b.z + a.y * b.y
 
+  // Inward normals of the view's right, left, top and bottom planes (`d0`..`d3`), in world space;
+  // `col0`..`col2` are the camera's right, up and back axes.
   const halfX = f((camera.fovh * Math.PI) / 180)
   const fovY = f(Math.atan(Math.tan(halfX) / aspect))
   const angleX = f(Math.PI / 2) - halfX
@@ -425,6 +501,7 @@ export const fieldCubes = (field: CubeField, camera: Camera, aspect: number): Cu
   const extX = Math.trunc(tanX * fill)
   const extY = Math.trunc(tanY * fill)
 
+  // The walk's box: the cube behind the eye and the far plane's four corners, snapped to centres.
   const seed = closestCubePosition(add(scale(col2, size), eye), size)
   let [minX, maxX, minY, maxY, minZ, maxZ] = [seed.x, seed.x, seed.y, seed.y, seed.z, seed.z]
   const negZ = { x: -col2.x, y: -col2.y, z: -col2.z }
@@ -433,6 +510,7 @@ export const fieldCubes = (field: CubeField, camera: Camera, aspect: number): Cu
   const latY = scale(col1, extY)
   const farXp = add(farCentre, latX)
   const farXm = sub(farCentre, latX)
+
   for (const corner of [add(farXp, latY), sub(farXp, latY), sub(farXm, latY), add(farXm, latY)]) {
     const snapped = closestCubePosition(corner, size)
     ;[minX, maxX] = [Math.min(minX, snapped.x), Math.max(maxX, snapped.x)]
@@ -456,12 +534,14 @@ export const fieldCubes = (field: CubeField, camera: Camera, aspect: number): Cu
   /** The tests every cube passes, the walk's and the camera's own: its turn, or none. */
   const keep = (position: Vector3, id: number): Matrix4 | undefined => {
     if (!(immersion(field.zone, field.edgeFraction ?? 0, position) > f(0.001))) return undefined
+
     const { taken, frequency } = excluded(zones, exclusionReach, position)
     if (id === 0 || taken) return undefined
     return cubeOrientation(id, rotations, frequency ?? field.emptyFrequency ?? 0)
   }
 
   const cubes: CubeDraw[] = []
+
   for (let x = minX; x <= maxX; x += size)
     for (let y = minY; y <= maxY; y += size)
       for (let z = minZ; z <= maxZ; z += size) {
@@ -469,24 +549,34 @@ export const fieldCubes = (field: CubeField, camera: Camera, aspect: number): Cu
         const delta = sub(position, nearPoint)
         const depth = Math.abs(dot(negZ, delta))
         if (depth > reach) continue
+
+        // Outside a side when its slope passes the half-FOV tangent and it is behind that plane.
         const inverse = 1 / depth
         const slopeX = dot(delta, col0) * inverse
         if (!(tanX >= Math.abs(slopeX)) && dot(slopeX > 0 ? d0 : d1, delta) < 0) continue
+
         const slopeY = dot(delta, col1) * inverse
         if (!(tanY >= Math.abs(slopeY)) && dot(slopeY > 0 ? d2 : d3, delta) < 0) continue
+        if (counted) counted.tested++
         if (!(immersion(field.zone, field.edgeFraction ?? 0, position) > f(0.001))) continue
+
         const id = cubeId(position)
         const { taken, frequency } = excluded(zones, exclusionReach, position)
         if (id === 0 || taken) continue
         if (id === playerId) playerSeen = true
+
         const orientation = cubeOrientation(id, rotations, frequency ?? field.emptyFrequency ?? 0)
         if (!orientation) continue
+
         let alpha = maxAlpha
+
         if (fadeStart < depth) {
           const ramp = ((reach - depth) / halfCube) * maxAlpha
+
           alpha = ramp > maxAlpha ? maxAlpha : ramp < 0 ? 0 : f(ramp)
           if (alpha <= f(0.001)) continue
         }
+
         cubes.push({ position, orientation, alpha })
       }
 
@@ -495,6 +585,7 @@ export const fieldCubes = (field: CubeField, camera: Camera, aspect: number): Cu
     const orientation = keep(position, playerId)
     if (orientation) cubes.push({ position, orientation, alpha: maxAlpha })
   }
+
   return cubes
 }
 
@@ -511,7 +602,10 @@ export interface SpaceAsteroidField extends CubeField {
   ambient: Vector3
   /** `ambient_increase`, 0 to 255 a channel, added to the ambient the field is lit by. */
   ambientIncrease?: Vector3
-  /** `contains_fog_zone`: lit and fogged by the nebula the camera is in. */
+  /**
+   * `contains_fog_zone`: lit and fogged by the nebula the camera is in, at its depth. Without, by
+   * the nebula holding its zone's centre, in full.
+   */
   containsFogZone?: boolean
   /** Its `[Band]`, built from its zone and colours. */
   band?: AsteroidBand

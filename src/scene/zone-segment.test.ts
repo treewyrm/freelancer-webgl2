@@ -22,6 +22,7 @@ test('an ellipsoid is clipped by its written size', () => {
     orientation: Quat.identity,
     radii: at(300, 50, 100),
   })
+
   assert.equal(ellipsoid.meets(at(250, 0, 0), at(250, 0, -2000)), true)
   assert.equal(ellipsoid.meets(at(0, 80, 0), at(0, 80, -2000)), false)
 })
@@ -33,6 +34,7 @@ test('a box by its faces, turned with it', () => {
     orientation: Quat.axisAngle({ axis: at(0, 1, 0), angle: Math.PI / 4 }),
     size: at(200, 200, 200),
   })
+
   // Turned 45°, its corner reaches 141 along x.
   assert.equal(box.meets(at(130, 0, 0), at(130, 0, -2000)), true)
   assert.equal(box.meets(at(150, 0, 0), at(150, 0, -2000)), false)
@@ -49,6 +51,7 @@ test('a ring lets what passes through its hole by, and its band stops it', () =>
     innerRadius: 100,
     height: 20,
   })
+
   assert.equal(ring.meets(at(0, 500, -1000), at(0, -500, -1000)), false)
   assert.equal(ring.meets(at(200, 500, -1000), at(200, -500, -1000)), true)
   // Along its plane, through the band on both sides.
@@ -63,6 +66,7 @@ test('a cylinder by its wall and its caps', () => {
     radius: 100,
     height: 50,
   })
+
   assert.equal(cylinder.meets(at(0, 500, -1000), at(0, -500, -1000)), true)
   assert.equal(cylinder.meets(at(0, 40, 0), at(0, 40, -2000)), false)
   assert.equal(cylinder.meets(at(0, 10, 0), at(0, 10, -2000)), true)

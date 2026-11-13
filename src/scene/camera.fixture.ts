@@ -36,13 +36,18 @@ const backwards = (x: number, z: number) => [x - 1, -1, z, x, 1, z, x + 1, -1, z
 
 export default ((gl) => {
   const { handle, uniforms } = createProgram(gl, VERTEX, FRAGMENT, ['viewProjection', 'tint'])
+
   gl.useProgram(handle)
+
   const matrix = Matrix4.multiply(projectionMatrix(camera, 1), viewMatrix(camera))
+
   gl.uniformMatrix4fv(uniforms.viewProjection, false, Matrix4.toArray(matrix))
 
   gl.bindVertexArray(gl.createVertexArray())
   gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer())
+
   const location = gl.getAttribLocation(handle, 'position')
+
   gl.enableVertexAttribArray(location)
   gl.vertexAttribPointer(location, 3, gl.FLOAT, false, 0, 0)
 
@@ -56,15 +61,19 @@ export default ((gl) => {
     gl.uniform3f(uniforms.tint, tint[0]!, tint[1]!, tint[2]!)
     gl.drawArrays(gl.TRIANGLES, 0, 3)
   }
+
   const clear = () => {
     gl.clearColor(0, 0, 0, 1)
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
   }
+
   const read = (x: number, y: number) => {
     const pixel = new Uint8Array(4)
+
     gl.readPixels(x, y, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixel)
     return [...pixel]
   }
+
   const { width, height } = gl.canvas
   const midY = height >> 1
   const atRight = Math.round(width * 0.75)
@@ -73,17 +82,20 @@ export default ((gl) => {
   // World +X lands on the right of the screen, facing front.
   clear()
   draw(facing(3, 0), [1, 0, 0])
+
   const right = read(atRight, midY)
   const left = read(atLeft, midY)
 
   clear()
   draw(backwards(3, 0), [1, 0, 0])
+
   const culled = read(atRight, midY)
 
   // Drawn far side last: depth keeps the nearer, which is at higher Z.
   clear()
   draw(facing(0, 1), [0, 1, 0])
   draw(facing(0, -1), [0, 0, 1])
+
   const nearerWins = read(width >> 1, midY)
 
   return { right, left, culled, nearerWins, error: gl.getError() }

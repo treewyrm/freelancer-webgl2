@@ -44,6 +44,7 @@ const lookAt = (eye: Triple, target: Triple): Matrix3 => {
     y: right.z * fx - right.x * fz,
     z: right.x * fy - right.y * fx,
   }
+
   return Matrix3.transpose({ x: right, y: up, z: { x: -fx, y: -fy, z: -fz } })
 }
 
@@ -73,6 +74,7 @@ export default (async (gl, { args, read }) => {
     aspect: width / height,
     viewport: { width, height },
   })
+
   for (let at = 0; at < seconds * 60; at++) {
     scene.tick(1 / 60)
     frame = collectSpaceFrame({
@@ -83,6 +85,7 @@ export default (async (gl, { args, read }) => {
       time: (at + 1) / 60,
     })
   }
+
   gl.viewport(0, 0, width, height)
   createRenderer(gl).render(frame)
   return {

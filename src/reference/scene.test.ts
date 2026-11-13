@@ -32,6 +32,7 @@ test('the model and its light share a light group', () => {
   const groups = [
     ...script.matchAll(/type = (COMPOUND|LIGHT),\s+template_name = "[^"]*",\s+lt_grp = (\d+)/g),
   ]
+
   assert.equal(groups.length, 2)
   assert.equal(groups[0]![2], groups[1]![2])
 })
