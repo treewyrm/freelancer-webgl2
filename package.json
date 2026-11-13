@@ -11,6 +11,14 @@
   ],
   "author": "Yuriy Alexeev",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/treewyrm/freelancer-webgl2.git"
+  },
+  "homepage": "https://github.com/treewyrm/freelancer-webgl2#readme",
+  "bugs": {
+    "url": "https://github.com/treewyrm/freelancer-webgl2/issues"
+  },
   "type": "module",
   "sideEffects": false,
   "imports": {
