@@ -14,11 +14,11 @@ Frames drawn by this library from a retail install, at the game's 1024×768.
 
 | | |
 | --- | --- |
-| ![The main menu's planet chunks scene](docs/images/menu-planetchunks.png) | ![Trent landing on Manhattan, from the opening cutscene](docs/images/cutscene-s002xe.png) |
-| Main menu, `intro_planetchunks.thn` | Opening cutscene on Manhattan, `s002xe` at 0:20 |
-| ![Planet Manhattan and its station in New York](docs/images/system-li01.png) | ![Freeport 9 in the clouds of Omicron Gamma](docs/images/system-ew01.png) |
-| Fort Bush, New York (LI01) | Freeport 9, Omicron Gamma (EW01) |
-| ![Two suns and their planets inside a nebula](docs/images/system-ew06.png) | ![Juni and the Liberty diplomat at a table in Manhattan's bar, Trent standing](docs/images/cutscene-s004x.png) |
+| ![The main menu's planet chunks scene](docs/images/menu-planetchunks.png) | ![Trent on Manhattan, three men talking behind him, from the opening cutscene](docs/images/cutscene-s002xe.png) |
+| Main menu, `intro_planetchunks.thn` | Opening cutscene on Manhattan, `s002xe` at 0:20.8 |
+| ![Planet Manhattan and its station in New York](docs/images/system-li01.png) | ![Freeport 10, Tau-37](docs/images/system-ew01.png) |
+| Fort Bush, New York (LI01) | Freeport 10, Tau-37 (EW01) |
+| ![A strange place far away](docs/images/system-ew06.png) | ![Juni and the Liberty diplomat at a table in Manhattan's bar, Trent standing](docs/images/cutscene-s004x.png) |
 | Unknown System (EW06) | Juni and the diplomat in Manhattan's bar, `s004x` at 0:20.5 |
 
 ## Status
