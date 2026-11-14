@@ -9,6 +9,7 @@
  *   system <ini> --thn <file> [--monitor name] [--anchor x,y,z] --video   as `Act_CallThorn`
  *   system <ini> --path <keys.json> --video    a flyby: { duration, fovh?, keys: [{ position, target | orientation }] }
  *     a key with a `target` may `roll`: degrees the camera turns anticlockwise about its view
+ *     and `curve`, `FreeFormPCurve` rows `[t, u, in, out]`, eases the speed (flyby.ts)
  *
  * Also `--fps 60`, `--size 1024x768`, `--name`, `--preset slow`, `--crf 12`.
  */
@@ -20,12 +21,11 @@ import type { AddressInfo } from 'node:net'
 import { homedir } from 'node:os'
 import { basename, join } from 'node:path'
 import { parseArgs } from 'node:util'
-import { Matrix3 } from '@treewyrm/freelancer/math'
 import { launch, runFixture } from '#/harness.js'
-import { columnsOf, quaternionOf } from '#/thorn/frame.js'
 import type { SequenceFlags } from '#/thorn/sequence.js'
 import type { FramesArgs, FramesReport, RoomShot, SpaceView } from './frames.fixture.js'
-import { lookAt, type Triple } from './look.js'
+import { flybyText, type Flyby } from './flyby.js'
+import type { Triple } from './look.js'
 
 const data = process.env['FREELANCER_DATA'] ?? join(homedir(), 'Downloads/Freelancer/DATA')
 const ARTIFACTS = 'artifacts'
@@ -50,19 +50,6 @@ const CUTSCENES: Record<string, Omit<RoomShot, 'kind'>> = {
   },
 }
 
-interface Flyby {
-  duration: number
-  fovh?: number
-  near?: number
-  far?: number
-  keys: {
-    position: Triple
-    target?: Triple
-    roll?: number
-    orientation?: readonly [number, number, number, number]
-  }[]
-}
-
 const triple = (text: string | undefined, what: string): Triple => {
   const values = (text ?? '').split(',').map(Number)
   if (values.length !== 3 || values.some(Number.isNaN))
@@ -71,81 +58,6 @@ const triple = (text: string | undefined, what: string): Triple => {
 }
 
 const dataPath = (path: string) => join(data, path.replace(/\\/g, '/'))
-
-/**
- * A flyby as a THN script: a camera riding one `MOTION_PATH` from start to end, the monitor on it.
- * Keys are world positions and the camera's turn as `{w,x,y,z}`, the path at the origin, unturned.
- */
-const flybyText = ({ duration, fovh = 35, near = 1, far = 100000, keys }: Flyby): string => {
-  if (keys.length < 2) throw new Error('A path needs two keys at least (`SplinePath.cpp`)')
-
-  let last: { x: number; y: number; z: number; w: number } | undefined
-  const pairs = keys.map(({ position, target, roll = 0, orientation }) => {
-    if (!orientation && !target) throw new Error('A key needs a target or an orientation')
-
-    let turn = orientation
-      ? { w: orientation[0], x: orientation[1], y: orientation[2], z: orientation[3] }
-      : (() => {
-          const { x: right, y: up, z: back } = Matrix3.transpose(lookAt(position, target!))
-          const [c, s] = [Math.cos((roll * Math.PI) / 180), Math.sin((roll * Math.PI) / 180)]
-          const mix = (a: typeof up, b: typeof up, k: number) => ({
-            x: a.x * c + b.x * k,
-            y: a.y * c + b.y * k,
-            z: a.z * c + b.z * k,
-          })
-
-          return quaternionOf(columnsOf(mix(right, up, s), mix(up, right, -s), back))
-        })()
-
-    // The spline's squad doesn't fold hemispheres, so each key is put on its predecessor's side.
-    if (last && last.w * turn.w + last.x * turn.x + last.y * turn.y + last.z * turn.z < 0)
-      turn = { w: -turn.w, x: -turn.x, y: -turn.y, z: -turn.z }
-    last = turn
-
-    return `{${position.join(',')}}, {${[turn.w, turn.x, turn.y, turn.z].join(',')}}, `
-  })
-  const [x, y, z] = keys[0]!.position
-  const entity = (name: string, type: string, rest: string) =>
-    `  {\n    entity_name = "${name}",\n    type = ${type},\n    template_name = "",\n    lt_grp = 0,\n    srt_grp = 0,\n    usr_flg = 0${rest}\n  }`
-  const unturned = 'orient = { { 1, 0, 0 }, { 0, 1, 0 }, { 0, 0, 1 } }'
-
-  return `duration = ${duration}
-
-entities = {
-${[
-  entity('Flyby_Monitor', 'MONITOR', ''),
-  entity(
-    'Flyby_Camera',
-    'CAMERA',
-    `,\n    spatialprops = { pos = { ${x}, ${y}, ${z} }, ${unturned} },\n    cameraprops = { fovh = ${fovh}, hvaspect = 1.333333, nearplane = ${near}, farplane = ${far} }`,
-  ),
-  entity(
-    'Flyby_Path',
-    'MOTION_PATH',
-    `,\n    spatialprops = { pos = { 0, 0, 0 }, ${unturned} },\n    pathprops = { path_type = "CV_CROrientationSplinePath", path_data = "OPEN, ${pairs.join('')}" }`,
-  ),
-].join(',\n')}
-}
-
-events = {
-  { 0, SET_CAMERA, { "Flyby_Monitor", "Flyby_Camera" } },
-  {
-    0,
-    START_PATH_ANIMATION,
-    { "Flyby_Camera", "Flyby_Path" },
-    {
-      duration = ${duration},
-      start_percent = 0,
-      stop_percent = 1,
-      offset = { 0, 0, 0 },
-      up = Y_AXIS,
-      front = NEG_Z_AXIS,
-      flags = POSITION + ORIENTATION
-    }
-  }
-}
-`
-}
 
 const OPTIONS = {
   at: { type: 'string' },
