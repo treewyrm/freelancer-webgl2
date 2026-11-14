@@ -282,6 +282,14 @@ export const poseSkin = (
   return { reference, mesh, world: root, skin, ...(offset ? { eyeOffset: offset } : {}) }
 }
 
+const boneModels = new WeakMap<DeformableModel, ReturnType<typeof getBoneModel>>()
+
+/** `getBoneModel` once a model: it hashes every bone's name, and a character is placed every frame. */
+const boneModelOf = (model: DeformableModel) => {
+  if (!boneModels.has(model)) boneModels.set(model, getBoneModel(model))
+  return boneModels.get(model)
+}
+
 /**
  * Every bone's world in a costume, by part and by its place in the part's table; nothing for a part
  * with no root. The skeletons join by shared hardpoint name (`0x65f3540`, library `COSTUME.md`):
@@ -309,7 +317,7 @@ export const costumeWorlds = (
   }
 
   return models.map((model, at) => {
-    const root = getBoneModel(model)
+    const root = boneModelOf(model)
     if (!root) return undefined
 
     // A root links by the first of its names already held. No other can join it to a second.
@@ -373,7 +381,7 @@ export const placeCostume = (
   const parts: PlacedPart[] = []
 
   models.forEach((model, at) => {
-    const root = getBoneModel(model)
+    const root = boneModelOf(model)
     const worlds = all[at]
     const table = lod?.tables[at]
     const chosenAt =
