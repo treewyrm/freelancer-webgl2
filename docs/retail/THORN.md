@@ -249,7 +249,7 @@ value. [`Playback.part`](../../src/thorn/playback.ts).
 
 The name lookup is `HardpointSummary::find_name`, which compares with `_stricmp`, so
 `HpEngine02` and `hpengine02` are one hardpoint, and the last duplicate wins (old reading,
-`common.dll!0x63346c9`, `0x63346d2`; not re-read).
+`common.dll!0x6334749`, `0x6334752`; not re-read).
 
 **On a deformable** (checked `0x452730`): `ROOT` is the root bone, `PART` the named bone
 (`0x445620`), `HARDPOINT` the skeleton's hardpoint composed as on a compound. A missing name logs and

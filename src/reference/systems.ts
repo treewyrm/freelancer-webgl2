@@ -66,7 +66,7 @@ export interface ReferenceSystem {
     size: readonly number[]
     /** `property_flags`, as retail's field and nebula zones carry them. */
     propertyFlags?: number
-    /** `edge_fraction`: a nebula's exclusion zone without one logs an error (`0x62bc720`). */
+    /** `edge_fraction`: a nebula's exclusion zone without one logs an error (`0x62bc3b0`). */
     edgeFraction?: number
     /** `spacedust` and `spacedust_maxparticles`: the dust ahead of the camera while it's in it. */
     spacedust?: { effect: string; maxParticles?: number }

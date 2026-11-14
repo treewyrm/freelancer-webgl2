@@ -17,7 +17,7 @@ export interface RtcSetting {
 }
 
 /**
- * `RtcSlider::is_enabled` (`common!0x627a920`): the first line for a name, ignoring case (`CreateID`), at
+ * `RtcSlider::is_enabled` (`common!0x627a5c0`): the first line for a name, ignoring case (`CreateID`), at
  * the player's cutscene-detail `slider`. A name with no line is on.
  */
 export const rtcEnabled = (
@@ -59,7 +59,7 @@ export const spawns = (entity: Entity, { rtc = [], slider = 1 }: SpawnOptions = 
   return true
 }
 
-/** `ThornGetRenderType` (`common!0x627c0b0`): `usr_flg` bit 0 starsphere, bit 1 backdrop, which wins. */
+/** `ThornGetRenderType` (`common!0x627bd60`): `usr_flg` bit 0 starsphere, bit 1 backdrop, which wins. */
 export const renderTypeOf = (entity: Entity): 'starsphere' | 'backdrop' | undefined => {
   const flags = entity.usr_flg ?? 0
 

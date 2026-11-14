@@ -263,7 +263,7 @@ The base-room and THN caller (**checked** `Freelancer-original.exe!0x444f90`–`
    far cutoff (`0x443d9b`, `0x443de1`–`0x443df1`).
 2. Each frame, the distance from the camera to the character's instance is scaled by
    `adjust_distance`: `d · tan(fov) / tan(fovx ÷ 2)`, with the camera's half angle in degrees and
-   the table's `fovx`, stored halved, 40 by default (**checked** `common.dll!0x62fecb0`; the halving
+   the table's `fovx`, stored halved, 40 by default (**checked** `common.dll!0x62fed60`; the halving
    **decomp** `DetailSwitchTable::read_from_ini`).
 3. **Each part on its own** takes the first level whose distance is not less than that. None is `-1`:
    the part is not drawn.
@@ -271,7 +271,7 @@ The base-room and THN caller (**checked** `Freelancer-original.exe!0x444f90`–`
    Past the last, the body keeps its last level and a head or hand is not drawn (`0x4450b5`–`0x4450fe`).
 
 `get_switch_distance` interpolates linearly between `switch` rows and clamps at both ends
-(**checked** `common.dll!0x62fec00`). Retail's four-level models look up `1, .8, .6, .2`
+(**checked** `common.dll!0x62fecb0`). Retail's four-level models look up `1, .8, .6, .2`
 by value, so they take the same rows as the six-level models' levels of the same fraction.
 
 **With no table, level 0 is what the game would show in the comm window**, and that is the only

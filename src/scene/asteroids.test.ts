@@ -104,7 +104,7 @@ test('test_asteroid_placement draws no cube, however near', () => {
   assert.deepEqual(fieldCubes(field({ testPlacement: true }), camera, 4 / 3), [])
 })
 
-test('a box exclusion is always asked, however far its centre sees the camera (`0x62bc4e0`)', () => {
+test('a box exclusion is always asked, however far its centre sees the camera (`0x62bc170`)', () => {
   // Li01's lanes through the Badlands: a long thin box, the camera 100 beside its end. From its
   // centre the camera is some 5000 outside, past the walk's (1650 · 1.25)² cut-off.
   const lane: CubeExclusion = {

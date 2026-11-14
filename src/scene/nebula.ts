@@ -30,7 +30,7 @@ export interface Zone {
   axes: readonly [Vector3, Vector3, Vector3]
   /** `GetSurfacePoint` (`ZONE`, vt+0x44): where its surface is, for a point. */
   surfacePoint: (point: Vector3) => Vector3
-  /** `InZone` (`0x6339220`) with no margin: whether a point is in it. */
+  /** `InZone` (`0x63392a0`) with no margin: whether a point is in it. */
   holds: (point: Vector3) => boolean
   /** `Intersect` (vt+0x4c): whether a segment meets it, or starts in it. */
   meets: (start: Vector3, end: Vector3) => boolean
@@ -259,7 +259,7 @@ export const zoneOf = (shape: Shape, written: WrittenZone = {}): Zone => {
     }
   }
 
-  // `0x633a2af`: any other shape, out from the centre to its reach that way.
+  // `0x633a32f`: any other shape, out from the centre to its reach that way.
   return {
     ...zone,
     surfacePoint: (point) => {
@@ -276,10 +276,10 @@ export const zoneOf = (shape: Shape, written: WrittenZone = {}): Zone => {
 }
 
 /**
- * `ZONE::InZone` (`0x6339220`) at a margin of 0. Within its sphere, then by shape: a sphere is
+ * `ZONE::InZone` (`0x63392a0`) at a margin of 0. Within its sphere, then by shape: a sphere is
  * held, an ellipsoid by its reach that way, a box strictly inside its faces, a cylinder by its
  * height and radius. A ring's inner bound is `Inner + y`, with `Inner` as `sqrt(y² + z² / 4)` where
- * the other tests have the margin: an odd bound, but `common.dll` has it (`0x63394c0`, `0x6339543`).
+ * the other tests have the margin: an odd bound, but `common.dll` has it (`0x6339540`, `0x63395c3`).
  */
 const inZone = (
   type: Shape['type'],
@@ -379,7 +379,7 @@ const reachOf = (
       ...own,
       position,
       radius: f(Math.max(x, y, z)),
-      // `EllipsoidRadiusAlong` (`0x633dc90`): `1 / √(Σ d² / radius²)`, the radii squared cleared
+      // `EllipsoidRadiusAlong` (`0x633dd70`): `1 / √(Σ d² / radius²)`, the radii squared cleared
       // from the denominators (`a`, `b`, `c` are x², y², z²).
       radiusAlong: (direction) => {
         const d = local(direction)
@@ -445,7 +445,7 @@ export const exteriorFactor = (zone: Zone, distance: number, point: Vector3): nu
 }
 
 /**
- * `ZONE::GetImmersion` (`0x633ac30`) for a zone `radiusAlong` describes, as a sphere is: 0 outside,
+ * `ZONE::GetImmersion` (`0x633acb0`) for a zone `radiusAlong` describes, as a sphere is: 0 outside,
  * rising to 1 an edge fraction of the way in.
  */
 export const immersion = (zone: Zone, edgeFraction: number, point: Vector3): number => {

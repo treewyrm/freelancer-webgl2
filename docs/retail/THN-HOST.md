@@ -12,7 +12,7 @@ is [`freelancer/docs/refs/THORN.md`](https://github.com/treewyrm/freelancer/blob
 
 Addresses are image VAs. A bare address is in `Freelancer-original.exe` (base `0x400000`; the shipped
 `Freelancer.exe` is packed). Others name their module: `common.dll` `0x6260000`, `deformable2.dll`
-`0x65f0000`, `engbase.dll` `0x6610000`, `content.dll` `0x6f90000`, `thorn.dll` `0x6f20000`. Decomp
+`0x65f0000`, `engbase.dll` `0x6610000`, `content.dll` `0x6ea0000`, `thorn.dll` `0x6f20000`. Decomp
 paths are under `../freelancer-decomp/src/`, most in `freelancer/Client/`. Evidence: **checked** (read
 in the retail binary), **decomp** (agrees in the decomp, binary not read), **observed** (matched in a
 retail capture), **unsettled**. Frames are THORN.md's `[R | t]`, `A · B` applying `B` first.
@@ -134,7 +134,7 @@ not a flag.
 | goods cart | cinematic, skippable, priority 0, props to room, skip latch | checked `0x44aa18` |
 | a walk-in (`start_script`) | cinematic, skippable, cast on the character standing there | checked `0x44aafe` |
 | a fidget | loop, not cinematic, not exported, no camera restore, priority 0, **apply spatial off** | checked `0x445340`; spatial decomp |
-| a mission cutscene | cinematic, ducked, **not skippable**, priority 0, named cast | checked `0x435e21`–`0x435fb8`, `content.dll!0x6f99724` |
+| a mission cutscene | cinematic, ducked, **not skippable**, priority 0, named cast | checked `0x435e21`–`0x435fb8`, `content.dll!0x6ea9744` |
 
 ### Skip
 
@@ -150,7 +150,7 @@ past the last entry stops the sequence. The frame's normal update then runs on t
 
 On entering a room (checked `0x44a7e2`–`0x44ab40`):
 
-1. **The set script is data**, never played (`RoomData::read_set_script`, `common.dll!0x6274ea0`;
+1. **The set script is data**, never played (`RoomData::read_set_script`, `common.dll!0x6274b40`;
    decomp `common/common_roomdata.cpp`): each `COMPOUND` with a `category` becomes a room prop
    (template, frame, `LIT_` flags, fog unless `nofog`, `lt_grp`, `srt_grp`, render type, `loadout`,
    `priority`, `running_lights`); a `Room` category or a `hardpoint` userprop marks the main prop. A
@@ -201,7 +201,7 @@ Reads and writes through a reference go to its target. [`SequenceManager.find`](
 
 An encounter (`Act_AddRTC` naming a `[CharacterEncounter]`) becomes one sequence of its scripts:
 walkup, greet, action and offer as kind 0, decision 1, accept 2, decline or reject 3 (checked
-`content.dll!0x6f99718`–`0x6f998b4`). It is cinematic, ducked, **not skippable**, `C = I`, priority
+`content.dll!0x6ea9738`–`0x6ea98d4`). It is cinematic, ducked, **not skippable**, `C = I`, priority
 0, its characters cast by their `actor` names (checked `0x435e21`–`0x435fb8`). When the decision
 starts the offer dialog opens and the letterbox goes out; answering tells the server, letterboxes back
 in (decomp `OnOfferAnswered`; every letterbox call passes 3) and ends the decision, so the branch starts
@@ -288,7 +288,7 @@ element (checked `0x44eedd`).
 ### The detail gate
 
 `userprops.priority` names a setting in `DATA/SCRIPTS/rtcslider.ini`. `RtcSlider::is_enabled(name)`
-(`common.dll!0x627a920`): a `set = name, t` line is on when the cutscene-detail slider is at least
+(`common.dll!0x627a5c0`): a `set = name, t` line is on when the cutscene-detail slider is at least
 `t`, a `set_less = name, t` line when the slider is below `t`; the name is a `CreateID`, so case does
 not matter; the first line for a name wins; **a name the file lacks is on**, with a warning (decomp
 `common/common_rtcslider.cpp`). So at full detail every `set` entry is on and every `set_less` entry
@@ -313,7 +313,7 @@ otherwise                            → a new ObjectProp(template, category, re
 ```
 
 `category` is matched **exactly, case included** (`PetalInterfaceDatabase::get_category`,
-`common.dll!0x631c5e0`, `repz cmpsb`): `Room` 0, `Spaceship` 1, `Solar` 2, `Asteroid` 3, `Equipment`
+`common.dll!0x631c750`, `repz cmpsb`): `Room` 0, `Spaceship` 1, `Solar` 2, `Asteroid` 3, `Equipment`
 4, `Equipment Cart` 5, `Prop` 6, else −1. **`template_name` ignores case** (`CreateID`), except a
 leading `$`, which indirects through the current base's `[Base]` slots: `$ship_sml_01`…`$ship_lrg_03`,
 `$terrain_tiny`, `_sml`, `_mdm`, `_lrg`, `$terrain_dyna_01`, `_02` (checked `0x44628c`; decomp
@@ -373,7 +373,7 @@ G = ThornScriptGetCsys(engine, null)   ; the first DEFORMABLE with no actor or a
 C = setpoint · G⁻¹
 ```
 
-(checked `common.dll!0x627bd80`–`0x627bf70`.) `R_e` is the entity's whole orientation; only the height
+(checked `common.dll!0x627ba30`–`0x627bc20`.) `R_e` is the entity's whole orientation; only the height
 is replaced, by its `floor_height`. So the script's own actor lands exactly on the character's
 setpoint. [`anchoredFrame`](../../src/thorn/sequence.ts).
 
@@ -521,7 +521,7 @@ render type from `usr_flg` (checked `0x44f05c`; decomp `FThornCompound::SetFlags
 A character's render type is always 0. Effects, lights, sounds and markers have no draw object, so
 their `lt_grp`, `srt_grp`, `usr_flg` and `LIT_` bits are read by nothing.
 
-**`usr_flg` is a render type** (`ThornGetRenderType`, `common.dll!0x627c0b0`, checked): bit 0 gives 1,
+**`usr_flg` is a render type** (`ThornGetRenderType`, `common.dll!0x627bd60`, checked): bit 0 gives 1,
 bit 1 gives 2, bit 1 winning. 0 is a normal draw, 1 a starsphere through the appearance's starsphere
 path, 2 a backdrop through its backdrop path (checked dispatch `0x44b106`–`0x44b292`). Both sky types
 draw without depth; their materials are [MATERIALS.md](MATERIALS.md)'s (observed in

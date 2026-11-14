@@ -102,7 +102,7 @@ export interface DustFrame {
 }
 
 /**
- * `GetSmallestZoneWithPropertiesAt(point, 0x200000)` (`0x633b620`): the zone with the least
+ * `GetSmallestZoneWithPropertiesAt(point, 0x200000)` (`0x633b6e0`): the zone with the least
  * `GetRadius` that holds the point, the first of equals. Retail asks its zone tree, whose order
  * isn't read; this takes the order given, so only equal radii can differ.
  */

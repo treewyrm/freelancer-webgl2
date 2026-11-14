@@ -37,7 +37,7 @@ const text = (section: Section, key: string) => {
   return value === undefined ? undefined : String(value)
 }
 
-/** `costumes.ini`'s four slots, in `common.dll`'s order (`0x63ebd68`): the body first. */
+/** `costumes.ini`'s four slots, in `common.dll`'s order (`0x63ecd68`): the body first. */
 const SLOTS = ['body', 'head', 'lefthand', 'righthand'] as const
 
 interface PartEntry {
@@ -47,7 +47,7 @@ interface PartEntry {
 
 /**
  * `bodyparts.ini`: each part with the last `[DetailSwitchTable]` before it (`load_bodyparts`,
- * `0x6300500`, positional), and the `[Animations]` files.
+ * `0x6300570`, positional), and the `[Animations]` files.
  */
 const readBodyparts = (bytes: Uint8Array) => {
   const parts = new Map<string, PartEntry>()

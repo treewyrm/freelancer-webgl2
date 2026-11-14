@@ -61,7 +61,7 @@ export const closestCubePosition = ({ x, y, z }: Vector3, size: number): Vector3
   z: cubeCoord(nudge(z), size),
 })
 
-/** `compute_cube_id` (`0x62a6010`): 0 for a position past the grid. */
+/** `compute_cube_id` (`0x62a5cf0`): 0 for a position past the grid. */
 export const cubeId = ({ x, y, z }: Vector3): number => {
   const [nx, ny, nz] = [nudge(x), nudge(y), nudge(z)]
   let gx = Math.abs(nx) >>> 7
@@ -120,7 +120,7 @@ export const entryOrientation = (x: number, y: number, z: number): Matrix4 =>
   rotationOf(x * DEGREES, y * DEGREES, z * DEGREES)
 
 /**
- * `compute_cube_orientation` (`0x62a4010`): an LCG seeded with the cube's id says whether it's
+ * `compute_cube_orientation` (`0x62a3cf0`): an LCG seeded with the cube's id says whether it's
  * empty, at `frequency`, and which of each axis's four angles turns it.
  */
 export const cubeOrientation = (
@@ -337,7 +337,7 @@ export interface CubeDraw {
   alpha: number
 }
 
-/** `CAsteroidField::near_field` (`0x62a53c0`): within the zone, or near enough its surface. */
+/** `CAsteroidField::near_field` (`0x62a50a0`): within the zone, or near enough its surface. */
 export const nearField = (field: CubeField, eye: Vector3): boolean => {
   const fill = Math.trunc(field.fillDistance * (field.detailScale ?? 1))
   const margin = f((field.cubeSize + fill) * f(1.74))
@@ -366,7 +366,7 @@ export const nearField = (field: CubeField, eye: Vector3): boolean => {
 }
 
 /**
- * `CAsteroidField::near_field_fraction` (`0x62a54e0`): 1 at the zone's surface, falling to 0 `distance`
+ * `CAsteroidField::near_field_fraction` (`0x62a51c0`): 1 at the zone's surface, falling to 0 `distance`
  * past it, and unclamped within, so over 1. A distance of 0 or less is `(fill_dist + cube_size) · 1.2`; the client passes 1000.
  */
 export const nearFieldFraction = (
@@ -394,7 +394,7 @@ export const nearFieldFraction = (
 }
 
 /**
- * `AsteroidExclusionZone::update_dist` (`0x62bc4e0`): how far outside a zone the camera is, squared,
+ * `AsteroidExclusionZone::update_dist` (`0x62bc170`): how far outside a zone the camera is, squared,
  * 0 within. A sphere by its radius and an ellipsoid by its reach toward the camera, each summing the
  * squares in its own order; **any other shape is 0**, so a box or a cylinder is always asked.
  */
@@ -424,7 +424,7 @@ export const outsideSquared = ({ zone }: CubeExclusion, eye: Vector3): number =>
 }
 
 /**
- * `is_cliasteroid_excluded` (`0x62bc200`) over the zones nearest first: a zone holding the cube takes
+ * `is_cliasteroid_excluded` (`0x62bbe90`) over the zones nearest first: a zone holding the cube takes
  * it, or thins it to its own frequency; past `reach`, squared, the scan stops.
  */
 const excluded = (

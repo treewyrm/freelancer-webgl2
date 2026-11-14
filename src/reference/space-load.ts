@@ -1159,7 +1159,7 @@ const cloudsFrom = (
 }
 
 /**
- * `EulerMatrix` (`0x63041a0`): Rz·Ry·Rx, X applied first, from `rotate`'s degrees
+ * `EulerMatrix` (`0x6304230`): Rz·Ry·Rx, X applied first, from `rotate`'s degrees
  * ([ENGINE.md](https://github.com/treewyrm/freelancer/blob/main/docs/refs/ENGINE.md)). A zone's and a solar's (`CSolar` reading `rotate`).
  */
 const eulerTurn = (rotate: readonly [number, number, number]) => {

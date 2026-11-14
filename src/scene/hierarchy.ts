@@ -32,7 +32,7 @@ export const partTransforms = <T>(
   return transforms
 }
 
-// `0x6294265`: a float 2π, which a range is compared against in double.
+// `0x6293fb5`: a float 2π, which a range is compared against in double.
 const FULL_TURN = Math.fround(2 * Math.PI)
 const HALF_TURN = Math.fround(Math.PI)
 // `DAT_0639c9e0`, the step `WrapLimitRange` takes. Its upper bound is 360, in degrees.
@@ -62,7 +62,7 @@ const rotate = (v: Vector3, m: Matrix3): Vector3 => Matrix3.transform(v, Matrix3
 
 /**
  * The joint that hangs `child`'s hardpoint on `parent`'s, as attached equipment is connected
- * (`ConnectAttachedHardpoints`, `0x62940c0`, then `HardpointConnect`, `EngBase` `IHardpoint` slot 6).
+ * (`ConnectAttachedHardpoints`, `0x6293e10`, then `HardpointConnect`, `EngBase` `IHardpoint` slot 6).
  * Two revolute hardpoints make a revolute joint limited by the narrower range. Otherwise the child's
  * type decides: a fixed one lands its point and frame on the parent's, a revolute one turns about its
  * own axis within its own limits. A revolute joint's orientation is the parent's times the child's,

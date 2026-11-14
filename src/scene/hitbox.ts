@@ -16,9 +16,9 @@ export interface HitboxSurface {
 }
 
 /**
- * An object's collision shapes as `BuildIVP_Real` (`0x6288dd0`) makes them: its `.sur`'s root part,
+ * An object's collision shapes as `BuildIVP_Real` (`0x6288970`) makes them: its `.sur`'s root part,
  * which holds every fixed child's hulls too, and each `!fxd` part's own. A `.sph` solar's is a ball
- * of its `solar_radius` instead (`BuildIVP_Sphere`, from `CSolar`'s `0x62b78c5`).
+ * of its `solar_radius` instead (`BuildIVP_Sphere`, from `CSolar`'s `0x62b74d5`).
  */
 export interface Hitbox {
   surfaces?: readonly HitboxSurface[]

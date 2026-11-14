@@ -27,7 +27,7 @@ export const inverseRoot = (squared: number): number => {
   return (1.5 - estimate * estimate * squared * 0.5) * estimate
 }
 
-/** `random_inside_sphere` (`0x631db20`): uniform direction (cos θ, φ uniform) at radius ∛u. */
+/** `random_inside_sphere` (`0x631dc50`): uniform direction (cos θ, φ uniform) at radius ∛u. */
 export const insideSphere = (random: Random, radius: number): Vector3 => {
   const scaled = f(Math.pow(random() * RAND_UNIT, 1 / 3) * radius)
   const cos = random() * RAND_UNIT * 2 - 1
@@ -37,7 +37,7 @@ export const insideSphere = (random: Random, radius: number): Vector3 => {
   return { x: f(Math.sin(phi) * sin), y: f(f(cos) * scaled), z: f(Math.cos(phi) * sin) }
 }
 
-/** `random_on_unit_sphere` (`0x631da50`). */
+/** `random_on_unit_sphere` (`0x631db80`). */
 export const onSphere = (random: Random): Vector3 => {
   const u1 = f(random() * RAND_UNIT)
   const u2 = f(random() * RAND_UNIT)

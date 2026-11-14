@@ -262,7 +262,7 @@ export interface SetScript {
 }
 
 /**
- * `RoomData::read_set_script` (`common!0x6274ea0`): the set script as data. Its compounds with a `category`
+ * `RoomData::read_set_script` (`common!0x6274b40`): the set script as data. Its compounds with a `category`
  * become props, its cameras cameras and setpoints, its markers setpoints, two lights by name the
  * shadow and glare sources, and the rest of the lights only when on. No event runs.
  */
@@ -320,7 +320,7 @@ export const readSetScript = (script: Script): SetScript => {
 }
 
 /**
- * `ThornScriptGetCsys` (`0x627be8f`): the first `DEFORMABLE` whose `actor` isn't `player`, upright at
+ * `ThornScriptGetCsys` (`0x627bb3f`): the first `DEFORMABLE` whose `actor` isn't `player`, upright at
  * its floor height: `[R | (x, floor_height, z)]`. The identity with none.
  */
 export const scriptAnchor = (script: Script): Frame => {
