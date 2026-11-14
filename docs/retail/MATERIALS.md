@@ -4,9 +4,9 @@ What the original computes for a material: which class a material becomes, what 
 the Direct3D 8 device, and the arithmetic the device then does. This library implements every
 registered class ([COVERAGE.md](../COVERAGE.md)); this page holds the rules behind that code that
 nobody should have to rediscover or "fix". The format itself (what a `Material library` or a slot's
-flag word holds as bytes) is [`../freelancer/docs/modules/MATERIAL.md`](../../../freelancer/docs/modules/MATERIAL.md),
-with textures in [TEXTURE.md](../../../freelancer/docs/modules/TEXTURE.md) and `MaterialAnim` in
-[RIGID.md](../../../freelancer/docs/modules/RIGID.md).
+flag word holds as bytes) is [`freelancer/docs/modules/MATERIAL.md`](https://github.com/treewyrm/freelancer/blob/main/docs/modules/MATERIAL.md),
+with textures in [TEXTURE.md](https://github.com/treewyrm/freelancer/blob/main/docs/modules/TEXTURE.md) and `MaterialAnim` in
+[RIGID.md](https://github.com/treewyrm/freelancer/blob/main/docs/modules/RIGID.md).
 
 Evidence marks: **checked** `module!0xADDR` was read in the retail binary; **decomp** names the
 decomp's file and symbol, binary not read; **observed** names the reference scene whose capture or

@@ -2,9 +2,9 @@
 
 How the original builds, joins, skins and draws a character: a body, a head and two hands, each a
 `.dfm`, plus rigid accessories. What the bytes mean is the format library's
-([DEFORMABLE.md](../../../freelancer/docs/modules/DEFORMABLE.md),
-[COSTUME.md](../../../freelancer/docs/refs/COSTUME.md), `bodyparts.ini` sections in
-[SECTIONS.md](../../../freelancer/docs/refs/SECTIONS.md#detailswitchtable)). This page is what the
+([DEFORMABLE.md](https://github.com/treewyrm/freelancer/blob/main/docs/modules/DEFORMABLE.md),
+[COSTUME.md](https://github.com/treewyrm/freelancer/blob/main/docs/refs/COSTUME.md), `bodyparts.ini` sections in
+[SECTIONS.md](https://github.com/treewyrm/freelancer/blob/main/docs/refs/SECTIONS.md#detailswitchtable)). This page is what the
 engine computes from them. This library implements it in [skin.ts](../../src/deformable/skin.ts)
 (`placeCostume`, `poseSkin`), [level.ts](../../src/deformable/level.ts) and the skinned stage of
 [dcdt.ts](../../src/material/dcdt.ts).
@@ -74,7 +74,7 @@ and `Cons`, plus whatever scripts set (**decomp** `LoadSkeleton`, `FLodHolder::A
 
 So a character with no script running stands in its `Cons` rest. For heads and hands that is the
 bind pose; for every body it is a different, non-rigid pose, displacing the skin by up to 4.6 on a
-figure 1.6 tall ([DEFORMABLE.md](../../../freelancer/docs/modules/DEFORMABLE.md#the-chain-is-not-the-bind-pose)).
+figure 1.6 tall ([DEFORMABLE.md](https://github.com/treewyrm/freelancer/blob/main/docs/modules/DEFORMABLE.md#the-chain-is-not-the-bind-pose)).
 The game always has a script running. `SkinOptions.pose: 'bind'` is a viewer's choice, not a reading.
 
 ## Skinning
@@ -92,7 +92,7 @@ W(root)⁻¹ = [ Rᵀ | −Rᵀ·t ]
 matrix (**decomp** `FMeshArchetype::Draw`).
 
 Inverting `Bone to root` once more is the classic mistake: the skeleton lands mirrored about the
-origin. [RENDERER.md §8](../../../freelancer/docs/refs/RENDERER.md) writes the operation as
+origin. [RENDERER.md §8](https://github.com/treewyrm/freelancer/blob/main/docs/refs/RENDERER.md) writes the operation as
 `pose · inverse(boneToRoot)` because Librelancer inverts in its reader; the file holds the inverse
 already. Root-relative matters only when weights don't sum to one: the skin then scales about the
 root rather than the world origin.
@@ -120,7 +120,7 @@ Points are skinned once each, and the result copied to every element that names 
 
 Retail data never exercises the odd rows: influences never exceed four, none has zero, weights sum
 to one within `1.1e-7`, and every `Point_bone_first` is the running sum
-([DEFORMABLE.md](../../../freelancer/docs/modules/DEFORMABLE.md#corpus)). The rows matter for mods.
+([DEFORMABLE.md](https://github.com/treewyrm/freelancer/blob/main/docs/modules/DEFORMABLE.md#corpus)). The rows matter for mods.
 
 ### When it re-skins
 
@@ -148,7 +148,7 @@ Every face group's `Tristrip_indices` is expanded to a list at load (**checked**
 - even `i` writes `(a, b, c)`, odd `i` writes **`(a, c, b)`**.
 
 The exporter stitches short runs with repeated indices, so the skip is not optional
-([DEFORMABLE.md](../../../freelancer/docs/modules/DEFORMABLE.md#corpus)). The result is the rigid
+([DEFORMABLE.md](https://github.com/treewyrm/freelancer/blob/main/docs/modules/DEFORMABLE.md#corpus)). The result is the rigid
 meshes' winding: `frontFace(CCW)` under the mirrored projection, with no change for characters.
 Over retail, this parity agrees with the stored normals on 542,903 triangles against 4,828, and the
 opposite parity gives exactly the mirror count. `character_reed` matches retail's indices (**observed**).
@@ -215,7 +215,7 @@ K(seam) = W(child root)⁻¹ · W(host bone) · H(host) · H(seam)⁻¹ · B(sea
 head rigged against another body family opens at the neck at rest, as it does in game.
 `br_darcy_body_torture.dfm` with any head is the plain case. Librelancer and MAXLancer capture the
 host's frame at assembly instead, which closes every neck
-([COSTUME.md](../../../freelancer/docs/refs/COSTUME.md#what-librelancer-and-maxlancer-do)).
+([COSTUME.md](https://github.com/treewyrm/freelancer/blob/main/docs/refs/COSTUME.md#what-librelancer-and-maxlancer-do)).
 
 ### What is left unjoined
 
@@ -223,7 +223,7 @@ After the walk, every bone from slot 1 to the cursor that still has no parent is
 (**checked** `0x65f3d1a`–`0x65f3d4c`). Its slot keeps the world it was registered with, the identity
 by the format library's reading, so its vertices render at `B(seam)·v` in world space, torn towards
 the world origin by their weight on it. That is read, not observed: retail's only costumes with unseated shoulder seams give them no weight
-([COSTUME.md](../../../freelancer/docs/refs/COSTUME.md#an-unseated-seam-in-game)).
+([COSTUME.md](https://github.com/treewyrm/freelancer/blob/main/docs/refs/COSTUME.md#an-unseated-seam-in-game)).
 
 Two details of the walk matter only to mods:
 

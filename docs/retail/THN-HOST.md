@@ -5,7 +5,7 @@
 game loads for each entity, the scene frame it places them in, which camera the screen shows and how
 it projects and letterboxes it, how it lights, fogs, orders and clears a scene, what it does with a
 character's motions and IK, and which scripts it plays together and when. What a script's names mean
-is [`../freelancer/docs/refs/THORN.md`](../../../freelancer/docs/refs/THORN.md). This library's side is
+is [`freelancer/docs/refs/THORN.md`](https://github.com/treewyrm/freelancer/blob/main/docs/refs/THORN.md). This library's side is
 [`src/thorn/`](../../src/thorn/) and the room frame in [`src/scene/room.ts`](../../src/scene/room.ts).
 
 ## Conventions
@@ -230,7 +230,7 @@ room whose ambient scene carries its own monitor.
 ## Which INI key starts what
 
 The routes above, by the key that names the script (the format is
-[`../freelancer`](../../../freelancer/docs/refs/SECTIONS.md)'s; the route is the game's):
+[`freelancer`](https://github.com/treewyrm/freelancer/blob/main/docs/refs/SECTIONS.md)'s; the route is the game's):
 
 | Key | Section | Route |
 | --- | ------- | ----- |

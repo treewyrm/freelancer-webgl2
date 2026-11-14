@@ -4,7 +4,7 @@ How `alchemy.dll` turns an appearance's particles into triangles: what each kind
 properties measure, which tests drop a particle, how frames, colour and blending reach the vertex, and
 in what order everything draws. Emitters, fields, the clock, the update order and the host's effect
 types are the simulation, in [ALCHEMY.md](ALCHEMY.md). The file format is
-[`../freelancer/docs/modules/ALCHEMY.md`](../../../freelancer/docs/modules/ALCHEMY.md).
+[`freelancer/docs/modules/ALCHEMY.md`](https://github.com/treewyrm/freelancer/blob/main/docs/modules/ALCHEMY.md).
 
 This library implements it in [`src/alchemy/draw.ts`](../../src/alchemy/draw.ts) (what each
 appearance draws, beams and curved oriented quads on the CPU) and
@@ -408,7 +408,7 @@ This settles the extension's EXP-03.
 - Which one wins depends on **each emitter's own order of targets**, the `Pair` records' order as they
   name it (**checked** `alchemy!0x621f348`, a walk in file order). The format library keeps that order
   on write; only the interleaving between different sources changes, which nothing reads
-  ([Pair ordering](../../../freelancer/docs/modules/ALCHEMY.md#pair-ordering-is-not-preserved)).
+  ([Pair ordering](https://github.com/treewyrm/freelancer/blob/main/docs/modules/ALCHEMY.md#pair-ordering-is-not-preserved)).
 - **The particles live in the appearance's frame**: spawned through `inverse(appearance) · emitter`
   and drawn through the appearance's world, so an animated appearance carries the particles already
   alive. See [ALCHEMY.md](ALCHEMY.md).

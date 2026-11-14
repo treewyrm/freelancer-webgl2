@@ -4,7 +4,7 @@
 the spline paths. It renders nothing and loads nothing. Each entity is a proxy for an object the host
 (`Freelancer.exe`) owns, reached through DACOM control interfaces the host implements. This page says
 what thorn computes and in what order, and what it hands the host. What the names in a script mean
-is [`../freelancer/docs/refs/THORN.md`](../../../freelancer/docs/refs/THORN.md); what the game does
+is [`freelancer/docs/refs/THORN.md`](https://github.com/treewyrm/freelancer/blob/main/docs/refs/THORN.md); what the game does
 on its side of the contract (what it loads, how it lights, fogs, animates and sounds an entity, and
 which scripts play together) is [THN-HOST.md](THN-HOST.md). This library's engine is
 [`src/thorn/`](../../src/thorn/): the clock in [`playback.ts`](../../src/thorn/playback.ts), the events
@@ -149,7 +149,7 @@ entity, a path animation (6) or spatial animation (7) runs before an attach (8),
 
 ## `ATTACH_ENTITY`
 
-Keys and defaults are in [THORN.md](../../../freelancer/docs/refs/THORN.md#what-attach_entity-does):
+Keys and defaults are in [THORN.md](https://github.com/treewyrm/freelancer/blob/main/docs/refs/THORN.md#what-attach_entity-does):
 `offset` (zero, also when any component is nil), `target_type` (`ROOT`), `up` (`Y_AXIS`), `front`
 (`NEG_Z_AXIS`), `target_part`. Implemented in [`attach`](../../src/thorn/events.ts).
 
@@ -365,7 +365,7 @@ emulated them to 1e-6). So **retail's commonest curve, `[[0,0,0,0],[1,1,0,0]]`, 
 ### The path
 
 The entity parser creates the DACOM class `path_type` names (`CV_CROrientationSplinePath` in retail)
-and hands it `path_data`. Format: [THORN.md](../../../freelancer/docs/refs/THORN.md#pathprops).
+and hands it `path_data`. Format: [THORN.md](https://github.com/treewyrm/freelancer/blob/main/docs/refs/THORN.md#pathprops).
 
 - **Closed only when the string starts `CLOSED`** (`strncmp` against `"CLOSED"`, checked
   `0x6f35778`–`0x6f357a3`). Tuples alternate `{x,y,z}`, `{w,x,y,z}`. **Fewer than two keys fails the

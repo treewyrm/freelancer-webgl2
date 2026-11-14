@@ -39,7 +39,7 @@ Single file: `node --import tsx --test src/gl/program.gpu.test.ts`
    departs from retail. **RP9 is out of scope**: `src/RP9/`, `DATA_EXTRA/` and the volumetric
    nebulae are the port's additions. So are `render_ex.*`, `nebula_volume.*`, `#ifdef FREELANCER_RP9`
    blocks and the switches in `src/Freelancer.Diagnostics.props`, including widescreen.
-2. **[../freelancer](../freelancer) `docs/`** says what the data means, and
+2. **[../freelancer](https://github.com/treewyrm/freelancer) `docs/`** says what the data means, and
    `docs/refs/RENDERER.md` maps it onto WebGL2: the mirrored projection, winding, matrix upload.
 3. **[../freelancer-vscode](../freelancer-vscode)** shows what the consumer needs. Its
    `docs/renderer/` readings are leads, **not a specification**; where they were wrong, the
@@ -128,7 +128,7 @@ material as matched in [COVERAGE.md](docs/COVERAGE.md) without a named reference
 
 ## Code style
 
-As [@treewyrm/freelancer](../freelancer/docs/refs/ARCHITECTURE.md), including its naming rules
+As [@treewyrm/freelancer](https://github.com/treewyrm/freelancer/blob/main/docs/refs/ARCHITECTURE.md), including its naming rules
 C1–C14, **with shorter comments**: one line per function where the name does not already say it, and
 a comment in the body only for what the code cannot say, such as a retail quirk or a source reference.
 

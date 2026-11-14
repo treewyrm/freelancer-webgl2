@@ -2,12 +2,12 @@
 
 What the original computes when something moves: a rigid model's joints under a `.cmp` script, a
 character's bones under an `.anm` script, and a material's UV transform. What the bytes mean is
-`@treewyrm/freelancer`'s: [ANIMATION.md](../../../freelancer/docs/modules/ANIMATION.md) for scripts,
-maps and channels, [COMPOUND.md](../../../freelancer/docs/modules/COMPOUND.md#joints) for joint
-records, [RIGID.md](../../../freelancer/docs/modules/RIGID.md#material-uv-animation) for
+`@treewyrm/freelancer`'s: [ANIMATION.md](https://github.com/treewyrm/freelancer/blob/main/docs/modules/ANIMATION.md) for scripts,
+maps and channels, [COMPOUND.md](https://github.com/treewyrm/freelancer/blob/main/docs/modules/COMPOUND.md#joints) for joint
+records, [RIGID.md](https://github.com/treewyrm/freelancer/blob/main/docs/modules/RIGID.md#material-uv-animation) for
 `MaterialAnim`. How the engine's matrices land in WebGL2 (the mirror, the transpose) is
-[RENDERER.md §2](../../../freelancer/docs/refs/RENDERER.md#2-coordinate-system-winding-and-matrices)
-and [§5.2](../../../freelancer/docs/refs/RENDERER.md#52-composing-a-joint); this page does not
+[RENDERER.md §2](https://github.com/treewyrm/freelancer/blob/main/docs/refs/RENDERER.md#2-coordinate-system-winding-and-matrices)
+and [§5.2](https://github.com/treewyrm/freelancer/blob/main/docs/refs/RENDERER.md#52-composing-a-joint); this page does not
 restate it.
 
 Evidence tags: **checked** `module!0xADDR` was read in the retail binary; **decomp** names the
@@ -68,7 +68,7 @@ multiply `d` by the axis as stored (**checked** `engbase!0x66255e0`, `0x6625730`
 origin and rest rotation are copied to the same slots a fixed joint uses
 (**decomp** `src/EngBase/EngBase.cpp` `RemapJointPayload`). The `.anm` data agree: 1,955,761 loose
 position keyframes sit nearer zero than their joint's rest origin, against 1,854 nearer the rest
-([ANIMATION.md](../../../freelancer/docs/modules/ANIMATION.md#loose-and-sphere-channels-compose)).
+([ANIMATION.md](https://github.com/treewyrm/freelancer/blob/main/docs/modules/ANIMATION.md#loose-and-sphere-channels-compose)).
 **Observed** `character_reed`: a costume posed at a one-shot script's last keyframe, skinned vertices
 matching retail's.
 
@@ -76,7 +76,7 @@ matching retail's.
 `s = 2 / |q|²` and the standard Hamilton terms (row 0 is `1 − s(y² + z²), s(xy − wz), s(xz + wy)`),
 so any non-zero `q` gives a pure rotation (**checked** `x86math!0x6f723c0`).
 
-[`getJointMatrix`](../../../freelancer/docs/modules/COMPOUND.md#joints) in `@treewyrm/freelancer`
+[`getJointMatrix`](https://github.com/treewyrm/freelancer/blob/main/docs/modules/COMPOUND.md#joints) in `@treewyrm/freelancer`
 computes these, and [`partTransforms`](../../src/scene/hierarchy.ts) multiplies them down the tree as
 `W_child = W_parent · L_child`.
 
@@ -92,7 +92,7 @@ cylinder's two are loaded and never read.
 What gets clamped is the value the player hands over, after the wrap and the weight below. Retail
 data run past the range: 278 keyframes on 22 prismatic channels, the worst 423.25 past it, so
 `br_03_warwick_cityscape.cmp`'s traffic stops at the end of its rail while its channel runs on
-([ANIMATION.md](../../../freelancer/docs/modules/ANIMATION.md#channels-outside-their-joints-range)).
+([ANIMATION.md](https://github.com/treewyrm/freelancer/blob/main/docs/modules/ANIMATION.md#channels-outside-their-joints-range)).
 The keyframes are kept as stored; `getJointMatrix` clamps the same two types the same way.
 
 ## Binding a map to a joint
@@ -117,7 +117,7 @@ A mismatch logs *failed to map JOINT* and the map moves nothing
 joint does nothing; that is what `ZeroPosition` and `IdentityQuaternion` exist for, padding a loose
 channel to seven floats with nothing stored. No channel type expands to two floats, which is why a
 cylinder cannot be animated
-([ANIMATION.md](../../../freelancer/docs/modules/ANIMATION.md#why-cylinder-joints-cannot-be-animated)).
+([ANIMATION.md](https://github.com/treewyrm/freelancer/blob/main/docs/modules/ANIMATION.md#why-cylinder-joints-cannot-be-animated)).
 [`Mixer`](../../src/deformable/mixer.ts) refuses the same maps by shape.
 
 ## Sampling a channel
@@ -142,7 +142,7 @@ at the midpoint, and differs between.
 `weight · lerp` (**checked** `engbase!0x661b8e3`, `fmul [ecx+0x2c]`), and the clamp sees that
 product. A rotation is `nlerp(identity, q, weight)` unless the weight is exactly `1.0`
 (**decomp** `src/EngBase/EngBase.cpp` `TypedSlerpType4`). Fades and stacking between motions are
-the mixer's; [ANIMATION.md](../../../freelancer/docs/modules/ANIMATION.md#scripts-mix-per-joint-and-weight-is-an-amplitude)
+the mixer's; [ANIMATION.md](https://github.com/treewyrm/freelancer/blob/main/docs/modules/ANIMATION.md#scripts-mix-per-joint-and-weight-is-an-amplitude)
 describes them and [`mixer.ts`](../../src/deformable/mixer.ts) implements them.
 
 ## The clock: each map loops at its own length
@@ -280,6 +280,6 @@ names are unique among loaded files.
 
 | Believed | What the binary does | Evidence |
 | -------- | -------------------- | -------- |
-| A cylinder composes as `T(position + d·axis) · R(axis, θ) · R(rest) · T(−offset)`, the turn left of the rest like the others ([RENDERER.md §5.2](../../../freelancer/docs/refs/RENDERER.md#52-composing-a-joint), and `getJointMatrix`'s comment and code) | The rest is on the left: `R(rest) · R(axis, θ)`. The slide is still `d·axis` in the parent frame | `engbase!0x66257f0`: `+0x20` called with `[ebx+0x1c]` (rest) first and the quaternion's matrix second, `0x66258c2`–`0x66258d2` |
+| A cylinder composes as `T(position + d·axis) · R(axis, θ) · R(rest) · T(−offset)`, the turn left of the rest like the others ([RENDERER.md §5.2](https://github.com/treewyrm/freelancer/blob/main/docs/refs/RENDERER.md#52-composing-a-joint), and `getJointMatrix`'s comment and code) | The rest is on the left: `R(rest) · R(axis, θ)`. The slide is still `d·axis` in the parent frame | `engbase!0x66257f0`: `+0x20` called with `[ebx+0x1c]` (rest) first and the quaternion's matrix second, `0x66258c2`–`0x66258d2` |
 | Material animations are scoped per model, and a global map "would let one cityscape's banner drive another file's `Material #3`" as a bug (PLAYBACK.md, MATERIALS.md) | The game's map *is* global by material-name CRC, last loaded wins. Per model is this library's choice and agrees with retail only while animated names are unique | **decomp** `FMaterialAnimation::StoreData`, `FMaterial::ApplyVerifyMatAnim` |
 | Starting a script, the root "keeps its heading about +Y" (PLAYBACK.md) | Only when the caller's heading is negative; otherwise the root faces the heading given | `deformable2!0x65f435f`–`0x65f436a`, then `0x65f43d6` |

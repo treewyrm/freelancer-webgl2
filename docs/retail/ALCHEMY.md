@@ -4,7 +4,7 @@ What retail `alchemy.dll` and `Freelancer.exe` compute to run a particle effect:
 instances, the clock, how the game reaches and feeds an effect, every emitter and field, how a
 particle lives and moves, and which key each animated property is sampled at. How particles are
 drawn, and every appearance property, is in [APPEARANCES.md](APPEARANCES.md). The file format is
-`@treewyrm/freelancer`'s: [ALCHEMY.md](../../../freelancer/docs/modules/ALCHEMY.md). This library
+`@treewyrm/freelancer`'s: [ALCHEMY.md](https://github.com/treewyrm/freelancer/blob/main/docs/modules/ALCHEMY.md). This library
 implements what follows in [`src/alchemy/effect.ts`](../../src/alchemy/effect.ts),
 [`tree.ts`](../../src/alchemy/tree.ts) and [`transform.ts`](../../src/alchemy/transform.ts).
 
@@ -28,7 +28,7 @@ were read in `Freelancer-original.exe`.
   anything up. Among folders, one whose CRC is `0xEE223B51` (`Control Root`) becomes the effect's
   **control root**; with several, each match overwrites the last, so the last in entry order wins.
   **decomp** `InstantiateNodesFromArchetype`, and `../freelancer`'s
-  [two fields, two jobs](../../../freelancer/docs/modules/ALCHEMY.md#two-fields-two-jobs-flags-makes-a-container-control_root_id-makes-it-the-root).
+  [two fields, two jobs](https://github.com/treewyrm/freelancer/blob/main/docs/modules/ALCHEMY.md#two-fields-two-jobs-flags-makes-a-container-control_root_id-makes-it-the-root).
   Retail sets both on every folder, has at most one per effect, and has 70 effects with none.
 - **Siblings are sorted by class, not file order.** Each class answers a constant: 100 for the eight
   appearances, 200 for the seven fields, 300 for the three emitters, 400 for a folder. **checked**
@@ -53,7 +53,7 @@ Containment and the `Pair` links are separate, and neither stands in for the oth
   One retail emitter names two (`gf_explosion_br_battleship_damagemultiflashbang_Cone.emt#1`); the
   later `Pair` record wins. Only each source's own order of targets matters, and `../freelancer`'s
   writer keeps it; the interleaving between sources it changes is never read
-  ([note](../../../freelancer/docs/modules/ALCHEMY.md#pair-ordering-is-not-preserved)).
+  ([note](https://github.com/treewyrm/freelancer/blob/main/docs/modules/ALCHEMY.md#pair-ordering-is-not-preserved)).
 - **Appearance → fields: a list in `Pair` order.** An emitter paired with anything but an appearance
   has its slot cleared (the count it gave stays given); any other combination is reported and
   ignored. **decomp** `FFxEffectObject::BindRec8Associates`.
@@ -186,7 +186,7 @@ rotation so it stretches along the parent's axes. The three order bytes in the h
 never evaluated. **checked** `alchemy!0x6243c50` (three degree conversions by `0x624d4c4`);
 order **decomp** `src/alchemy/alchemy_ramp.cpp` `FFxAnimatedTransform::Evaluate`,
 `BuildEulerRotation3x3`; the order was also **observed** by the extension. The header and the
-nine-curve mask: [AnimatedTransform](../../../freelancer/docs/modules/ALCHEMY.md#animatedtransform).
+nine-curve mask: [AnimatedTransform](https://github.com/treewyrm/freelancer/blob/main/docs/modules/ALCHEMY.md#animatedtransform).
 
 ### Inverting a frame
 
@@ -251,7 +251,7 @@ The shield-hit feed exists but never fires: its out handle is never written (**d
 ### How a value is evaluated
 
 `../freelancer`'s `curveAt`, `floatAt` and `colorAt` are ports of the DLL's three evaluators, and
-its [Evaluation](../../../freelancer/docs/modules/ALCHEMY.md#evaluation) section is the reference.
+its [Evaluation](https://github.com/treewyrm/freelancer/blob/main/docs/modules/ALCHEMY.md#evaluation) section is the reference.
 What a maintainer would otherwise get wrong:
 
 - **Emitters, shapes and fields are looped Hermite lists**; `Emitter_LODCurve` and

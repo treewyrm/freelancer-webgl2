@@ -14,7 +14,7 @@ it is known:
 - **unsettled**: what is unknown, said plainly.
 
 Each page ends with what is still **Open**, and the **Corrections** it made to the readings it was
-carried from. Formats belong to `@treewyrm/freelancer` ([its docs](../../../freelancer/docs)); a
+carried from. Formats belong to `@treewyrm/freelancer` ([its docs](https://github.com/treewyrm/freelancer/tree/main/docs)); a
 decomp error found on the way is in [DECOMP-ERRORS.md](../DECOMP-ERRORS.md).
 
 | Page | Covers |
