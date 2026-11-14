@@ -1,7 +1,11 @@
 /**
- * A retail base room as the game builds it, for the base-room capture: the set script as data, its
- * `scene` lines played as looping, exporting sequences from `C = I` frame by frame, and the room
- * frame that leaves, models resolved as the game's hosts resolve them. Test-only.
+ * The retail install's answers to {@link RoomStage}, for the base-room capture and the reference
+ * tools: the room INI read, models resolved as the game's hosts resolve them, the scripts' effects
+ * and the compounds' hardpoints read ahead. Test-only; the room itself is `thorn`'s.
+ *
+ * Its INI reads name retail's own files (`SHIPS/shiparch.ini`, the eight `FX/*_ale.ini`) rather than
+ * following `freelancer.ini`'s `[Data]`, which is right for retail and wrong for a mod: a host
+ * reading a mod resolves through `[Data]`.
  *
  * Left out, each reported: characters (the server chooses who stands where and what they fidget),
  * a base room's effects (its `PSYS`es draw only through `playScripts` with `loadRoomEffects`),
@@ -10,7 +14,7 @@
  */
 import { Document, type Section } from '@treewyrm/freelancer/ini'
 import { getMaterial, readMaterialLibrary } from '@treewyrm/freelancer/material'
-import { Matrix4 } from '@treewyrm/freelancer/math'
+import type { Matrix4 } from '@treewyrm/freelancer/math'
 import {
   readMaterialAnimLibrary,
   readRigidModel,
@@ -27,23 +31,24 @@ import { buildEffect, lookupOver } from '#/alchemy/tree.js'
 import { getMesh, readVMeshLibrary } from '@treewyrm/freelancer/vmesh'
 import type { Camera } from '#/scene/camera.js'
 import { placeParts, type SceneEffect, type SceneModel } from '#/scene/frame.js'
-import type { RoomObject, RoomScene } from '#/scene/room.js'
-import { NO_FOG } from '#/thorn/light.js'
-import type { CharacterHost, PlaybackOptions, ThornHost } from '#/thorn/playback.js'
-import { roomEntities, spawns, userProp, type RtcSetting, type SpawnOptions } from '#/thorn/room.js'
-import { partTransforms } from '#/scene/hierarchy.js'
-import type { CompoundNode } from '@treewyrm/freelancer/compound'
-import { frameMilliseconds } from '#/thorn/script.js'
+import type { RoomScene } from '#/scene/room.js'
+import type { CharacterHost, ThornHost } from '#/thorn/playback.js'
+import { roomEntities, userProp, type RtcSetting, type SpawnOptions } from '#/thorn/room.js'
 import {
   ambientSequence,
   readSetScript,
-  Sequence,
-  SequenceManager,
   type SequenceFlags,
+  type SequenceManager,
   type SetScript,
 } from '#/thorn/sequence.js'
+import {
+  compoundHardpoint,
+  RoomStage,
+  type SceneLine,
+  type SceneMode,
+  type StageTemplate,
+} from '#/thorn/stage.js'
 import type { Cast } from './retail-cast.js'
-import { cameraOf, ViewTable } from '#/thorn/view.js'
 
 type ReadAsset = (path: string) => Promise<Uint8Array>
 
@@ -183,31 +188,8 @@ export const loadRoomHardpoints = async (
 
   return (entity, name) => {
     const model = models.get(entity)
-    if (!model) return undefined
 
-    const parts: [RigidModel, Matrix4][] =
-      model.type === 'compound'
-        ? [...partTransforms(model as CompoundNode<RigidModel>, Matrix4.identity)].map(
-            ([node, world]) => [node.part, world],
-          )
-        : [[model, Matrix4.identity]]
-    let frame: Matrix4 | undefined
-
-    for (const [part, world] of parts) {
-      if (part.type !== 'rigid') continue
-
-      for (const point of part.hardpoints)
-        if (point.name.toLowerCase() === name.toLowerCase())
-          frame = Matrix4.multiply(
-            world,
-            Matrix4.fromRotationTranslation(
-              point.orientation,
-              point.position ?? { x: 0, y: 0, z: 0 },
-            ),
-          )
-    }
-
-    return frame
+    return model && compoundHardpoint(model, name)
   }
 }
 
@@ -345,29 +327,20 @@ const parseModel = (read: ReadAsset, file: string, libraries: readonly string[])
   return found
 }
 
-/** A rigid model from its file and libraries, placed. */
-const loadModel = async (
-  read: ReadAsset,
-  { file, libraries }: { file: string; libraries: string[] },
+/** A parsed model placed at `world`. */
+const placeModel = (
+  { model, meshes, materials, textures, materialAnimations }: ParsedModel,
   world: Matrix4,
   camera: Camera,
   sky?: 'starsphere' | 'backdrop',
-): Promise<SceneModel> => {
-  const { model, meshes, materials, textures, materialAnimations } = await parseModel(
-    read,
-    file,
-    libraries,
-  )
-
-  return {
-    parts: placeParts(model, world, { camera }),
-    mesh: (id) => getMesh(meshes, id),
-    material: (id) => getMaterial(materials, id),
-    texture: (name) => textures.find((entry) => entry.name.toLowerCase() === name.toLowerCase()),
-    materialAnimations,
-    ...(sky && { sky }),
-  }
-}
+): SceneModel => ({
+  parts: placeParts(model, world, { camera }),
+  mesh: (id) => getMesh(meshes, id),
+  material: (id) => getMaterial(materials, id),
+  texture: (name) => textures.find((entry) => entry.name.toLowerCase() === name.toLowerCase()),
+  materialAnimations,
+  ...(sky && { sky }),
+})
 
 /** `SCRIPTS/rtcslider.ini`'s `set` and `set_less` lines, in file order. */
 export const readRtcSlider = async (read: ReadAsset): Promise<RtcSetting[]> =>
@@ -387,6 +360,7 @@ export const readRtcSlider = async (read: ReadAsset): Promise<RtcSetting[]> =>
   )
 
 export interface RetailRoom {
+  stage: RoomStage
   set: SetScript
   /** `animation` and `animation_oneshot`: the room's main prop's own scripts, which aren't played here. */
   animations: string[]
@@ -401,11 +375,11 @@ export interface RetailRoom {
 const readScript = async (read: ReadAsset, file: string) =>
   thnScene.read(thn.read(await read(path(file))))
 
-/**
- * A room's INI, its set script read and its `scene` lines started in file order and played at 60
- * frames a second for `seconds`. A `REFERENCE` binds to an earlier scene's entity, else the set
- * script's setpoint or camera.
- */
+/** The stage played at 60 frames a second for `seconds`, as the menu plays its room. */
+const playFor = (stage: RoomStage, seconds: number) => {
+  for (let frame = 0; frame < seconds * 60; frame++) stage.advance(1 / 60)
+}
+
 /**
  * Scripts played as the menu plays its room's: each a looping, exporting ambient sequence at `C = I`,
  * started in order, at 60 frames a second for `seconds`. No set script.
@@ -415,30 +389,18 @@ export const playScripts = (
   seconds: number,
   { effects, hardpoint }: { effects?: RoomEffects; hardpoint?: ThornHost['hardpoint'] } = {},
 ): RetailRoom => {
-  const manager = new SequenceManager()
-  const fog = { state: NO_FOG }
-  const options = (): PlaybackOptions => ({
-    fog,
-    resolve: (type, name) => manager.find(type, name),
-    ...(effects && { createEffect: effects.create }),
-    ...(hardpoint && { host: { hardpoint } }),
+  const stage = new RoomStage({
+    host: { ...(effects && { createEffect: effects.create }), ...(hardpoint && { hardpoint }) },
   })
-  for (const script of scripts) manager.add(ambientSequence(script, options))
 
-  let carry = 0
-
-  // Fixed 1/60 s frames: `frameMilliseconds` floors each to whole ms and carries the remainder on.
-  for (let frame = 0; frame < seconds * 60; frame++) {
-    const next = frameMilliseconds(carry, 1 / 60)
-
-    carry = next.carry
-    manager.update(next.milliseconds)
-  }
+  for (const script of scripts) stage.manager.add(ambientSequence(script, stage.options))
+  playFor(stage, seconds)
 
   return {
-    set: { props: [], cameras: [], setpoints: [], lights: [] },
+    stage,
+    set: stage.set,
     animations: [],
-    manager,
+    manager: stage.manager,
     camera: undefined,
     skipped: [],
     ...(effects && { effects }),
@@ -456,6 +418,12 @@ export interface RoomPlayOptions {
   characters?: CharacterHost
 }
 
+const MODES: Record<string, SceneMode> = { ambient: 'ambient', traffic: 'traffic', once: 'once' }
+
+/**
+ * A room's INI read (`0x6275490`, `0x62752b0`): its set script, its `[Camera]` and its `scene` lines,
+ * started on a stage with `scripts` after them and played at 60 frames a second for `seconds`.
+ */
 export const playRetailRoom = async (
   read: ReadAsset,
   roomIni: string,
@@ -465,54 +433,27 @@ export const playRetailRoom = async (
   const sections = [...Document.read(await read(roomIni))]
   const info = sections.find(({ name }) => name.toLowerCase() === 'room_info')
   const [[setScript] = []] = info ? values(info, 'set_script') : []
-  const set = setScript
-    ? readSetScript(await readScript(read, setScript))
-    : { props: [], cameras: [], setpoints: [], lights: [] }
   const cameraSection = sections.find(({ name }) => name.toLowerCase() === 'camera')
   const [[camera] = []] = cameraSection ? values(cameraSection, 'name') : []
-  const manager = new SequenceManager()
-  const fog = { state: NO_FOG }
   const skipped: string[] = []
-
-  const options = (): PlaybackOptions => ({
-    fog,
-    ...(effects && { createEffect: effects.create }),
-    host: { ...(hardpoint && { hardpoint }), ...(bone && { bone }) },
-    ...(characters && { characters }),
-    resolve: (type, name) => {
-      const found = manager.find(type, name)
-      if (found) return found
-
-      const at = (type === 'CAMERA' ? set.cameras : set.setpoints).find(
-        (each) => each.name === name,
-      )
-
-      return at && { frame: at.frame }
-    },
-  })
+  const scenes: SceneLine[] = []
 
   for (const line of info ? values(info, 'scene') : []) {
-    // A leading `all` is read and discarded.
-    const [mode = '', scriptFile = ''] = line[0]?.toLowerCase() === 'all' ? line.slice(1) : line
+    // A leading `all` is read and discarded; then two or three values.
+    const [kind = '', scriptFile = '', setting] =
+      line[0]?.toLowerCase() === 'all' ? line.slice(1) : line
+    const mode = MODES[kind.toLowerCase()]
 
-    if (mode.toLowerCase() !== 'ambient') {
-      skipped.push(`scene ${scriptFile}: ${mode}`)
+    if (!mode) {
+      skipped.push(`scene ${scriptFile}: ${kind}`)
       continue
     }
 
-    manager.add(ambientSequence(await readScript(read, scriptFile), options))
-  }
-
-  for (const { script, flags } of scripts) manager.add(new Sequence([{ script }], flags, options))
-
-  let carry = 0
-
-  // Fixed 1/60 s frames: `frameMilliseconds` floors each to whole ms and carries the remainder on.
-  for (let frame = 0; frame < seconds * 60; frame++) {
-    const next = frameMilliseconds(carry, 1 / 60)
-
-    carry = next.carry
-    manager.update(next.milliseconds)
+    scenes.push({
+      mode,
+      script: await readScript(read, scriptFile),
+      ...(setting !== undefined && { setting }),
+    })
   }
 
   const animations = info
@@ -520,8 +461,61 @@ export const playRetailRoom = async (
         ([name = '']) => name,
       )
     : []
+  const stage = new RoomStage({
+    ...(setScript && { set: readSetScript(await readScript(read, setScript)) }),
+    scenes,
+    camera,
+    animated: animations.length > 0,
+    host: {
+      ...(effects && { createEffect: effects.create }),
+      ...(hardpoint && { hardpoint }),
+      ...(bone && { bone }),
+      ...(characters && { characters }),
+    },
+  })
+
+  for (const { script, flags } of scripts) stage.play([{ script }], flags)
+  playFor(stage, seconds)
+
   if (animations.length) skipped.push(`the main prop's ${animations.join(', ')}`)
-  return { set, animations, manager, camera, skipped, ...(effects && { effects }) }
+  return {
+    stage,
+    set: stage.set,
+    animations,
+    manager: stage.manager,
+    camera,
+    skipped: [...skipped, ...stage.skipped],
+    ...(effects && { effects }),
+  }
+}
+
+/** Every model the frame can ask for now, parsed: the set script's props and what the scripts spawn. */
+const loadTemplates = async (
+  read: ReadAsset,
+  room: RetailRoom,
+  spawn: SpawnOptions | undefined,
+): Promise<Map<string, ParsedModel>> => {
+  const lookup = await readModelLookup(read)
+  const wanted: StageTemplate[] = [
+    ...room.set.props,
+    ...room.manager.sequences.flatMap((sequence) =>
+      sequence.playback
+        ? roomEntities(sequence.playback, spawn).flatMap(({ category, template }) =>
+            category ? [{ category, template }] : [],
+          )
+        : [],
+    ),
+  ]
+  const parsedModels = new Map<string, ParsedModel>()
+
+  for (const { category, template } of wanted) {
+    const key = `${category}\n${template.toLowerCase()}`
+    const found = parsedModels.has(key) ? undefined : lookup(category, template)
+
+    if (found) parsedModels.set(key, await parseModel(read, found.file, found.libraries))
+  }
+
+  return parsedModels
 }
 
 /**
@@ -539,112 +533,22 @@ export const retailRoomScene = async (
     spawn,
   }: { playing?: boolean; still?: boolean; cast?: Cast; spawn?: SpawnOptions } = {},
 ): Promise<RoomScene> => {
-  const { set, manager, camera, skipped } = room
-  const lookup = await readModelLookup(read)
-  const table = new ViewTable()
-  const monitors = manager.sequences.flatMap((sequence) =>
-    (sequence.playback?.script.entities ?? [])
-      // A monitor the slider has off gets no host, so never takes the view.
-      .filter((entity) => entity.type === 'MONITOR' && spawns(entity, spawn))
-      .map((entity) => ({
-        playback: sequence.playback!,
-        name: entity.entity_name,
-        slot: table.register(sequence.flags.priority ?? 0, true),
-      })),
+  const models = await loadTemplates(read, room, spawn)
+  const { scene, skipped } = room.stage.scene(
+    {
+      model: (category, template, world, camera, sky) => {
+        const parsedModel = models.get(`${category}\n${template.toLowerCase()}`)
+
+        return parsedModel && placeModel(parsedModel, world, camera, sky)
+      },
+      ...(cast && { character: cast.place }),
+      ...(room.effects && { effectTexture: room.effects.texture }),
+    },
+    { aspect, playing, still, ...(spawn && { spawn }) },
   )
-  const shown = monitors.find(({ slot }) => slot === table.active)
-  const roomCamera = set.cameras.find(({ name }) => name === camera) ?? set.cameras[0]
-  const view: Camera = shown
-    ? cameraOf(shown.playback.view(shown.name)!)
-    : cameraOf({
-        world: roomCamera?.frame ?? Matrix4.identity,
-        fovh: roomCamera?.fovh ?? 60,
-        near: roomCamera?.near ?? 1,
-        far: roomCamera?.far ?? 10000,
-        aspect,
-      })
-  const objects: RoomObject[] = []
-  const effects: SceneEffect[] = []
 
-  for (const prop of set.props) {
-    // `still`: only what stands still, so not a main prop its room animates.
-    if (still && prop.main && room.animations.length) continue
-
-    const found = lookup(prop.category, prop.template)
-
-    if (!found) {
-      skipped.push(`prop ${prop.template}: ${prop.category}`)
-      continue
-    }
-
-    objects.push({
-      model: await loadModel(read, found, prop.frame, view, prop.sky),
-      position: { x: prop.frame.w.x, y: prop.frame.w.y, z: prop.frame.w.z },
-      layer: prop.layer,
-      lightGroup: prop.lightGroup,
-      visible: prop.visible,
-      lit: prop.lit,
-      fog: prop.fog,
-    })
-  }
-
-  for (const sequence of playing ? manager.sequences : []) {
-    const playback = sequence.playback
-    if (!playback) continue
-
-    for (const entity of roomEntities(playback, spawn)) {
-      const character =
-        entity.entity.type === 'DEFORMABLE'
-          ? cast?.place(entity.entity.entity_name, entity.world, view)
-          : undefined
-
-      if (character) {
-        for (const model of character) objects.push({ ...entity.object, model })
-        continue
-      }
-
-      const found = entity.category ? lookup(entity.category, entity.template) : undefined
-
-      if (!found) {
-        skipped.push(
-          `${entity.entity.entity_name}: ${entity.category ?? 'a character'} ${entity.template}`,
-        )
-        continue
-      }
-
-      objects.push({
-        ...entity.object,
-        model: await loadModel(read, found, entity.world, view, entity.sky),
-      })
-    }
-
-    for (const { entity, instance } of playback.effects) {
-      const texture = room.effects?.texture(instance)
-
-      if (texture) effects.push({ instance, texture })
-      else skipped.push(`effect ${entity}`)
-    }
-
-    if (!room.effects) {
-      const psys = playback.script.entities.filter(({ type }) => type === 'PSYS').length
-      if (psys) skipped.push(`${psys} PSYS entities: no effects given`)
-    }
-  }
-
-  const first = manager.sequences[0]?.playback
-
-  return {
-    camera: view,
-    aspect,
-    ...(set.ambient && { ambient: set.ambient }),
-    lights: [
-      ...set.lights,
-      ...manager.sequences.flatMap((sequence) => sequence.playback?.roomLights() ?? []),
-    ],
-    objects,
-    ...(effects.length && { effects }),
-    ...(first?.roomFog && { fog: first.roomFog }),
-  }
+  room.skipped.push(...skipped)
+  return scene
 }
 
 /** A save in the base's start room, docked: `[Player] base`, as a retail save names it. */

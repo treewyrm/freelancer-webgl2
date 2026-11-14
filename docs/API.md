@@ -566,6 +566,11 @@ aims, floor, root). `mixerCharacters({ mixer, animation })` is a `CharacterHost`
 
 | Export                 | Does                                                                    |
 | ---------------------- | ----------------------------------------------------------------------- |
+| `RoomStage`            | A base room, live: the set script, its `scene` lines started by group behind their settings, `play` for any sequence over them, `advance(seconds)` on the game's clock, `view`, and `scene(host, options)` for the `RoomScene` it leaves |
+| `StageSceneHost`       | What a frame asks the host: `model(category, template, world, camera, sky)`, `character`, `effectTexture`, each answered at once |
+| `stageTemplates`       | Every `{ category, template }` a room with these scripts can ask for, to load ahead |
+| `compoundHardpoint`    | A compound's hardpoint at rest, the last of a name winning: a `ThornHost['hardpoint']` from a loaded model |
+| `createCast`, `castEntities` | A scene's characters, one mixer each at its record, from the costume parts and animations the host gives through `CastSource` |
 | `readSetScript`        | A room's set script as data: props, cameras, setpoints, shadow and glare sources |
 | `roomEntities`         | A playback's compounds and characters, with their `RoomObject` fields   |
 | `Sequence`, `SequenceManager` | Scripts played in sequence, with offers, info boxes and skipping |
@@ -638,43 +643,41 @@ const frame = (step: number) => {
 ### A room with its scripts
 
 ```ts
-const set = thorn.readSetScript(setScript)
-const manager = new thorn.SequenceManager()
-const fog = { state: thorn.NO_FOG } // one fog for every script in the room
-const options = (): thorn.PlaybackOptions => ({
-  fog,
-  resolve: (type, name) => manager.find(type, name), // REFERENCE entities
+const stage = new thorn.RoomStage({
+  set: thorn.readSetScript(setScript),
+  scenes: sceneLines, // [Room_Info] scene, read: { mode, script, setting? }, in file order
+  camera: roomCamera, // [Camera] name
+  spawn: { rtc, slider }, // rtcslider.ini and the cutscene-detail setting
+  host: {
+    // A character's hardpoints are its cast's; a compound's, its model's (thorn.compoundHardpoint).
+    hardpoint: (entity, name) => cast.hardpoint(entity, name) ?? propHardpoint(entity, name),
+    bone: cast.bone,
+    characters: cast.characters, // cast = thorn.createCast(scripts, { costume, animation })
+    createEffect,
+  },
 })
-for (const script of ambientScripts) manager.add(thorn.ambientSequence(script, options)) // and plays it
+stage.play([{ script: landing }], { cinematic: true, priority: 1 }) // anything over the room
 
-let carry = 0
+// Ahead: every model the frame can ask for, since it asks at once.
+for (const { category, template } of thorn.stageTemplates(stage.set, scripts))
+  await load(category, template)
+
 const frame = (seconds: number) => {
-  const next = thorn.frameMilliseconds(carry, seconds)
-  carry = next.carry
-  manager.update(next.milliseconds)
+  stage.advance(seconds)
 
-  const objects: RoomObject[] = [...propsOf(set)]
-  for (const { playback } of manager.sequences)
-    if (playback)
-      for (const entity of thorn.roomEntities(playback))
-        objects.push({ ...entity.object, model: modelFor(entity) })
-
-  renderer.render(
-    collectRoomFrame({
-      camera,
-      aspect,
-      ...(set.ambient && { ambient: set.ambient }),
-      lights: [...set.lights, ...manager.sequences.flatMap((s) => s.playback?.roomLights() ?? [])],
-      objects,
-      ...(manager.sequences[0]?.playback?.roomFog && { fog: manager.sequences[0].playback.roomFog }),
-    }),
+  const { scene, skipped } = stage.scene(
+    { model: placed, character: cast.place, effectTexture },
+    { aspect, spawn: { rtc, slider } },
   )
+  renderer.render(collectRoomFrame(scene))
 }
 ```
 
-`propsOf` and `modelFor` are the host's: they resolve a template and category to a model and place it
-at the given frame. `src/reference/retail-room.ts` is a complete version, including monitors through
-`ViewTable`.
+`placed`, `load` and `effectTexture` are the host's: which model file a `category` and template name
+is (`petaldb.ini`, the archetype tables), the model placed at the given frame, and an effect's
+textures. A host that reads a mod resolves those through `freelancer.ini`'s `[Data]`. The library
+reads no INI. `src/reference/retail-room.ts` and `retail-cast.ts` are retail's answers, for the
+captures and the reference tools.
 
 ## Gaps
 

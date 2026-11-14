@@ -86,3 +86,17 @@ export {
   type SetSource,
 } from './sequence.js'
 export { mixerCharacters, type MixerCharacters } from './character.js'
+export {
+  compoundHardpoint,
+  RoomStage,
+  stageTemplates,
+  type SceneLine,
+  type SceneMode,
+  type StageOptions,
+  type StagePlayHost,
+  type StageScene,
+  type StageSceneHost,
+  type StageSceneOptions,
+  type StageTemplate,
+} from './stage.js'
+export { castEntities, createCast, type Cast, type CastSource, type CostumePart } from './cast.js'
