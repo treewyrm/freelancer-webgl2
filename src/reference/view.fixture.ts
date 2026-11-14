@@ -1,13 +1,12 @@
 /** A retail system seen from anywhere, for looking at: no comparison, only the picture. */
-import { Matrix3, type Vector3 } from '@treewyrm/freelancer/math'
+import type { Vector3 } from '@treewyrm/freelancer/math'
 import type { Fixture } from '#/harness.js'
 import { fieldCubes } from '#/scene/asteroids.js'
 import { createRenderer } from '#/scene/render.js'
 import { collectSpaceFrame } from '#/scene/space.js'
+import { lookAt, type Triple } from './look.js'
 import { readRetailSystem } from './retail-system.js'
 import { loadSystem } from './space-load.js'
-
-type Triple = readonly [number, number, number]
 
 export interface ViewArgs {
   path: string
@@ -29,23 +28,6 @@ export interface ViewReport {
   /** Cubes of asteroids drawn, by field. */
   cubes: number[]
   error: number
-}
-
-/** The turn whose -Z runs from `eye` to `target`, +Y kept up, as rows: `Matrix3` holds a file's. */
-const lookAt = (eye: Triple, target: Triple): Matrix3 => {
-  const forward = target.map((value, axis) => value - eye[axis]!)
-  const length = Math.hypot(...forward)
-  const [fx, fy, fz] = forward.map((value) => value / length) as [number, number, number]
-  // Right is forward × up, up is right × forward.
-  const side = Math.hypot(fz, fx)
-  const right = { x: -fz / side, y: 0, z: fx / side }
-  const up = {
-    x: right.y * fz - right.z * fy,
-    y: right.z * fx - right.x * fz,
-    z: right.x * fy - right.y * fx,
-  }
-
-  return Matrix3.transpose({ x: right, y: up, z: { x: -fx, y: -fy, z: -fz } })
 }
 
 export default (async (gl, { args, read }) => {

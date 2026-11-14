@@ -28,6 +28,8 @@ npm run reference -- mount li_elite   # put a scene on the lab install's menu; a
 npm run capture -- references/li_elite   # read a capture; add --draw n for one draw in full
 npm run bench       # effects' CPU cost in retail systems; BENCH_THROTTLE=4 for a slower CPU
 npm run view -- UNIVERSE/SYSTEMS/LI01/li01.ini -28022,0,51486 0,0,0   # a retail system from eye to target
+npm run frames -- room s002xe --video --at 20   # stills and mp4 clips of a cutscene; see frames.ts
+npm run frames -- system UNIVERSE/SYSTEMS/LI01/li01.ini --path flyby.json --video   # or --eye/--target, --thn
 ```
 
 Single file: `node --import tsx --test src/gl/program.gpu.test.ts`

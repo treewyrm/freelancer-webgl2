@@ -71,6 +71,9 @@ export const readRetailSystem = async (
 
     const star = text(section, 'star')
     const loadout = text(section, 'loadout')
+    const nebulaeBefore = sections
+      .slice(0, sections.indexOf(section))
+      .filter(({ name }) => name.toLowerCase() === 'nebula').length
     const ring = section.properties.find(({ name }) => name.toLowerCase() === 'ring')
 
     return [
@@ -81,6 +84,7 @@ export const readRetailSystem = async (
         ...(section.getValue('rotate') !== undefined && { rotate: triple(section, 'rotate') }),
         ...(star && { star }),
         ...(loadout && { loadout }),
+        ...(nebulaeBefore && { nebulaeBefore }),
         ...(ring && {
           ring: { zone: String(ring.values[0]!.value), file: String(ring.values[1]!.value) },
         }),

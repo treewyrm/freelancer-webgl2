@@ -20,6 +20,8 @@ export interface FixtureOptions {
   read?: (path: string) => Promise<Uint8Array>
   /** Slows the page's CPU this many times, as Chrome's DevTools do: a slower machine, for the bench. */
   cpuThrottling?: number
+  /** A page to open first, so the fixture's own requests to that server are same-origin. */
+  origin?: string
 }
 
 export interface FixtureResult<T> {
@@ -36,8 +38,11 @@ const ANGLE_BACKEND: Partial<Record<NodeJS.Platform, string>> = {
   linux: 'vulkan',
 }
 
-/** Full (not shell) headless Chromium, which is the build that can reach the hardware GPU. */
-export const launch = (): Promise<Browser> =>
+/**
+ * Full (not shell) headless Chromium, which is the build that can reach the hardware GPU. `flags` are
+ * added to its command line.
+ */
+export const launch = (flags: readonly string[] = []): Promise<Browser> =>
   chromium.launch({
     channel: 'chromium',
     headless: true,
@@ -46,6 +51,7 @@ export const launch = (): Promise<Browser> =>
       '--ignore-gpu-blocklist',
       '--use-gl=angle',
       `--use-angle=${ANGLE_BACKEND[process.platform] ?? 'default'}`,
+      ...flags,
     ],
   })
 
@@ -84,7 +90,7 @@ const bundle = async (fixture: URL): Promise<string> => {
 export const runFixture = async <T>(
   browser: Browser,
   fixture: URL,
-  { width = 256, height = 256, context, args, read, cpuThrottling }: FixtureOptions = {},
+  { width = 256, height = 256, context, args, read, cpuThrottling, origin }: FixtureOptions = {},
 ): Promise<FixtureResult<T>> => {
   const page = await browser.newPage()
 
@@ -96,6 +102,7 @@ export const runFixture = async <T>(
         rate: cpuThrottling,
       })
 
+    if (origin) await page.goto(origin)
     await page.addScriptTag({ content: await bundle(fixture) })
 
     if (read)

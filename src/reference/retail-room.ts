@@ -64,7 +64,7 @@ export type ModelLookup = (
  * `petaldb.ini`'s `[ObjectTable]` (`room`, `prop`, `cart`, the record's category matching) and
  * `solararch.ini`'s `DA_archetype` with its `material_library` lines, names ignoring case.
  */
-export const readModelLookup = async (read: ReadAsset): Promise<ModelLookup> => {
+const buildModelLookup = async (read: ReadAsset): Promise<ModelLookup> => {
   const petal = new Map<string, { file: string; libraries: string[] }>()
 
   for (const section of Document.read(await read('petaldb.ini')))
@@ -131,6 +131,16 @@ export const readModelLookup = async (read: ReadAsset): Promise<ModelLookup> => 
           : category === 'Equipment'
             ? equipment.get(template.toLowerCase())
             : petal.get(`${category}:${template.toLowerCase()}`)
+}
+
+const lookups = new WeakMap<ReadAsset, Promise<ModelLookup>>()
+
+/** {@link buildModelLookup}, once per reader: a scene built every frame reads it every frame. */
+export const readModelLookup = (read: ReadAsset): Promise<ModelLookup> => {
+  let found = lookups.get(read)
+  if (!found) lookups.set(read, (found = buildModelLookup(read)))
+
+  return found
 }
 
 // The `[VisEffect]` tables among `freelancer.ini`'s `[Data] effects` lines.

@@ -44,6 +44,11 @@ export interface ReferenceSystem {
     jump?: { system: string; object: string; tunnel: string; effect: string }
     /** `loadout =`, over its archetype's. Only a retail system read for the bench has one. */
     loadout?: string
+    /**
+     * `[Nebula]` sections above its `[Object]`, the only ones it can find (`FUN_005485c0`). None
+     * when absent, as `systemIni` writes every object first; retail's files list them first.
+     */
+    nebulaeBefore?: number
   }[]
   /** `[zone]`s, turned about X alone so `EulerMatrix`'s order can't matter, unless `rotate` says. */
   zones?: {

@@ -22,7 +22,7 @@ import {
 } from '@treewyrm/freelancer/animation'
 import type { RigidPart } from '@treewyrm/freelancer/rigid'
 import type { Camera } from '#/scene/camera.js'
-import { placeParts, type PlaceOptions, type SceneModel } from '#/scene/frame.js'
+import { placeParts, type PlacedPart, type PlaceOptions, type SceneModel } from '#/scene/frame.js'
 import { attachJoint, partTransforms } from '#/scene/hierarchy.js'
 import { LightBlink, RETAIL_FLARE_LIGHT, type FlareLight, type SpaceFlare } from '#/scene/flare.js'
 import { lodRange, type LodList } from '#/scene/level.js'
@@ -141,18 +141,34 @@ const sectionsOf = async (read: ReadAsset, files: string[]): Promise<Map<string,
   return found
 }
 
+/** The camera the system's models are placed against, which `reframe` moves. */
+interface Eye {
+  camera: Camera
+}
+
+/** Parts placed against the eye's camera when read, again only once it has moved. */
+const partsFor = (eye: Eye, place: (camera: Camera) => PlacedPart[]) => {
+  let at: Camera | undefined
+  let parts: PlacedPart[] = []
+
+  return () => {
+    if (at !== eye.camera) parts = place((at = eye.camera))
+    return parts
+  }
+}
+
 interface Archetype {
   section: Section
   model: RigidModel
   lists: LodList[]
-  /** Builds the model where the host puts it, its parts placed against `camera`. */
+  /** Builds the model where the host puts it, its parts placed against the eye's camera. */
   place: (world: Matrix4, jointState?: PlaceOptions['jointState']) => SceneModel
 }
 
 const loadArchetype = async (
   section: Section,
   read: ReadAsset,
-  camera: Camera,
+  eye: Eye,
   detail: number,
   blocks: readonly LodList[] = [],
 ): Promise<Archetype> => {
@@ -177,8 +193,8 @@ const loadArchetype = async (
   ]
   const environment = strings(section, 'envmap_material')[0]
   const material = (id: number) => getMaterial(materials, id)
-  const place = (world: Matrix4, jointState?: PlaceOptions['jointState']): SceneModel => ({
-    parts:
+  const place = (world: Matrix4, jointState?: PlaceOptions['jointState']): SceneModel => {
+    const parts = partsFor(eye, (camera) =>
       model.type === 'sphere'
         ? placeSphere(model, world, { camera, width: 1024, material })
         : placeParts(model, world, {
@@ -187,11 +203,18 @@ const loadArchetype = async (
             detail,
             ...(jointState ? { jointState } : {}),
           }),
-    mesh: (id) => getMesh(meshes, id),
-    material,
-    texture: (name) => textures.find((entry) => entry.name.toLowerCase() === name.toLowerCase()),
-    ...(environment ? { environment } : {}),
-  })
+    )
+
+    return {
+      get parts() {
+        return parts()
+      },
+      mesh: (id) => getMesh(meshes, id),
+      material,
+      texture: (name) => textures.find((entry) => entry.name.toLowerCase() === name.toLowerCase()),
+      ...(environment ? { environment } : {}),
+    }
+  }
 
   return { section, model, lists, place }
 }
@@ -355,6 +378,8 @@ export interface LoadedSystem extends SpaceScene {
    * between frames, each at the `lod` of its view in the last frame's `effectViews`. The dust, clouds and the fields' rocks step in `collectSpaceFrame`.
    */
   tick: (dt: number, camera?: Camera, views?: readonly (EffectView | undefined)[]) => void
+  /** Moves the camera: each model's parts are placed against it again (LODs, planets) once read. */
+  reframe: (camera: Camera) => void
 }
 
 /** `FX/effect_types.ini` over the built-in table, and `FX/effects.ini`'s `[EffectLOD]` rows. */
@@ -695,11 +720,12 @@ interface EffectTables {
   pools: EffectPools
 }
 
-/** An `[Effect]`'s `[VisEffect]` file and textures, read once: each call starts it afresh. */
+/** An `[Effect]`'s `[VisEffect]` file and textures, `preload`'s after its own, read once: each call starts it afresh. */
 const effectSource = async (
   nickname: string,
   tables: EffectTables,
   read: ReadAsset,
+  preload: readonly string[] = [],
 ): Promise<() => DynamicEffect> => {
   const section = tables.effects.get(nickname.toLowerCase())!
   const visual = tables.visuals.get(strings(section, 'vis_effect')[0]!.toLowerCase())!
@@ -715,7 +741,7 @@ const effectSource = async (
   const lookup = lookupOver(alchemy.effects.effects, resolve)
   const textures = (
     await Promise.all(
-      strings(visual, 'textures').map(async (path) => [
+      [...strings(visual, 'textures'), ...preload].map(async (path) => [
         ...readTextureLibrary(Directory.read(await read(pathOf(path)))),
       ]),
     )
@@ -1195,7 +1221,7 @@ const linesOf = (section: Section) =>
 
 /** A `[Nebula]` file: `[Fog]`, `[NebulaLight]`, `[Exclusion Zones]` and its lightning. */
 /** A bare model file, as `ClientMeshHolderLoad` takes one: its own materials and textures. */
-const loadModelFile = async (read: ReadAsset, path: string, camera: Camera) => {
+const loadModelFile = async (read: ReadAsset, path: string, eye: Eye) => {
   const root = Directory.read(await read(pathOf(path)))
   const meshes = readVMeshLibrary(root)
   const materials = [...readMaterialLibrary(root)]
@@ -1203,12 +1229,18 @@ const loadModelFile = async (read: ReadAsset, path: string, camera: Camera) => {
   const model = readRigidModel(root)
   const material = (id: number) => getMaterial(materials, id)
 
-  return (world: Matrix4): SceneModel => ({
-    parts: placeParts(model, world, { camera }),
-    mesh: (id) => getMesh(meshes, id),
-    material,
-    texture: (name) => textures.find((entry) => entry.name.toLowerCase() === name.toLowerCase()),
-  })
+  return (world: Matrix4): SceneModel => {
+    const parts = partsFor(eye, (camera) => placeParts(model, world, { camera }))
+
+    return {
+      get parts() {
+        return parts()
+      },
+      mesh: (id) => getMesh(meshes, id),
+      material,
+      texture: (name) => textures.find((entry) => entry.name.toLowerCase() === name.toLowerCase()),
+    }
+  }
 }
 
 /** A system zone's `IZone::GetTransform`: its position, turned as `zoneTurn` turns it. */
@@ -1226,7 +1258,7 @@ const loadNebula = async (
   system: ReferenceSystem,
   file: string,
   zoneName: string,
-  camera: Camera,
+  eye: Eye,
   random: () => number,
 ): Promise<SpaceNebula> => {
   const { zone, edgeFraction } = zoneFor(system, zoneName)
@@ -1331,7 +1363,7 @@ const loadNebula = async (
   }
 
   const placed = new Map<string, (world: Matrix4) => SceneModel>()
-  for (const [key, { path }] of shells) placed.set(key, await loadModelFile(read, path, camera))
+  for (const [key, { path }] of shells) placed.set(key, await loadModelFile(read, path, eye))
   exclusions.forEach((exclusion, at) => {
     const key = shellNames[at]
     const found = key === undefined ? undefined : shells.get(key)
@@ -1756,7 +1788,7 @@ export const loadCockpit = async (read: ReadAsset, ship: string, camera: Camera)
   const section = (await sectionsOf(read, ['SHIPS/shiparch.ini'])).get(ship.toLowerCase())!
   const file = Document.read(await read(pathOf(strings(section, 'cockpit')[0]!)))
   const mesh = strings(file.getSection('Cockpit')!, 'mesh')[0]!
-  const place = await loadModelFile(read, mesh, camera)
+  const place = await loadModelFile(read, mesh, { camera })
   const { center, radius } = place(Matrix4.identity).parts[0]!.reference.boundingSphere
 
   return { place, sphere: { center, radius } }
@@ -1784,6 +1816,7 @@ export const loadSystem = async (
     (system.files ?? []).map(({ path, text }) => [pathOf(path).toLowerCase(), text]),
   )
 
+  const eye: Eye = { camera }
   const read: ReadAsset = async (path) => {
     const text = own.get(path.toLowerCase())
 
@@ -1799,16 +1832,17 @@ export const loadSystem = async (
       .map(({ values }) => [Number(values[0]!.value), Number(values[1]!.value)] as const),
   })
   const archetype = (nickname: string) =>
-    loadArchetype(archetypes.get(nickname.toLowerCase())!, read, camera, detail)
+    loadArchetype(archetypes.get(nickname.toLowerCase())!, read, eye, detail)
 
   const rand = msvcRand()
   const equipment = await sectionsOf(read, EQUIPMENT)
   const equipmentLods = await lodBlocksOf(read, EQUIPMENT)
-  // A retail system's objects take theirs from all three.
+  // `freelancer.ini`'s `[Data] loadouts` lines: a secret wreck's (`SECRET_armored_br03`) is in the utility one.
   const loadouts = await sectionsOf(read, [
     'SOLAR/loadouts.ini',
     'SHIPS/loadouts.ini',
     'SHIPS/loadouts_special.ini',
+    'SHIPS/loadouts_utility.ini',
   ])
 
   /**
@@ -1845,7 +1879,7 @@ export const loadSystem = async (
 
       const parent = findHardpoint(model, point, jointState)!
       const nickname = item.getNickname()!.toLowerCase()
-      const child = await loadArchetype(item, read, camera, detail, equipmentLods.get(nickname))
+      const child = await loadArchetype(item, read, eye, detail, equipmentLods.get(nickname))
       const connect = findHardpoint(child.model, strings(item, 'HP_child')[0]!)!
       const joint = getJointMatrix(attachJoint(parent.point, connect.point))
 
@@ -2007,8 +2041,10 @@ export const loadSystem = async (
       solar: { large: extent > 200, extent, planet },
       ...(star && { star }),
       ...(hitbox && { hitbox }),
-      // `systemIni` writes every `[Object]` before any `[Nebula]`: no solar finds one.
-      ...(system.nebulae?.length ? { nebula: null } : {}),
+      // A solar finds its nebula once, as its `[Object]` is read (`FUN_005485c0`), among the
+      // `[Nebula]` sections above it: none from `systemIni`, which writes objects first. With some
+      // above and some below, which retail doesn't do, it's taken as finding any.
+      ...(system.nebulae?.length && !object.nebulaeBefore ? { nebula: null } : {}),
       ...(range > 0 ? { lodRange: range } : {}),
     })
   }
@@ -2143,7 +2179,7 @@ export const loadSystem = async (
   // Each at its view's `lod`, by no more than the walk steps one (`SpaceEffectsDrawFrame`).
   const stepEffects = (
     dt: number,
-    from: Camera = camera,
+    from: Camera = eye.camera,
     views: readonly (EffectView | undefined)[] = [],
   ) => {
     const view = viewMatrix(from)
@@ -2183,10 +2219,23 @@ export const loadSystem = async (
     ...(system.dust ? [system.dust] : []),
     ...(system.zones ?? []).flatMap(({ spacedust }) => (spacedust ? [spacedust.effect] : [])),
   ]
+  // `motionblur_dust.ale` draws with `planetflare`, and its `[VisEffect]` lists no library: the game
+  // has it only if an effect that loads `fx\planetflare.txm` ran first. Preloaded for that dust, so
+  // its streaks draw textured in every system, as freelancer-vscode does.
+  const blurred = (name: string) => {
+    const visual = strings(tables.effects.get(name.toLowerCase())!, 'vis_effect')[0]!
+    const alchemy = strings(tables.visuals.get(visual.toLowerCase())!, 'alchemy')[0] ?? ''
+
+    return /(^|[\\/])motionblur_dust\.ale$/i.test(alchemy)
+  }
   const dustSources = new Map(
     await Promise.all(
       dustNames.map(
-        async (name) => [name.toLowerCase(), await effectSource(name, tables, read)] as const,
+        async (name) =>
+          [
+            name.toLowerCase(),
+            await effectSource(name, tables, read, blurred(name) ? ['fx\\planetflare.txm'] : []),
+          ] as const,
       ),
     ),
   )
@@ -2225,6 +2274,9 @@ export const loadSystem = async (
 
   const scene: LoadedSystem = {
     tick: stepEffects,
+    reframe: (to) => {
+      eye.camera = scene.camera = to
+    },
     camera,
     aspect: 1024 / 768,
     ambient: vector(system.ambient),
@@ -2246,7 +2298,7 @@ export const loadSystem = async (
     ),
     nebulae: await Promise.all(
       (system.nebulae ?? []).map(({ file, zone }) =>
-        loadNebula(read, system, file, zone, camera, rand),
+        loadNebula(read, system, file, zone, eye, rand),
       ),
     ),
   }
