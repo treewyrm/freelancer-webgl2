@@ -87,18 +87,8 @@ Not errors in what the code computes, but labels that mislead a reader of the bi
 - `src/alchemy/alchemy_appearances.cpp`, `FxBasicAppearance::FillQuadGeometry`: the curve fields are
   misnamed. Alpha is read through `SizeRamp`, `Rotate` through `TexFrameRamp`, `HToVAspect` through
   `CommonTexFrameRamp` and the frame through `AxisOverrideRamp`; the values are right.
-- `common.dll` addresses in `src/Common/common_costume.cpp`, `common_rtcslider.cpp` and
-  `common_roomdata.cpp` sit 0x350 to 0x360 below retail's, as from another build:
-
-  | Symbol | Decomp | Retail |
-  | ------ | ------ | ------ |
-  | `DetailSwitchTable::adjust_distance` | `0x62fed60` | `0x62fecb0` |
-  | `DetailSwitchTable::get_switch_distance` | `0x62fecb1` | `0x62fec00` |
-  | `RtcSlider::is_enabled(char const*)` | `0x627a5c0` | `0x627a920` |
-  | `RtcSlider::get_fps_cap` | `0x627a740` | `0x627aa90` |
-  | `RoomData::read_set_script` | `0x6274b40` | `0x6274ea0` |
-  | `ThornGetRenderType` | `0x627bd60` | `0x627c0b0` |
-  | `ThornScriptGetCsys` | `0x627ba30` | `0x627bd80` |
-
-  Constants likewise: `DAT_063a22fc` is retail's `0x63a22cc`, `DAT_0639a1d0` is `0x639a1c0`. `content.dll`'s
-  addresses aren't a fixed offset from retail at all.
+- **Withdrawn 2026-11-14:** a table of `common.dll` addresses in `common_costume.cpp`,
+  `common_rtcslider.cpp` and `common_roomdata.cpp` said to sit 0x350 to 0x360 off retail's, and
+  `content.dll`'s said to follow no offset at all. They are not errors. The decomp is built from the
+  1.1 patch, whose `common.dll`, `server.dll` and `content.dll` are build 1254, and each address it
+  gives is that build's. The table compared them with 1.0's (build 1223). These docs now cite 1.1.

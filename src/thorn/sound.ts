@@ -94,7 +94,8 @@ export interface SoundRecord {
 /**
  * What the game sets on a playing sound (`0x457630`): its volume in decibels, the `[Sound]`'s
  * attenuation plus the entity's and the room's ambience level `L`, each clamped to [−96, 0], and a 2D
- * sound's pan in DirectSound's hundredths, clamped to ±10,000.
+ * sound's pan in DirectSound's hundredths, clamped to ±10,000. `L` reaches only the sounds of a room's
+ * own `scene` lines (the sequence's room-ambience flag, read at `0x457650`); every other sequence passes 0.
  */
 export const soundLevel = (
   archetype: number,

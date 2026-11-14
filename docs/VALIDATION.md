@@ -70,13 +70,14 @@ buffer is saved beside the log. `npm run capture` reads one.
 
 | Install | Role | Notes |
 | ------- | ---- | ----- |
-| `~/Downloads/Freelancer` | Corpus, `$FREELANCER_DATA`. Never written | `common.dll` is build 1.0.1223.11 |
-| `C:\Games\Freelancer` in the Parallels guest | The lab, `$FREELANCER_GAME`. Scenes and the proxy go here | `Common.dll` is build 1.0.1254.11; `DALib`, `Server`, `RemoteClient` also differ |
+| `~/Downloads/Freelancer` | Corpus, `$FREELANCER_DATA`. Never written | Patched to 1.1 on 2026-11-14: `common.dll` is build 1.0.1254.11, as in the lab |
+| `C:\Games\Freelancer` in the Parallels guest | The lab, `$FREELANCER_GAME`. Scenes and the proxy go here | 1.1: `Common.dll` is build 1.0.1254.11 |
 
-The two share byte-identical `rp8`, `shading`, `flmaterials`, `rendcomp`, `alchemy`, `thorn`,
-`deformable2` and `engbase`, and all 8,368 `DATA` files match in size, so captures are evidence for the
-renderer. **An address looked up in the corpus's `common.dll` may not match what the lab runs.** The
-game can't be started from the Mac.
+The two are one 1.1 install: every binary and all of `DATA` match byte for byte, so captures are
+evidence for the renderer, and an address looked up in the corpus is what the lab runs. Two
+differences remain. The lab's `Freelancer.exe` is the unpacked exe the corpus keeps as
+`Freelancer-original.exe`, and the lab's `freelancer.ini` skips the intro movies. The game can't be
+started from the Mac.
 
 ## Reading a capture correctly
 

@@ -12,14 +12,16 @@ is [`freelancer/docs/refs/THORN.md`](https://github.com/treewyrm/freelancer/blob
 
 Addresses are image VAs. A bare address is in `Freelancer-original.exe` (base `0x400000`; the shipped
 `Freelancer.exe` is packed). Others name their module: `common.dll` `0x6260000`, `deformable2.dll`
-`0x65f0000`, `engbase.dll` `0x6610000`, `content.dll` `0x6ea0000`, `thorn.dll` `0x6f20000`. Decomp
+`0x65f0000`, `engbase.dll` `0x6610000`, `content.dll` `0x6ea0000`, `thorn.dll` `0x6f20000`. They are
+Freelancer 1.1's: `common.dll` and `content.dll` build 1254, the rest build 1223, which the patch
+leaves alone. Decomp
 paths are under `../freelancer-decomp/src/`, most in `freelancer/Client/`. Evidence: **checked** (read
 in the retail binary), **decomp** (agrees in the decomp, binary not read), **observed** (matched in a
 retail capture), **unsettled**. Frames are THORN.md's `[R | t]`, `A · B` applying `B` first.
 
-The decomp's `common.dll` addresses are not retail's: they sit `0x350`–`0x360` below the DLL's own
-exports (`RtcSlider::is_enabled(char const*)` is `common.dll!0x627a920`, the decomp says `0x627a5c0`).
-Its `content.dll` addresses are not a fixed offset at all. Use the export table.
+The decomp is built from the same 1.1 binaries, so its addresses are these exactly
+(`RtcSlider::is_enabled(char const*)` is `common.dll!0x627a5c0` in both). Until 2026-11-14 this page
+cited 1.0, where the same export is at `0x627a920`.
 
 ## A cutscene is a playlist
 
@@ -117,6 +119,7 @@ The constructor's defaults (checked `0x454a19`–`0x454a6e`), and who changes th
 | fade | off | the end fade above |
 | apply spatial | on | the spawn writes each entity's initial pose ([The walker](#the-walker)) |
 | restore camera | on | the room camera saved at start is restored at the end |
+| room ambience level | off | its sounds add the room's ambience level `L` (checked default `0x454a39`, read `0x457650`) |
 | duck ambience, music | off | lowers the room's ambience and music while it plays |
 | priority | 0 | its monitors' claim on the view |
 | props to room | off | compounds it makes are handed to the room, not kept by the sequence |
@@ -127,12 +130,12 @@ not a flag.
 
 | Sequence | Settings | Evidence |
 | -------- | -------- | -------- |
-| a room's `scene` line | loop, exported, not cinematic, no camera restore, priority 0 | checked `0x44a800`–`0x44a85f` |
+| a room's `scene` line | loop, exported, not cinematic, no camera restore, priority 0, room ambience level | checked `0x44a800`–`0x44a85f`; the level `0x44a5bc`, `0x44a85c` |
 | landing | cinematic, skippable, restores camera, **priority 1**, props to room | checked `0x447c8b` |
 | launch | cinematic, skippable, **fade**, no camera restore, **priority 1**, skip latch | checked `0x447d16` |
 | nav-bar transition | **priority 1**, cinematic and fade as the caller asks | checked `0x441bf3` |
 | goods cart | cinematic, skippable, priority 0, props to room, skip latch | checked `0x44aa18` |
-| a walk-in (`start_script`) | cinematic, skippable, cast on the character standing there | checked `0x44aafe` |
+| a walk-in (`start_script`) | cinematic, skippable, skip latch, the player's pose not restored, cast on the character standing there | checked `0x44aafe`; the latch and the pose `0x44ab0c`, `0x44ab1c` |
 | a fidget | loop, not cinematic, not exported, no camera restore, priority 0, **apply spatial off** | checked `0x445340`; spatial decomp |
 | a mission cutscene | cinematic, ducked, **not skippable**, priority 0, named cast | checked `0x435e21`–`0x435fb8`, `content.dll!0x6ea9744` |
 
@@ -244,7 +247,7 @@ The routes above, by the key that names the script (the format is
 | `fidget` | `[Char]` | a mission character's idle |
 | `offer`, `decision`, `accept`, `decline`, `reject`, `action` | `[CharacterEncounter]` | a mission cutscene |
 | `Act_CallThorn` | mission scripts | a space camera |
-| `Act_AddAmbient` | mission scripts | an extra ambient scene (unsettled: not read) |
+| `Act_AddAmbient` | mission scripts | an extra ambient scene, looping and exported like a `scene` line, behind no slider (checked `0x44a664`–`0x44a7dc`) |
 
 ## What a script loads
 
@@ -629,7 +632,7 @@ update (`FObjectProp::Update`, checked `0x558b26`, `0x446a60`).
 - **Multi-joint IK**: the damped least-squares iteration and its stopping rule.
 - **The player ship's `HpMount` offset** (`0x4478c0`): taken as the inverse of the hardpoint relative
   to the root.
-- **`Act_AddAmbient`** and the generic conversation lists' routes, not read in the binary.
+- **The generic conversation lists' routes**, not read in the binary.
 
 ## Corrections
 
