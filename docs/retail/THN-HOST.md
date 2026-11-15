@@ -192,6 +192,12 @@ retail that is an ambient scene of the room started earlier. Failing that:
 | ---- | -------- |
 | `MARKER` | the set script's setpoint of that name, **expressed in `C`** (`trans_to_frame`), so it lands on the setpoint; else its own record (checked `0x44d810`) |
 | `CAMERA` | the set script's camera of that name, its **pose only and not through `C`**; fov and clip planes stay the referencing entity's own (checked `0x44dc20`–`0x44dd43`) |
+
+The exporting sequences match a name exactly (`strcmp`, decomp `FThornComponent::MatchesEntity`). The
+two fallbacks don't: `RoomData::find_setpoint` and `find_camera` compare **ignoring case, the last of
+a name winning** (`common.dll!0x62761c0`, `0x6275fa0`; decomp `common_roomdata.cpp`). Two retail goods-cart
+scripts, played in four equipment rooms, reference `Zs/NPC/equipment/01/A/Stand`, a setpoint those
+rooms' set scripts spell `Equipment`.
 | `LIGHT`, `SOUND` | none: warned, no target (decomp `gf_thorn_light.cpp`, `gf_thorn_sound.cpp`) |
 | `COMPOUND` | the room prop of that name (decomp `ResolveCompoundTarget`) |
 | `DEFORMABLE`, `PSYS`, `MONITOR` | no host at all |

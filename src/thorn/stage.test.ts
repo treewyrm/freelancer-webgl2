@@ -87,6 +87,26 @@ test("a REFERENCE with nothing exporting it lands on the set script's setpoint",
   })
 })
 
+test("a REFERENCE falls back to the set script's last setpoint of its name, ignoring case", () => {
+  const stage = new RoomStage({
+    set: readSetScript(
+      script(0, [
+        marker('Zs/NPC/Equipment/01/A/Stand', 1),
+        marker('ZS/NPC/EQUIPMENT/01/A/STAND', 4),
+      ]),
+    ),
+    scenes: [
+      {
+        mode: 'once',
+        script: script(10, [marker('Zs/NPC/equipment/01/A/Stand', 0, ['REFERENCE'])]),
+      },
+    ],
+  })
+  const playback = stage.manager.sequences[0]!.playback!
+
+  assert.equal(positionOf(playback.world('Zs/NPC/equipment/01/A/Stand')!).x, 4)
+})
+
 test("the view is the room's [Camera], else the set script's first", () => {
   const set = readSetScript(script(0, [camera('Camera_0', 1), camera('Camera_1', 2)]))
 

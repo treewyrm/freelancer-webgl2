@@ -161,9 +161,12 @@ export class RoomStage {
         const found = this.manager.find(type, name)
         if (found) return found
 
-        const at = (type === 'CAMERA' ? this.set.cameras : this.set.setpoints).find(
-          (each) => each.name === name,
-        )
+        // `RoomData::find_camera` and `find_setpoint` (`common.dll!0x6275fa0`, `0x62761c0`): the
+        // last of the name, ignoring case.
+        const wanted = name.toLowerCase()
+        const at = (type === 'CAMERA' ? this.set.cameras : this.set.setpoints)
+          .filter((each) => each.name.toLowerCase() === wanted)
+          .at(-1)
 
         return at && { frame: at.frame }
       },
