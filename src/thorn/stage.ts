@@ -65,13 +65,18 @@ export interface StageOptions {
 
 /** What a room's frame asks the host, answered at once from what it loaded ahead. */
 export interface StageSceneHost {
-  /** A template of a category, placed at `world`, or nothing where no table answers. */
+  /**
+   * A template of a category, placed at `world`, or nothing where no table answers. `entity` names a
+   * compound a script spawned, absent for a set-script prop: a compound's motions are the host's
+   * (`START_MOTION` through `CharacterHost`, by that name), so it poses the model by it.
+   */
   model(
     category: string,
     template: string,
     world: Frame,
     camera: Camera,
     sky: 'starsphere' | 'backdrop' | undefined,
+    entity?: string,
   ): SceneModel | undefined
   /** A character's parts where its mixer stands, one model each, or nothing for one not cast. */
   character?(entity: string, world: Frame, camera: Camera): SceneModel[] | undefined
@@ -268,7 +273,14 @@ export class RoomStage {
         }
 
         const model = entity.category
-          ? host.model(entity.category, entity.template, entity.world, view, entity.sky)
+          ? host.model(
+              entity.category,
+              entity.template,
+              entity.world,
+              view,
+              entity.sky,
+              entity.entity.entity_name,
+            )
           : undefined
 
         if (!model) {

@@ -604,7 +604,7 @@ aims, floor, root). `mixerCharacters({ mixer, animation })` is a `CharacterHost`
 | Export                 | Does                                                                    |
 | ---------------------- | ----------------------------------------------------------------------- |
 | `RoomStage`            | A base room, live: the set script, its `scene` lines started by group behind their settings, `play` for any sequence over them, `advance(seconds)` on the game's clock, `view`, and `scene(host, options)` for the `RoomScene` it leaves |
-| `StageSceneHost`       | What a frame asks the host: `model(category, template, world, camera, sky)`, `character`, `effectTexture`, each answered at once |
+| `StageSceneHost`       | What a frame asks the host: `model(category, template, world, camera, sky, entity?)`, `character`, `effectTexture`, each answered at once. `entity` names a compound a script spawned, whose `START_MOTION`s the host plays by that name; a set-script prop has none |
 | `stageTemplates`       | Every `{ category, template }` a room with these scripts can ask for, to load ahead |
 | `compoundHardpoint`    | A compound's hardpoint at rest, the last of a name winning: a `ThornHost['hardpoint']` from a loaded model |
 | `createCast`, `castEntities` | A scene's characters, one mixer each at its record, from the costume parts and animations the host gives through `CastSource` |

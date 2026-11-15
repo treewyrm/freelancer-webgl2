@@ -118,8 +118,9 @@ test("the view is the room's [Camera], else the set script's first", () => {
 test('a frame asks the host for every prop and spawned compound, and says what it could not get', () => {
   const asked: string[] = []
   const host: StageSceneHost = {
-    model: (category, template) => {
-      asked.push(`${category} ${template}`)
+    // A spawned compound comes with its entity name, for the host's motions; a set prop without.
+    model: (category, template, _world, _camera, _sky, entity) => {
+      asked.push(`${category} ${template}${entity ? ` ${entity}` : ''}`)
       return template === 'MISSING' ? undefined : model
     },
   }
@@ -133,7 +134,7 @@ test('a frame asks the host for every prop and spawned compound, and says what i
 
   const { scene, skipped } = stage.scene(host, { aspect: 1 })
 
-  assert.deepEqual(asked, ['Room ROOM', 'Prop MISSING', 'Spaceship SHIP'])
+  assert.deepEqual(asked, ['Room ROOM', 'Prop MISSING', 'Spaceship SHIP ship'])
   assert.equal(scene.objects.length, 2)
   assert.deepEqual(skipped, ['prop MISSING: Prop'])
 
