@@ -28,8 +28,8 @@ the design is shaped this way.
 host: bytes, camera, time, seed, canvas
         │  read with @treewyrm/freelancer
         ▼
-scene        plain data the host builds: Scene, SpaceScene or RoomScene
-        │  collectFrame, collectSpaceFrame, collectRoomFrame: no GL
+scene        plain data the host builds: Scene, SpaceScene, RoomScene or InterfaceScene
+        │  collectFrame, collectSpaceFrame, collectRoomFrame, collectInterfaceFrame: no GL
         ▼
 frame        Frame: an ordered list of draws, effects and hook points
         │  renderer.render(frame, hooks): all the GL is here
@@ -117,7 +117,7 @@ as long as the thing exists: `EffectInstance`, `Clouds`, `NebulaLightning`, `Ast
 | `createContext`  | `(canvas, attributes?) → WebGL2RenderingContext`, or throws         |
 | `createRenderer` | `(gl) → Renderer`                                                   |
 | `Renderer`       | `render(frame, hooks?, options?)`, `invalidate(asset)`, `dispose()` |
-| `RenderOptions`  | `{ viewport? }`: a `ViewportRect` `{ x, y, width, height }` to draw in |
+| `RenderOptions`  | `{ viewport?, over? }`: a `ViewportRect` `{ x, y, width, height }` to draw in, and whether to draw over what the target holds |
 | `FrameHooks`     | `{ begin?, opaque?, end? }`, each `(context: HookContext) => void`  |
 | `HookContext`    | `{ gl, frame, viewProjection, outlineEffects }`                     |
 | `createProgram`  | Compiles GLSL ES 3.00 and looks up named uniforms, for a host's own |
@@ -134,6 +134,9 @@ leaves the rest of the target as it was. It's how a cinematic's letterbox is dra
 `bar`, the picture is `{ x: 0, y: bar, width, height: height − 2·bar }`, and the scene's `aspect` is
 the picture's, so the horizontal angle holds. The host paints the bars. Without it the frame fills
 the target, as before.
+
+`options.over` keeps the target's colour and clears depth alone, so a frame lies over the one drawn
+before it, as the interface lies over a room. The frame's `background` is then not drawn.
 
 `invalidate(asset)` frees what was built from a `VMeshData`, `Texture` or `CubeTexture` the host
 edited; the next frame uploads it afresh. `dispose()` frees everything.
@@ -526,6 +529,32 @@ fills everything but the model.
 | `flashlightDraws`, `coneLevel`, `FLASHLIGHTS_PER_SET` | Their draws                              |
 | `RoomShadow`, `shadowQuad`, `shadowDraw`, `RETAIL_SHADOW_LIMITS` | The floor shadows             |
 
+## Interface frames
+
+`collectInterfaceFrame(scene: InterfaceScene) → Frame` draws Win3D's 3D interface, its buttons, frames
+and tabs, over another frame: render it with `{ over: true }` after that one. See
+[retail/INTERFACE.md](retail/INTERFACE.md).
+
+| `InterfaceScene` field | Is |
+| ---------------------- | -- |
+| `aspect`               | The surface's: the interface spans it whole, whatever a room letterboxes |
+| `models`               | In draw order, the only order there is. Each placed in interface space, its tint in `instance` |
+| `time`, `limits`       | As in `Scene` |
+
+Every draw is unculled and tests no depth, under white ambient and no lights. A model's meshes are
+the host's to give: every retail interface model takes them from `INTERFACE/interface.generic.vms`.
+
+| Export                 | Does |
+| ---------------------- | ---- |
+| `INTERFACE_CAMERA`     | Win3D's camera: identity at the origin, `fovh` 27.216, near 0.1, far 1000 |
+| `interfaceWorld`       | `(position, angle?) → Matrix4`: where a control's model stands, turned about +Y |
+| `tintOf`               | `(colour) → instance`: a control's colour as `SetHolderTint` writes it, which only `ui_*` materials read |
+| `InterfaceColour`      | `[r, g, b, a]`, bytes |
+| `INTERFACE_CYAN`, `INTERFACE_AMBER`, `INTERFACE_GREY` | The palette: idle, and the pulse's far end and middle |
+| `BUTTON_SELECTED`, `BUTTON_INACTIVE` | A selected button's yellow, an inactive one's grey |
+| `InterfacePulse`       | The hover pulse: `reset()` on entering a button, `advance(seconds)` each frame, `colour` |
+| `spinAngle`, `SPIN_SPEED` | `(angle, hovered, seconds) → angle`: a tab's spin, forward while hovered, home otherwise |
+
 ## Cutscenes: `thorn`
 
 `import { thorn } from '@treewyrm/freelancer-webgl2'`. THN playback reproduces the game's clock,
@@ -639,6 +668,24 @@ const frame = (step: number) => {
 `system` holds what's fixed for the system: its lights, objects, nebulae with their `NebulaLightning`,
 `Clouds` and `NebulaExterior`, its fields, rings, `SpaceDust` and textures. Build it once.
 `src/reference/space-load.ts` builds one from a retail install.
+
+### A room with its button bar
+
+```ts
+const pulse = new InterfacePulse()
+
+const frame = (seconds: number) => {
+  pulse.advance(seconds)
+  renderer.render(collectRoomFrame(room)) // or within the letterbox's viewport
+
+  const models = bar.map(({ model, position, angle, state }) => ({
+    ...placed(model, interfaceWorld(position, angle)), // the host's model, its meshes the generic library's
+    instance: tintOf(state === 'selected' ? BUTTON_SELECTED : state === 'hovered' ? pulse.colour : INTERFACE_CYAN),
+  }))
+
+  renderer.render(collectInterfaceFrame({ aspect: width / height, models }), {}, { over: true })
+}
+```
 
 ### A room with its scripts
 

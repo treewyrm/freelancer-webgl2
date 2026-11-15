@@ -3,6 +3,17 @@
 Places where `freelancer-decomp` disagrees with the retail binary, and what settled each:
 a capture or a reading of the DLL. Report them upstream to have them fixed there.
 
+## `SubmitWin3DEngineInstance`'s render states
+
+`src/freelancer/Client/win3d_engine_submit.h`, retail `FUN_0059efa0`, at `0x59efb7` to `0x59efea`.
+Found 2026-11-15.
+
+The header's comments call the two states the submit sets the cull mode and lighting, and name its
+flag `bFrontCull`. They are `D3DRS_ZFUNC` (`0x17`) and `D3DRS_ZWRITEENABLE` (`0xe`): a non-zero byte
+gives `LESSEQUAL` without writing, zero `ALWAYS` with writing. The `.cpp`'s constants are right.
+Nothing is drawn differently for it, since `Win3DBeginDraw` turns `ZENABLE` off
+([INTERFACE.md](retail/INTERFACE.md#shading)).
+
 ## `FNebulaEffect::FNebulaEffect`
 
 `src/freelancer/Client/cli_nebula.cpp`, retail `FUN_00504970`, at `0x504a77` to `0x504aa7`. Found

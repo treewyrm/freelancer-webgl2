@@ -89,6 +89,22 @@ export {
   type WrittenZone,
   type Zone,
 } from '#/scene/nebula.js'
+export {
+  BUTTON_INACTIVE,
+  BUTTON_SELECTED,
+  collectInterfaceFrame,
+  INTERFACE_AMBER,
+  INTERFACE_CAMERA,
+  INTERFACE_CYAN,
+  INTERFACE_GREY,
+  InterfacePulse,
+  interfaceWorld,
+  SPIN_SPEED,
+  spinAngle,
+  tintOf,
+  type InterfaceColour,
+  type InterfaceScene,
+} from '#/scene/interface.js'
 export { fogOverlayDraw } from '#/scene/overlay.js'
 export {
   collectRoomFrame,

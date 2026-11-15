@@ -26,6 +26,7 @@ decomp error found on the way is in [DECOMP-ERRORS.md](../DECOMP-ERRORS.md).
 | [APPEARANCES.md](APPEARANCES.md) | How particles are drawn: every appearance kind, sizes, frames, which appearance an emitter draws through, blending, draw order |
 | [THORN.md](THORN.md) | THN playback as `thorn.dll` runs it: the clock, each event as a matrix composition, curves, paths, the camera, property animations, the host contract |
 | [THN-HOST.md](THN-HOST.md) | The game's side of THN: cutscenes as playlists, sequences, rooms, what a script loads, the scene frame, the view, lights, fog, draw order, characters |
+| [INTERFACE.md](INTERFACE.md) | Win3D's 3D interface: its camera, placing a control, the shared interface meshes, tints and the materials that read them, the palette and the hover pulse, order and depth, spin and slide |
 
 Not carried: sound in cutscenes (`audioprops`, volume and pan, `START_SOUND` timing), since the
 library plays none. The extension keeps it, unchecked, in its

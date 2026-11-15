@@ -69,6 +69,11 @@ export interface RenderOptions {
    * own (THN-HOST.md, the letterbox). The whole target when absent.
    */
   viewport?: ViewportRect
+  /**
+   * Over what the target holds: depth cleared, colour kept, as the base frame clears before the
+   * interface draws (`UpdateGameflowBaseFrame`, `0x558c10`). The frame's background is not drawn.
+   */
+  over?: boolean
 }
 
 export interface Renderer {
@@ -191,7 +196,7 @@ export const createRenderer = (gl: WebGL2RenderingContext): Renderer => {
   const render = (
     frame: Frame,
     hooks: FrameHooks = {},
-    { viewport }: RenderOptions = {},
+    { viewport, over = false }: RenderOptions = {},
   ): boolean => {
     if (disposed) throw new Error('This renderer has been disposed')
     if (gl.isContextLost()) return false
@@ -287,7 +292,7 @@ export const createRenderer = (gl: WebGL2RenderingContext): Renderer => {
 
     gl.clearColor(x, y, z, 1)
     gl.clearDepth(1)
-    clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
+    clear(over ? gl.DEPTH_BUFFER_BIT : gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
 
     let previousAmbient = false
     let ownLights = false
