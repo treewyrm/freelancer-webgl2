@@ -126,6 +126,14 @@ as long as the thing exists: `EffectInstance`, `Clouds`, `NebulaLightning`, `Ast
 `createContext` accepts an `HTMLCanvasElement` or `OffscreenCanvas`, so the whole library runs in a
 worker. It needs WebGL2, and `WEBGL_compressed_texture_s3tc` for DXT textures.
 
+**Give it an opaque canvas: `{ alpha: false }`.** The game's back buffer has no say in the picture,
+so its passes write whatever alpha their stages compute and nothing reads it back. A canvas with an
+alpha channel hands those values to the page, which composites through them. The planet surfaces
+show it worst ([MATERIALS.md](retail/MATERIALS.md#the-planet-surfaces)): pass A leaves its texels'
+alpha, 0 under a `DetailMap2Dm1Msk2PassMaterial`'s land, and pass B blends a partial alpha over
+cloud, so the surface turns white and the cloud into holes, while every draw is right. A blended
+effect or glass leaves the same marks, fainter. `createContext` takes the attributes as given.
+
 `render` returns `false` while the context is lost. The renderer keeps nothing but GPU handles keyed on
 what frames hold, so after a restore the next frame rebuilds everything; the host does nothing.
 
@@ -623,7 +631,7 @@ renderer's `Frame`.
 ## Recipes
 
 Types and functions below are this package's unless imported otherwise. Each assumes a `renderer` from
-`createRenderer(createContext(canvas))`.
+`createRenderer(createContext(canvas, { alpha: false }))`.
 
 ### A model with a running effect
 
