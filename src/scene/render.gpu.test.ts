@@ -41,6 +41,16 @@ test('hooks run in frame order, and a host draws with the game path depth', () =
   assert.deepEqual(report.endHookDraws, [0, 0, 255, 255])
 })
 
+test("a hook redraws the frame's own draws as shapes, on the pixels and depths the picture had", () => {
+  assert.equal(report.partsKept, true)
+  assert.ok(report.silhouette.covered > 0)
+  assert.deepEqual(report.silhouette, {
+    covered: report.silhouette.covered,
+    lit: report.silhouette.covered,
+    same: true,
+  })
+})
+
 test('a hook, and the host after a frame, find no sampler object overriding their textures', () => {
   assert.deepEqual(report.samplersInHook, [false, false])
   assert.deepEqual(report.samplersAfter, [false, false])

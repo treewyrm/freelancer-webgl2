@@ -23,6 +23,13 @@ export interface RenderReport {
   samplersAfter: boolean[]
   opaqueHookSeesDepth: number[]
   endHookDraws: number[]
+  /** Each draw names the part it came from, the model's own object. */
+  partsKept: boolean
+  /**
+   * The opaque square's pixels drawn alone, and those a hook's `silhouette` of its draw lit at
+   * `LEQUAL` over that frame's depth: the same set, and how many.
+   */
+  silhouette: { covered: number; lit: number; same: boolean }
   sharedBuffers: { vertexBuffers: number; arrays: number }
   afterInvalidate: { before: number[]; after: number[]; untouched: boolean }
   whileLost: boolean
@@ -269,6 +276,42 @@ void main() { color = vec4(0.0, 0.0, 1.0, 1.0); }`,
 
   const endHookDraws = centre(gl)
 
+  const partsKept =
+    frame.draws.length === 2 &&
+    frame.draws.every(({ part }, at) => part !== undefined && part === frame.draws[at]!.part) &&
+    frame.draws.some(({ mesh, part }) => mesh === opaqueMesh && part !== undefined)
+
+  // The opaque square drawn alone, then silhouetted in white over its frame's own depth.
+  const lone = createRenderer(gl)
+  const loneFrame = collectFrame(sceneOf([modelOf(opaqueMesh, OPAQUE)]))
+  const covering = (data: Uint8Array) =>
+    Array.from({ length: data.length / 4 }, (_, at) => data[at * 4]! > 0 || data[at * 4 + 1]! > 0)
+
+  lone.render(loneFrame)
+
+  const alone = covering(pixels(gl))
+
+  lone.render(loneFrame, {
+    end: ({ gl, frame: drawn, silhouette }) => {
+      gl.clearColor(0, 0, 0, 1)
+      gl.clear(gl.COLOR_BUFFER_BIT)
+      gl.enable(gl.DEPTH_TEST)
+      gl.depthFunc(gl.LEQUAL)
+      gl.depthMask(false)
+      gl.disable(gl.CULL_FACE)
+      gl.disable(gl.BLEND)
+      silhouette(drawn.draws, [1, 1, 1, 1])
+    },
+  })
+  lone.dispose()
+
+  const lit = covering(pixels(gl))
+  const silhouetteReport = {
+    covered: alone.filter(Boolean).length,
+    lit: lit.filter(Boolean).length,
+    same: alone.every((each, at) => each === lit[at]),
+  }
+
   // Two models on one mesh: one vertex buffer, and a vertex array for each reference.
   vertexBuffers = 0
   arrays = 0
@@ -424,6 +467,8 @@ void main() { color = vec4(0.0, 0.0, 1.0, 1.0); }`,
     samplersAfter,
     opaqueHookSeesDepth,
     endHookDraws,
+    partsKept,
+    silhouette: silhouetteReport,
     sharedBuffers,
     afterInvalidate: { before, after, untouched },
     whileLost,

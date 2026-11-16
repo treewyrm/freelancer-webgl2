@@ -119,7 +119,7 @@ as long as the thing exists: `EffectInstance`, `Clouds`, `NebulaLightning`, `Ast
 | `Renderer`       | `render(frame, hooks?, options?)`, `invalidate(asset)`, `dispose()` |
 | `RenderOptions`  | `{ viewport?, over? }`: a `ViewportRect` `{ x, y, width, height }` to draw in, and whether to draw over what the target holds |
 | `FrameHooks`     | `{ begin?, opaque?, end? }`, each `(context: HookContext) => void`  |
-| `HookContext`    | `{ gl, frame, viewProjection, outlineEffects }`                     |
+| `HookContext`    | `{ gl, frame, viewProjection, outlineEffects, silhouette }`         |
 | `createProgram`  | Compiles GLSL ES 3.00 and looks up named uniforms, for a host's own |
 | `Program`        | `{ handle, uniforms }`                                              |
 
@@ -163,6 +163,14 @@ pixel, to one with no hooks.
 `outlineEffects(effects, style)` draws each sprite of the given effects as this frame's camera sees
 it: an outline, two axes and a normal, styled by `SpriteFrameStyle`. It's for an effect editor.
 
+`silhouette(draws, colour)` draws some of the frame's draws as their shapes alone, in one RGBA
+colour from 0 to 1, into whatever framebuffer the hook has bound. Each draw keeps its own geometry,
+skin, world, projection, depth range and bias, so its pixels and depths are the picture's. Nothing of
+its material is used. Depth test, depth function and mask, culling, blending and the colour mask are
+the hook's to set. It's for a host's own target, such as a selection mask or a pick buffer: redraw
+the occluders depth-only, then the chosen draws at `LEQUAL`. A draw's `part` is the `PlacedPart` it
+was collected from, the host's own object, so a host finds its models' draws by it.
+
 ### Frame
 
 `Frame` is what every collector returns, plain data the host can read or test:
@@ -181,7 +189,7 @@ it: an outline, two axes and a normal, styled by `SpriteFrameStyle`. It's for an
 
 A `Draw` is one indexed draw call with everything it needs in GL terms: mesh range, world matrix,
 material colours, up to two texture stages, cull, depth and blend state, alpha test, fog, lights and an
-optional bone table. Retail's D3D values are translated where they're collected. `SpaceFrame` adds
+optional bone table, and the `part` it came from where a model's part made it. Retail's D3D values are translated where they're collected. `SpaceFrame` adds
 `effectViews` and `RoomFrame` adds `shadowScale`; see their sections.
 
 ## Preview frames

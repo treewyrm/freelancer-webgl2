@@ -87,7 +87,7 @@ What editor passes need, per `freelancer-vscode/docs/renderer/FRAME.md`:
 | Editor feature | Needs |
 | -------------- | ----- |
 | Hull fill, edges, wire | Mesh geometry, part transforms, depth buffer |
-| Selection outline | To redraw chosen parts into its own target |
+| Selection outline | To redraw chosen parts into its own target: `HookContext.silhouette`, finding them by `Draw.part` |
 | Hardpoints, bones, markers | Part transforms, camera, depth after everything |
 | Picking | Part transforms and mesh geometry; the host does the ray cast |
 | Layered sequences | Hooks between layers, and insertion among a layer's objects |

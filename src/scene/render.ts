@@ -20,6 +20,7 @@ import {
   setLights,
   type DcDtProgram,
 } from '#/material/dcdt.js'
+import { createFlatProgram, type FlatProgram } from '#/material/flat.js'
 import { createScreenQuadRenderer, type ScreenQuadRenderer } from '#/material/screen.js'
 import { createReferenceArray, createVertexBuffer, type ReferenceArray } from '#/mesh/mesh.js'
 import { ATTRIBUTE_LOCATIONS, drawMode, planReference } from '#/mesh/plan.js'
@@ -45,6 +46,15 @@ export interface HookContext {
    * draws them: an outline, two axes and a normal, under the depth state the hook has set.
    */
   outlineEffects: (effects: readonly SceneEffect[], style: SpriteFrameStyle) => void
+  /**
+   * Draws these of the frame's draws as their shapes alone, in one colour (RGBA, 0 to 1), into
+   * whatever framebuffer the hook has bound: each with its own geometry, skin, world, projection,
+   * depth range and bias, as the picture placed it, and nothing of its material. Depth test, depth
+   * function and mask, culling, blending and the colour mask are the hook's. A host's way to put
+   * parts in a target of its own, as a selection mask; two calls over the same draws land on the
+   * same depths.
+   */
+  silhouette: (draws: readonly Draw[], colour: readonly [number, number, number, number]) => void
 }
 
 /**
@@ -99,6 +109,7 @@ export const createRenderer = (gl: WebGL2RenderingContext): Renderer => {
   let program: DcDtProgram | undefined
   let effects: EffectRenderer | undefined
   let quads: ScreenQuadRenderer | undefined
+  let flat: FlatProgram | undefined
   let meshes = new Map<VMeshData, MeshResources>()
   let textures = new Map<Texture | CubeTexture, WebGLTexture>()
   let samplers = new Map<string, WebGLSampler>()
@@ -108,6 +119,7 @@ export const createRenderer = (gl: WebGL2RenderingContext): Renderer => {
     program = undefined
     effects = undefined
     quads = undefined
+    flat = undefined
     meshes = new Map()
     textures = new Map()
     samplers = new Map()
@@ -275,13 +287,62 @@ export const createRenderer = (gl: WebGL2RenderingContext): Renderer => {
       effects.outline(draws, { gl, view: frame.view, projection, style })
     }
 
+    const silhouette = (
+      shown: readonly Draw[],
+      [red, green, blue, alpha]: readonly [number, number, number, number],
+    ) => {
+      flat ??= createFlatProgram(gl)
+      gl.useProgram(flat.handle)
+      gl.bindBufferBase(gl.UNIFORM_BUFFER, BONES_BINDING, active.boneBuffer)
+      gl.uniformMatrix4fv(flat.uniforms.view, false, Matrix4.toArray(frame.view))
+      gl.uniform4f(flat.uniforms.colour, red, green, blue, alpha)
+
+      for (const draw of shown) {
+        const [nearDepth, farDepth] = draw.depthRange ?? WHOLE_DEPTH
+
+        gl.depthRange(nearDepth!, farDepth!)
+
+        if (draw.depthBias) {
+          gl.enable(gl.POLYGON_OFFSET_FILL)
+          gl.polygonOffset(0, -draw.depthBias)
+        } else gl.disable(gl.POLYGON_OFFSET_FILL)
+
+        gl.uniformMatrix4fv(flat.uniforms.world, false, Matrix4.toArray(draw.world))
+        gl.uniformMatrix4fv(
+          flat.uniforms.projection,
+          false,
+          Matrix4.toArray(draw.projection ? Matrix4.multiply(shift, draw.projection) : projection),
+        )
+        gl.uniform1i(flat.uniforms.skinned, draw.skin ? 1 : 0)
+
+        if (draw.skin && draw.skin.bones !== uploaded) {
+          gl.bindBuffer(gl.UNIFORM_BUFFER, active.boneBuffer)
+          gl.bufferSubData(gl.UNIFORM_BUFFER, 0, draw.skin.bones)
+          gl.bindBuffer(gl.UNIFORM_BUFFER, null)
+          uploaded = draw.skin.bones
+        }
+
+        gl.bindVertexArray(arrayOf(draw.mesh, draw.reference, draw.skin?.influences))
+        gl.drawElements(
+          drawMode(draw.mesh.primitive),
+          draw.count,
+          gl.UNSIGNED_SHORT,
+          draw.byteOffset,
+        )
+      }
+
+      gl.bindVertexArray(null)
+      gl.depthRange(0, 1)
+      gl.disable(gl.POLYGON_OFFSET_FILL)
+    }
+
     const runHooks = (before: number, only?: (name: HookName) => boolean) => {
       for (const hook of frame.hooks) {
         const run =
           hook.before === before && (only?.(hook.name) ?? true) ? hooks[hook.name] : undefined
         if (!run) continue
         release()
-        run({ gl, frame, viewProjection, outlineEffects })
+        run({ gl, frame, viewProjection, outlineEffects, silhouette })
         applyState()
       }
     }
@@ -506,6 +567,7 @@ export const createRenderer = (gl: WebGL2RenderingContext): Renderer => {
         gl.deleteProgram(program.handle)
         gl.deleteBuffer(program.boneBuffer)
       }
+      if (flat) gl.deleteProgram(flat.handle)
     }
 
     forget()

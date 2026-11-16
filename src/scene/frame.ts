@@ -216,6 +216,11 @@ export type BlendMode = 'alpha' | 'add' | 'alphaAdd' | 'multiply' | 'screen' | '
 export interface Draw {
   mesh: VMeshData
   reference: VMeshRef
+  /**
+   * The model's part it was collected from, the host's own object: what a hook finds its own parts'
+   * draws by. Absent for what no model's part makes, a shadow's quad or a beam.
+   */
+  part?: PlacedPart
   /** The mesh was built for this frame alone: the renderer frees it once the frame's drawn. */
   transient?: boolean
   /** Into the reference's planned index buffer. */
@@ -1096,6 +1101,7 @@ export const collectModel = (
         ;(queuedHere ? target : draws).push({
           mesh,
           reference,
+          part,
           byteOffset: (startIndex - reference.indexStart) * Uint16Array.BYTES_PER_ELEMENT,
           count: elementCount,
           // `SubmitAtmosphereLock` scales only what it draws: its UVs come from the unscaled object.
