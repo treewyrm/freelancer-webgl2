@@ -32,6 +32,7 @@ export {
 } from '#/scene/frame.js'
 export { instanceExtent, type Extent } from '#/scene/extent.js'
 export {
+  collectPlanFrame,
   collectSpaceFrame,
   RETAIL_COCKPIT_LIMITS,
   RETAIL_SPACE_LIMITS,
@@ -231,8 +232,11 @@ export {
 } from '#/scene/effect-view.js'
 export { PlacedEffects, type EffectPlacement } from '#/scene/placed.js'
 export {
+  eyeFor,
   projectionMatrix,
+  sizeDepth,
   underPixel,
+  unitsPerPixel,
   viewMatrix,
   type Camera,
   type Viewport,

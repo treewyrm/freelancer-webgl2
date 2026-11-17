@@ -25,3 +25,17 @@ test('world +X draws on the right, retail winding is front, and nearer depth win
   assert.deepEqual(value.culled, [0, 0, 0, 255])
   assert.deepEqual(value.nearerWins, [0, 255, 0, 255])
 })
+
+test('ortho: the same handedness, winding and depth, under a parallel projection', async () => {
+  const { value } = await runFixture<CameraReport>(
+    browser,
+    new URL('./camera.fixture.ts', import.meta.url),
+    { width: 64, height: 64, args: { ortho: 6 } },
+  )
+
+  assert.equal(value.error, 0)
+  assert.deepEqual(value.right, [255, 0, 0, 255])
+  assert.deepEqual(value.left, [0, 0, 0, 255])
+  assert.deepEqual(value.culled, [0, 0, 0, 255])
+  assert.deepEqual(value.nearerWins, [0, 255, 0, 255])
+})

@@ -159,3 +159,11 @@ test('at high detail a list ending short of 15000 is held there where its scale 
   // At a scale of 1 nothing is held.
   assert.equal(lodRange([{ source: three, name: 'Root' }], lists), 9000)
 })
+
+test("ortho: the metric is the view's own half-width over the axis, at any depth", () => {
+  const at = (x: number, z: number) => Matrix4.translation({ x, y: 0, z })
+  const plan: Camera = { ...camera, ortho: { halfWidth: 300 } }
+
+  for (const z of [-1, -100, -900])
+    assert.ok(Math.abs(levelMetric(part(1), at(50, z), at(0, 0), plan) - 300) < 1e-9)
+})

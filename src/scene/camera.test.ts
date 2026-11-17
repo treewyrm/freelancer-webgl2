@@ -3,9 +3,12 @@ import { test } from 'node:test'
 import { Matrix3, Matrix4 } from '@treewyrm/freelancer/math'
 import {
   classifySphere,
+  eyeFor,
   projectionMatrix,
+  sizeDepth,
   sphereInFrustum,
   underPixel,
+  unitsPerPixel,
   viewMatrix,
   type Camera,
 } from './camera.js'
@@ -115,4 +118,69 @@ test('outside still ranks 1 before its size is asked, and a centre on the eye pl
   assert.equal(classifySphere({ x: 5000, y: 0, z: -2000 }, 1, camera, 4 / 3, VGA), 1)
   assert.equal(underPixel(0, 0.001, 30, VGA), false)
   assert.equal(underPixel(-0.00009, 1e-9, 30, VGA), false)
+})
+
+const plan: Camera = { ...camera, near: 1, far: 1000, ortho: { halfWidth: 200 } }
+
+test('ortho: the box is ±halfWidth across and ±halfWidth / aspect up, whatever the depth', () => {
+  for (const depth of [1, 10, 999]) {
+    const right = clip({ x: 200, y: 0, z: -depth }, plan)
+    const top = clip({ x: 0, y: 150, z: -depth }, plan)
+
+    near(right.w, 1)
+    near(right.x, 1)
+    near(top.y, 1)
+  }
+})
+
+test('ortho: window depth runs 0 to 1 from near to far, linearly', () => {
+  const windowDepth = (distance: number) => (clip({ x: 0, y: 0, z: -distance }, plan).z + 1) / 2
+
+  near(windowDepth(1), 0)
+  near(windowDepth(1000), 1)
+  near(windowDepth(500.5), 0.5)
+})
+
+test('ortho: a sphere is culled against the box, its sides planes along the view', () => {
+  const rank = (x: number, y: number, z = -10, radius = 1) =>
+    classifySphere({ x, y, z }, radius, plan, 4 / 3)
+
+  assert.equal(rank(0, 0), 4)
+  assert.equal(rank(200.9, 0), 3)
+  assert.equal(rank(201.1, 0), 1)
+  assert.equal(rank(0, 151.1), 1)
+  assert.equal(rank(198.5, 0), 4)
+  // Far off to the side at any depth is out, as a cone would not have it.
+  assert.equal(rank(300, 0, -999), 1)
+  // The planes along the view still hold.
+  assert.equal(rank(0, 0, 1.5), 1)
+  assert.equal(rank(0, 0, -1001.5), 1)
+  // Under a pixel: 400 units over 640 pixels, so a radius of 0.3 covers π·0.48² of one.
+  assert.equal(classifySphere({ x: 0, y: 0, z: -10 }, 0.3, plan, 4 / 3, VGA), 2)
+  assert.equal(classifySphere({ x: 0, y: 0, z: -10 }, 0.4, plan, 4 / 3, VGA), 4)
+})
+
+test('ortho: sizes read the view as fovh would at halfWidth / tan(fovh)', () => {
+  near(sizeDepth(plan, -10), 200 / Math.tan(Math.PI / 6))
+  near(sizeDepth(camera, -10), 10)
+  near(unitsPerPixel(plan, -10, 400), 1)
+  near(unitsPerPixel(camera, -10, 400), (2 * 10 * Math.tan(Math.PI / 6)) / 400)
+})
+
+test('ortho: the eye a point sees is back along the view from it, wherever it stands', () => {
+  // Looking straight down: rows of a quarter turn about +X, so local -Z is world -Y.
+  const down: Camera = {
+    ...plan,
+    orientation: { x: { x: 1, y: 0, z: 0 }, y: { x: 0, y: 0, z: 1 }, z: { x: 0, y: -1, z: 0 } },
+  }
+  const ahead = Matrix4.transformPoint({ x: 0, y: -5, z: 0 }, viewMatrix(down))
+
+  near(ahead.z, -5)
+
+  const eye = eyeFor(down, { x: 3000, y: 0, z: -7000 })
+
+  near(eye.x, 3000)
+  near(eye.z, -7000)
+  assert.ok(eye.y > 1e6)
+  assert.equal(eyeFor(camera, { x: 1, y: 2, z: 3 }), camera.position)
 })

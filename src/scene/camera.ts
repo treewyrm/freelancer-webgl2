@@ -5,10 +5,47 @@ export interface Camera {
   position: Vector3
   /** Rows, as `./thn/scene` reads a THN `orient`. Looks down local -Z, with +Y up (`0x5568b0`). */
   orientation: Matrix3
-  /** Half the horizontal field of view, in degrees (`RoomCameraSetHalfFovX`). */
+  /**
+   * Half the horizontal field of view, in degrees (`RoomCameraSetHalfFovX`). Under `ortho`, the lens a
+   * size is judged by: a level, a sphere's tessellation or an effect's LOD reads the view as this lens
+   * would at `sizeDepth`.
+   */
   fovh: number
   near: number
   far: number
+  /**
+   * A parallel projection, which the game never makes: a host's plan view. `halfWidth` is half the
+   * view's width in world units, and the height follows the aspect. Nothing in the frame then stands
+   * about the eye — `collectSpaceFrame` hands the scene to `collectPlanFrame`.
+   */
+  ortho?: { halfWidth: number }
+}
+
+/** The depth at which `fovh` sees what an `ortho` camera does: `halfWidth / tan(fovh)`. */
+export const sizeDepth = ({ fovh, ortho }: Camera, viewZ: number): number =>
+  ortho ? ortho.halfWidth / Math.tan((fovh * Math.PI) / 180) : Math.abs(viewZ)
+
+/** World units across one pixel at a view depth, `width` pixels wide. */
+export const unitsPerPixel = (camera: Camera, viewZ: number, width: number): number =>
+  camera.ortho
+    ? (2 * camera.ortho.halfWidth) / width
+    : (2 * Math.abs(viewZ) * Math.tan((camera.fovh * Math.PI) / 180)) / width
+
+/** How far back an `ortho` camera's stand-in eye is put, for what reads a way to the eye. */
+const ORTHO_EYE_DISTANCE = 1e7
+
+/**
+ * Where the eye is, as `point` sees it: the camera's position, or under `ortho`, far back along the
+ * view from the point, so the way to it is the view's own wherever the point stands.
+ */
+export const eyeFor = ({ position, orientation, ortho }: Camera, point: Vector3): Vector3 => {
+  if (!ortho) return position
+
+  const back = Matrix4.transformPoint(
+    { x: 0, y: 0, z: ORTHO_EYE_DISTANCE },
+    Matrix4.fromRotationTranslation(orientation, { x: 0, y: 0, z: 0 }),
+  )
+  return { x: point.x + back.x, y: point.y + back.y, z: point.z + back.z }
 }
 
 /** `Mᵀ(p - position)`, the game's own right-handed view space (`0x40ff50`). */
@@ -69,13 +106,25 @@ export function classifySphere(
 export function classifySphere(
   { x, y, z }: Vector3,
   radius: number,
-  { fovh, near, far }: Camera,
+  { fovh, near, far, ortho }: Camera,
   aspect: number,
   viewport?: Viewport,
 ): 1 | 2 | 3 | 4 {
   const nearEdge = -z - radius
   const farEdge = radius - z
   if (farEdge < near || nearEdge > far) return 1
+
+  // A box, not a cone: the same signed distances to its sides, which are planes along the view.
+  if (ortho) {
+    const outsideX = Math.abs(x) - ortho.halfWidth
+    const outsideY = Math.abs(y) - ortho.halfWidth / aspect
+    if (outsideX > radius || outsideY > radius) return 1
+    if (viewport) {
+      const pixels = ((viewport.width - 1) * 0.5 * radius) / ortho.halfWidth
+      if (Math.PI * pixels * pixels < 1) return 2
+    }
+    return nearEdge < near || farEdge > far || outsideX > -radius || outsideY > -radius ? 3 : 4
+  }
 
   // Signed distance to the side plane nearest the centre, positive outside (-Z is ahead, so z < 0
   // in view): past `radius` is outside, past -`radius` is wholly inside.
@@ -102,6 +151,20 @@ export const sphereInFrustum = (
  * clip space that comes to this plain right-handed perspective: no axis is negated, and z / w maps
  * onto the same window depth as D3D's. `hvaspect` never reaches the screen, so aspect is the viewport's.
  */
-export const projectionMatrix = ({ fovh, near, far }: Camera, aspect: number): Matrix4 =>
-  // `fovh` is half the horizontal angle, in degrees.
-  Matrix4.perspectiveRH(2 * Math.atan(Math.tan((fovh * Math.PI) / 180) / aspect), aspect, near, far)
+export const projectionMatrix = ({ fovh, near, far, ortho }: Camera, aspect: number): Matrix4 =>
+  ortho
+    ? Matrix4.orthographicRH(
+        -ortho.halfWidth,
+        ortho.halfWidth,
+        -ortho.halfWidth / aspect,
+        ortho.halfWidth / aspect,
+        near,
+        far,
+      )
+    : // `fovh` is half the horizontal angle, in degrees.
+      Matrix4.perspectiveRH(
+        2 * Math.atan(Math.tan((fovh * Math.PI) / 180) / aspect),
+        aspect,
+        near,
+        far,
+      )

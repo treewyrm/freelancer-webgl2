@@ -30,6 +30,7 @@ import { mapMaterialType, REGISTERED_TYPES, type MaterialMapRule } from '#/mater
 import { frameAtlas, playbackFrame } from '#/texture/playback.js'
 import { DEFAULT_SAMPLER, type SamplerState, type TextureWrap } from '#/texture/texture.js'
 import {
+  eyeFor,
   projectionMatrix,
   sphereInFrustum,
   viewMatrix,
@@ -846,15 +847,16 @@ const atmosphereOf = (
   world: Matrix4,
   view: Matrix4,
   radius: number,
+  /** In the world: an `ortho` camera's stand-in eye, where the view's own is no way to it. */
+  eye?: Vector3,
 ): { atmosphere: DrawAtmosphere; scale: number } => {
   const scale = material.scale ?? DEFAULT_SHELL_SCALE
   const fade = material.fade ?? 1
   // Defaults from its property schema.
   const alpha = material.alpha ?? 0.75
-  const camera = Matrix4.transformPoint(
-    { x: 0, y: 0, z: 0 },
-    Matrix4.invert(Matrix4.multiply(view, world)),
-  )
+  const camera = eye
+    ? Matrix4.transformPoint(eye, Matrix4.invert(world))
+    : Matrix4.transformPoint({ x: 0, y: 0, z: 0 }, Matrix4.invert(Matrix4.multiply(view, world)))
   // `factor` is the camera's height over the surface against the shell's thickness (0 at the
   // surface, toward 1 far off); its cube sets `gain`, and `v` rises to `1 - alpha` by half of it.
   const length = Math.hypot(camera.x, camera.y, camera.z) || SHELL_FLOOR
@@ -1084,7 +1086,15 @@ export const collectModel = (
         queued.push({ depth: batchDepth(mesh, reference, world, view), draws: target })
 
       const shell =
-        kind === 'atmosphere' ? atmosphereOf(material, world, view, extent ?? 1) : undefined
+        kind === 'atmosphere'
+          ? atmosphereOf(
+              material,
+              world,
+              view,
+              extent ?? 1,
+              camera.ortho && eyeFor(camera, world.w),
+            )
+          : undefined
 
       for (const {
         alpha,

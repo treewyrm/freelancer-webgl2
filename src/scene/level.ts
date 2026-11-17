@@ -2,7 +2,7 @@
 import { Matrix4 } from '@treewyrm/freelancer/math'
 import type { MeshSource } from '@treewyrm/freelancer/rigid'
 import type { VMeshPart } from '@treewyrm/freelancer/vmesh'
-import { viewMatrix, type Camera } from './camera.js'
+import { sizeDepth, viewMatrix, type Camera } from './camera.js'
 
 /** One level-of-detail list an archetype writes: its own `LODranges`, or a `[LOD]` block's. */
 export interface LodList {
@@ -159,5 +159,6 @@ export const levelMetric = (
   const centre = first?.reference.boundingSphere.center ?? { x: 0, y: 0, z: 0 }
   const { z } = Matrix4.transformPoint(centre, Matrix4.multiply(viewMatrix(camera), part))
 
-  return (Math.abs(z) * Math.tan((camera.fovh * Math.PI) / 180)) / largestAxis(transform)
+  // `|z| · tan(fovx½)` is the view's half-width at that depth, which under `ortho` is its own.
+  return (sizeDepth(camera, z) * Math.tan((camera.fovh * Math.PI) / 180)) / largestAxis(transform)
 }

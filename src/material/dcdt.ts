@@ -158,7 +158,8 @@ void main() {
   // D3DTSS_TCI_CAMERASPACEREFLECTIONVECTOR with LOCALVIEWER on, in D3D's Z-flipped camera space.
   reflection = vec3(0.0);
   if (reflecting) {
-    vec3 toEye = normalize(-eyePosition.xyz);
+    // A parallel projection (w's row 0, 0, 0, 1) has no eye point: the way to it is the view's.
+    vec3 toEye = projection[3][3] == 1.0 ? vec3(0.0, 0.0, 1.0) : normalize(-eyePosition.xyz);
     vec3 r = 2.0 * dot(toEye, eyeNormal) * eyeNormal - toEye;
     reflection = vec3(r.xy, -r.z);
   }

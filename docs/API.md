@@ -265,6 +265,15 @@ can build them directly.
 | `projectionMatrix` | `(camera, aspect)`: D3D's projection, expressed for GL's clip space      |
 | `underPixel`       | Whether a sphere at a depth covers under one pixel, as a room culls      |
 | `Viewport`         | `{ width, height }` in pixels                                            |
+| `sizeDepth`        | `(camera, viewZ)`: the depth a size is judged at; under `ortho`, `halfWidth / tan(fovh)` |
+| `unitsPerPixel`    | `(camera, viewZ, width)`: world units across one pixel at that depth     |
+| `eyeFor`           | `(camera, point)`: the eye as a point sees it; under `ortho`, far back along the view from it |
+
+`Camera.ortho`, `{ halfWidth }`, makes the projection parallel: the view is `±halfWidth` across and
+`±halfWidth / aspect` up, at every depth. The game never draws one; it is for a host's plan view.
+`fovh` stays, as the lens sizes are judged by — a level's metric, a planet's tessellation, an effect's
+bubble and LOD — read at `sizeDepth`. The culling is a box; a planet shows the faces turned up the
+view, an atmosphere and an environment map read the view's direction as the way to the eye.
 
 ### Materials and meshes
 
@@ -516,6 +525,19 @@ is set, `collectSpaceFrame` draws the tunnel, the ship lit by `tunnel.light` ove
 ambient, and the jump and engine effects, and nothing else in the system. An editor can also call
 `draws()` itself. Loading rolls the tunnel's curves, and so does each jump out, so pass a seeded
 `random` to get the same tunnel every time.
+
+### Plan frames
+
+Under an `ortho` camera, outside a jump, `collectSpaceFrame` returns `collectPlanFrame`'s frame:
+a host's plan view, which the game never draws. It keeps what stands where it is — each object with
+its pilot and attachments, lit as the space frame lights it (an object in a nebula keeps that
+nebula's ambient), the suns' glows facing up the view, the rings' pieces, and the placed effects,
+whose views it still returns. It drops what stands about the eye: the sky, the far list, the field,
+fog and its overlay, a nebula's sheets, exterior, clouds and lightning, the asteroid cubes, bands,
+billboards and dynamic rocks, the dust, light flares, sun corona and flare, shots and tractors, and
+the cockpit. No distance from the eye cuts anything, as a host stands its eye above what it shows;
+the camera's own `near` and `far` are the planes, and `farClip` is not read. Everything drains in
+one list, back to front by view depth. `asteroidCubes` reports none drawn.
 
 ## Room frames
 

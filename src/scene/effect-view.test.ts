@@ -163,3 +163,19 @@ test('a lod_type and an [EffectLOD] type name rows 1 to 6, in any case', () => {
   assert.equal(effectLodRow('LOD_TYPE_WEAPON'), 2)
   assert.equal(effectLodRow('none'), undefined)
 })
+
+test("ortho: sized at the view's own depth, sided by the box, and never behind the eye", () => {
+  // A bubble of 100 to 500: halfWidth 100 at 30° reads as about 173, inside it.
+  const plan = (halfWidth: number) => ({
+    camera: { ...camera, ortho: { halfWidth } },
+    aspect: 1,
+    view: viewMatrix(camera),
+    nebulae: [],
+  })
+
+  assert.equal(viewEffect({ type: SMALL, position: ahead(-50) }, plan(100)).fate, 'draw')
+  assert.equal(viewEffect({ type: SMALL, position: ahead(50, 105) }, plan(100)).fate, 'draw')
+  assert.equal(viewEffect({ type: NONE, position: ahead(50, 115) }, plan(100)).fate, 'die')
+  // Zoomed out past its bubble, gone.
+  assert.equal(viewEffect({ type: SMALL, position: ahead(50) }, plan(400)).fate, 'die')
+})

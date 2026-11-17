@@ -5,7 +5,7 @@ import type { Material } from '@treewyrm/freelancer/material'
 import type { Sphere } from '@treewyrm/freelancer/rigid'
 import { mapMaterialType, type MaterialMapRule } from '#/material/map.js'
 import { spherePatch } from '#/mesh/sphere.js'
-import type { Camera } from './camera.js'
+import { eyeFor, unitsPerPixel, type Camera } from './camera.js'
 import { DEFAULT_SHELL_SCALE, type PlacedPart } from './frame.js'
 import { lodScale } from './level.js'
 
@@ -156,10 +156,13 @@ export const placeSphere = (
   world: Matrix4,
   { camera, width, level, material, materialMap, levels }: SphereOptions,
 ): PlacedPart[] => {
-  const { x, y, z } = camera.position
-  const distance = Math.hypot(x - world.w.x, y - world.w.y, z - world.w.z)
+  // Under `ortho`, the faces turned to the view, and a pixel the view's own.
+  const eye = eyeFor(camera, world.w)
+  const distance = Math.hypot(eye.x - world.w.x, eye.y - world.w.y, eye.z - world.w.z)
   // `Draw` divides by `ZNear * GetXScaleOverNear()`, which is `HalfWidth / tan(fovx½)` (`space_camera.cpp`).
-  const pixel = (Math.tan((camera.fovh * Math.PI) / 180) / (width / 2)) * distance
+  const pixel = camera.ortho
+    ? unitsPerPixel(camera, 0, width)
+    : (Math.tan((camera.fovh * Math.PI) / 180) / (width / 2)) * distance
   const bounds = { ...RETAIL_SPHERE_LEVELS, ...levels }
   const { mesh, reference } = spherePatch(
     radius,
@@ -172,7 +175,7 @@ export const placeSphere = (
     materialId: getResourceId(name),
     materialName: name,
   })
-  const parts = visibleFaces(radius, world, camera.position).map((face) =>
+  const parts = visibleFaces(radius, world, eye).map((face) =>
     part(face, sides[face % sides.length]!),
   )
   const shell = sides[FACES.length]
@@ -188,7 +191,7 @@ export const placeSphere = (
 
   return [
     ...parts,
-    ...visibleFaces(extent, world, camera.position).map((face) => ({
+    ...visibleFaces(extent, world, eye).map((face) => ({
       ...part(face, shell),
       extent,
     })),

@@ -1600,3 +1600,58 @@ test('a tractor has no draw without `line`, which is reported, nor in a tunnel',
 
   assert.equal(tunnel.tractors, undefined)
 })
+
+const planScene = (objects: SpaceObject[], fields: Partial<SpaceScene> = {}): SpaceScene =>
+  sceneOf(objects, {
+    camera: {
+      position: { x: 0, y: 0, z: 0 },
+      orientation: Matrix3.identity,
+      fovh: 30,
+      near: 1,
+      far: 100000,
+      ortho: { halfWidth: 50 },
+    },
+    ...fields,
+  })
+
+test('ortho: nothing is cut by distance, and everything drains back to front in one list', () => {
+  const objects = [
+    objectOf('near', 100, { lodRange: 10, distanceRender: 5 }),
+    objectOf('ship', 60000),
+    objectOf('small solar', 40000, { solar: {} }),
+    objectOf('nomad', 500, { nomad: true }),
+  ]
+
+  assert.deepEqual(names(collectSpaceFrame(planScene(objects))), [
+    'ship',
+    'small solar',
+    'nomad',
+    'near',
+  ])
+})
+
+test('ortho: the box culls, and the camera keeps its own planes, with no sky or far list', () => {
+  const aside = (x: number): SpaceObject => ({
+    ...objectOf(`at ${x}`, 100),
+    position: { x, y: 0, z: -100 },
+    sphere: { center: { x, y: 0, z: -100 }, radius: 1 },
+  })
+  const scene = planScene([aside(50.5), aside(51.5)], { sky: [modelOf('sky', -1)] })
+  const frame = collectSpaceFrame(scene)
+
+  assert.deepEqual(names(frame), ['at 50.5'])
+  assert.deepEqual(frame.projection, projectionMatrix(scene.camera, 1))
+  assert.ok(frame.draws.every(({ fog, projection }) => !fog && !projection))
+})
+
+test('ortho: a sun is its glow, facing up the view, and a light flares nowhere', () => {
+  const frame = collectSpaceFrame(
+    planScene([objectOf('lit', 100, { flares: [] })], {
+      viewport: { width: 640, height: 480 },
+      sunEffect: 1,
+    }),
+  )
+
+  assert.equal(frame.screenQuads, undefined)
+  assert.equal(frame.afterEffects, undefined)
+})

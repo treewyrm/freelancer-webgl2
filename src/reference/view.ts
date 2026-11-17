@@ -1,6 +1,7 @@
 /**
  * `npm run view -- <system ini> <eye x,y,z> <target x,y,z>`: a retail system's frame from `eye`
- * towards `target`, written to `artifacts/view.png`. For looking, not comparing.
+ * towards `target`, written to `artifacts/view.png`. For looking, not comparing. With `VIEW_ORTHO` set to
+ * a half-width, straight down from `eye` through a parallel projection: `collectPlanFrame`'s.
  */
 import { readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
@@ -33,6 +34,8 @@ const args: ViewArgs = {
   fovh: 35,
   seconds: 2,
   sunEffect: 1,
+  // `VIEW_ORTHO=<half-width>`: straight down from `eye`, a plan frame's parallel view; `target` unread.
+  ...(process.env['VIEW_ORTHO'] && { ortho: Number(process.env['VIEW_ORTHO']) }),
 }
 const browser = await launch()
 

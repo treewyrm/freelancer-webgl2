@@ -18,7 +18,12 @@ export interface ViewArgs {
   seconds: number
   /** `SunEffect`: its suns' coronas and flares. */
   sunEffect: number
+  /** A parallel view's half-width, looking straight down from `eye`, +X right and −Z up. */
+  ortho?: number
 }
+
+// Rows: local +X is world +X, local +Y world −Z, local −Z world −Y.
+const DOWN = { x: { x: 1, y: 0, z: 0 }, y: { x: 0, y: 0, z: 1 }, z: { x: 0, y: -1, z: 0 } }
 
 export interface ViewReport {
   skipped: string[]
@@ -31,11 +36,13 @@ export interface ViewReport {
 }
 
 export default (async (gl, { args, read }) => {
-  const { path, eye, target, fovh, seconds, sunEffect } = args as ViewArgs
+  const { path, eye, target, fovh, seconds, sunEffect, ortho } = args as ViewArgs
   const player = { ship: 'li_elite', equipment: [], position: eye, rotate: [0, 0, 0] as Triple }
   const { system, skipped } = await readRetailSystem(read, path, player)
   const position: Vector3 = { x: eye[0], y: eye[1], z: eye[2] }
-  const camera = { position, orientation: lookAt(eye, target), fovh, near: 1, far: 100000 }
+  const camera = ortho
+    ? { position, orientation: DOWN, fovh, near: 1, far: 2 * eye[1], ortho: { halfWidth: ortho } }
+    : { position, orientation: lookAt(eye, target), fovh, near: 1, far: 100000 }
   const scene = await loadSystem(system, read, {
     camera,
     // 500 behind the camera, so its hull is out of the picture: the third column is its back.

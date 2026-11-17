@@ -61,7 +61,7 @@ import {
   type Within,
   type Zone,
 } from './nebula.js'
-import { classifySphere, projectionMatrix, viewMatrix, type Camera } from './camera.js'
+import { classifySphere, eyeFor, projectionMatrix, viewMatrix, type Camera } from './camera.js'
 import {
   BLACK_BACKGROUND,
   collectModel,
@@ -559,13 +559,21 @@ export const viewSpaceEffects = ({
   const resolved = { ...RETAIL_SPACE_LIMITS, ...limits }
   const { position: eye } = camera
   const states = nebulae.map((nebula) => nebulaState(nebula, eye, resolved))
-  const { field } = listNebulae(states, eye, systemFarOf(farClip, resolved) - resolved.rangeMargin)
+  const { field } = camera.ortho
+    ? { field: undefined }
+    : listNebulae(states, eye, systemFarOf(farClip, resolved) - resolved.rangeMargin)
   const frame = { camera, aspect, view: viewMatrix(camera), field, nebulae: states }
 
   return effects.map((effect) => viewOne(effect, frame, effectView))
 }
 
-export const collectSpaceFrame = ({
+/**
+ * A space frame as the game draws one; under an `ortho` camera, outside a jump, `collectPlanFrame`'s.
+ */
+export const collectSpaceFrame = (scene: SpaceScene): SpaceFrame =>
+  scene.camera.ortho && !scene.jump ? collectPlanFrame(scene) : collectGameFrame(scene)
+
+const collectGameFrame = ({
   camera: given,
   aspect,
   ambient,
@@ -1484,6 +1492,173 @@ export const collectSpaceFrame = ({
     ...(firstPerson && (hud || cockpit) && { clearDepth: true }),
     ...(afterEffects.length && { afterEffects }),
     ...(shownCockpit?.atEnd.length && { atEnd: shownCockpit.atEnd }),
+    unsupported: [...unsupported],
+    unregistered: [...unregistered],
+  }
+}
+
+/**
+ * A plan view, under an `ortho` camera: a host's, which the game never draws. The objects with what
+ * they carry, the suns' glows, the rings' pieces and the effects, each lit as the space frame lights
+ * it, and nothing that stands about the eye: no sky, far list, field or fog, no nebula's exterior,
+ * clouds or lightning, no asteroid cubes, bands, billboards or rocks, no dust, light flares, sun
+ * corona, shots or tractors. An object in a nebula keeps its ambient. Distances from the eye cut
+ * nothing, as the host puts its eye above what it shows; the camera's own `near` and `far` are the
+ * planes. One list, back to front by view depth.
+ */
+export const collectPlanFrame = ({
+  camera,
+  aspect,
+  ambient,
+  lights,
+  objects,
+  rings = [],
+  nebulae = [],
+  effects = [],
+  asteroids = [],
+  background,
+  time = 0,
+  step = 0,
+  cameraStep = step,
+  effectView,
+  limits,
+}: SpaceScene): SpaceFrame => {
+  const resolved = { ...RETAIL_SPACE_LIMITS, ...limits }
+  const view = viewMatrix(camera)
+  const projection = projectionMatrix(camera, aspect)
+  const states = nebulae.map((nebula) => nebulaState(nebula, camera.position, resolved))
+  const lighting = lightSet(lights)
+  const depthOf = (point: Vector3) => -Matrix4.transformPoint(point, view).z
+
+  for (const { star } of objects) if (star) updateStar(star, cameraStep)
+
+  const listed: (Listed | ListedPiece)[] = []
+
+  for (const object of objects) {
+    const rank = classifySphere(
+      Matrix4.transformPoint(object.sphere.center, view),
+      object.sphere.radius,
+      camera,
+      aspect,
+    )
+    if (rank === 1) continue
+
+    const within =
+      object.nebula === null ? undefined : findNebula(states, object.position, object.nebula)
+
+    listed.push({ object, key: depthOf(object.position), picked: { rank, tier: 0 }, within })
+  }
+
+  for (const ring of rings)
+    for (const piece of ring.pieces) {
+      const center = Matrix4.transformPoint(piece.center, view)
+      if (classifySphere(center, piece.radius, camera, aspect) < 3) continue
+      listed.push({ ring, piece, key: -center.z })
+    }
+
+  listed.sort((a, b) => b.key - a.key)
+
+  const draws: Draw[] = []
+  const queued: Queued[] = []
+  const unsupported = new Set<string>()
+  const unregistered = new Set<string>()
+
+  for (const entry of listed) {
+    if ('ring' in entry) {
+      const draw = ringPieceDraw(entry.ring, entry.piece)
+      if (draw) draws.push(draw)
+      continue
+    }
+
+    const { object, picked, within } = entry
+    const first = draws.length
+
+    // A glow faces the eye, which here is the view's way back.
+    if (object.star) {
+      const facing = { ...camera, position: eyeFor(camera, object.position) }
+      draws.push(...starGlowDraws(object.star, object.position, facing, projection))
+      continue
+    }
+
+    if (object.pilot)
+      collectModel(
+        object.pilot,
+        camera,
+        aspect,
+        view,
+        time,
+        draws,
+        queued,
+        unsupported,
+        unregistered,
+        resolved,
+      )
+
+    for (const model of [object.model, ...(object.attached ?? []).map(underOwn(object.model))])
+      collectModel(
+        model,
+        camera,
+        aspect,
+        view,
+        time,
+        draws,
+        queued,
+        unsupported,
+        unregistered,
+        resolved,
+        picked.rank === 4,
+      )
+
+    flushQueued(queued, draws)
+
+    const nebula = within?.state.nebula
+    const lit = lightObject(
+      lighting,
+      object.position,
+      object.sphere.radius,
+      ambient,
+      time,
+      nebula?.ambient && { ambient: nebula.ambient, factor: within!.factor },
+    )
+
+    for (let index = first; index < draws.length; index++) {
+      const draw = draws[index]!
+
+      draws[index] = {
+        ...draw,
+        lights: lit.lights,
+        sceneAmbient: draw.sceneAmbient ?? lit.ambient,
+        ...(draw.depthFunc === 'less' && { depthFunc: 'lequal' as const }),
+      }
+    }
+  }
+
+  const effectFrame = { camera, aspect, view, nebulae: states }
+  const views = effects.map((effect) => viewOne(effect, effectFrame, effectView))
+  const effectDraws: EffectDraw[] = []
+  const walked = effects
+    .map((effect, at) => ({ effect, at }))
+    .filter(
+      ({ effect, at }) =>
+        effect.type !== SKIPPED_EFFECT_TYPE && (views[at]?.fate ?? 'draw') === 'draw',
+    )
+    .sort((a, b) => a.effect.type - b.effect.type || a.at - b.at)
+
+  for (const { effect } of walked)
+    collectEffect(effect.instance, view, effect.texture, effectDraws, unsupported, effect.visible)
+
+  return {
+    background: background ?? BLACK_BACKGROUND,
+    hooks: hooksOf(draws),
+    view,
+    projection,
+    ambient: systemAmbient(ambient),
+    lights: [],
+    draws,
+    effects: effectDraws,
+    effectDepthFunc: 'lequal',
+    effectViews: views,
+    asteroidCubes: asteroids.map(() => ({ drawn: 0, tested: 0 })),
     unsupported: [...unsupported],
     unregistered: [...unregistered],
   }

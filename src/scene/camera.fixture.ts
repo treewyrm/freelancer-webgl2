@@ -34,12 +34,15 @@ const camera: Camera = {
 const facing = (x: number, z: number) => [x - 1, -1, z, x + 1, -1, z, x, 1, z]
 const backwards = (x: number, z: number) => [x - 1, -1, z, x, 1, z, x + 1, -1, z]
 
-export default ((gl) => {
+export default ((gl, { args }) => {
   const { handle, uniforms } = createProgram(gl, VERTEX, FRAGMENT, ['viewProjection', 'tint'])
 
   gl.useProgram(handle)
 
-  const matrix = Matrix4.multiply(projectionMatrix(camera, 1), viewMatrix(camera))
+  // With `args` `{ ortho: halfWidth }`, the same frame under a parallel projection.
+  const ortho = (args as { ortho?: number } | undefined)?.ortho
+  const used: Camera = ortho ? { ...camera, ortho: { halfWidth: ortho } } : camera
+  const matrix = Matrix4.multiply(projectionMatrix(used, 1), viewMatrix(used))
 
   gl.uniformMatrix4fv(uniforms.viewProjection, false, Matrix4.toArray(matrix))
 

@@ -3,7 +3,7 @@
  * `FParticleEffect::UpdateVisibility` (`0x4f86c0`) in `src/freelancer/Client/`. Pure, no GL.
  */
 import { Matrix4, type Vector3 } from '@treewyrm/freelancer/math'
-import type { Camera } from './camera.js'
+import { sizeDepth, type Camera } from './camera.js'
 import { findNebula, type NebulaState, type SpaceField, type SpaceNebula } from './nebula.js'
 
 /** An `[EffectType]` row, each key over its built-in one. */
@@ -261,8 +261,9 @@ export const viewEffect = (
 
   const { radius } = info
   const at = Matrix4.transformPoint(position, view)
-  const depth = Math.fround(-at.z)
-  if (!(camera.near < Math.fround(depth + radius))) return unseen
+  // Under `ortho`, sized as its lens would see the view; no eye to be behind.
+  const depth = Math.fround(camera.ortho ? sizeDepth(camera, at.z) : -at.z)
+  if (!camera.ortho && !(camera.near < Math.fround(depth + radius))) return unseen
 
   const { near, far } = info.pbubble
   if (!((far - near) * (1 - perf) + near > depth - radius)) return unseen
@@ -288,6 +289,12 @@ export const withinSides = (
   aspect: number,
   radius: number,
 ): boolean => {
+  if (camera.ortho)
+    return (
+      Math.abs(at.x) - camera.ortho.halfWidth <= radius &&
+      Math.abs(at.y) - camera.ortho.halfWidth / aspect <= radius
+    )
+
   const tanX = Math.tan((camera.fovh * Math.PI) / 180)
   const tanY = tanX / aspect
   const sideX = (Math.abs(at.x) + tanX * at.z) / Math.hypot(1, tanX)

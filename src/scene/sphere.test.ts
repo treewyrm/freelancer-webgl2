@@ -220,3 +220,19 @@ test('level_of_detail gives a solar sphere a maximum of 7 to 10 and a bias of 3 
   // At 0.5 the scale is a float just under 5/6, so 3T + 7 falls just short of 9.
   assert.deepEqual(solarSphereLevels(0.5), { maximum: 8, bias: 2 })
 })
+
+test("ortho: the faces turned up the view draw, and the level is the view's pixel", () => {
+  // Looking down -Z from far off to one side: a perspective eye would see the +X face; the view
+  // sees the +Z one, wherever the sphere stands.
+  const plan: Camera = { ...camera(5000, 0, 200), ortho: { halfWidth: 1000 } }
+  const faces = facesOf(placeSphere(sphere(), Matrix4.identity, { camera: plan, width: 512 }))
+
+  assert.ok(faces.includes(0))
+  assert.ok(!faces.includes(2))
+
+  const at = (x: number, z: number) =>
+    placeSphere(sphere(), Matrix4.translation({ x, y: 0, z }), { camera: plan, width: 512 })[0]!
+      .reference.vertexCount
+
+  assert.equal(at(0, 0), at(-40000, -9000))
+})
