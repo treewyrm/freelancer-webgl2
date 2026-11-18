@@ -106,6 +106,32 @@ export {
   type InterfaceColour,
   type InterfaceScene,
 } from '#/scene/interface.js'
+export {
+  collectNavmapLayer,
+  navmapFill,
+  navmapFillAlpha,
+  navmapFillOrder,
+  navmapFillTexture,
+  navmapGridWorld,
+  navmapIconShown,
+  navmapIconWorld,
+  navmapLane,
+  navmapLaneTexture,
+  navmapUnit,
+  navmapZoom,
+  NAVMAP_HALF_EXTENT,
+  NAVMAP_VISIBLE,
+  NAVMAP_ZOOM_IN,
+  withNavmap,
+  type NavmapGrid,
+  type NavmapIcon,
+  type NavmapLayer,
+  type NavmapModel,
+  type NavmapScene,
+  type NavmapStrip,
+  type NavmapZone,
+} from '#/scene/navmap.js'
+export type { ImmediateBatch } from '#/scene/immediate.js'
 export { fogOverlayDraw } from '#/scene/overlay.js'
 export {
   collectRoomFrame,

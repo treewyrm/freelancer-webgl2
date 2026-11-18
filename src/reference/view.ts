@@ -1,7 +1,8 @@
 /**
  * `npm run view -- <system ini> <eye x,y,z> <target x,y,z>`: a retail system's frame from `eye`
  * towards `target`, written to `artifacts/view.png`. For looking, not comparing. With `VIEW_ORTHO` set to
- * a half-width, straight down from `eye` through a parallel projection: `collectPlanFrame`'s.
+ * a half-width, straight down from `eye` through a parallel projection: `collectPlanFrame`'s; with
+ * `VIEW_NAVMAP` as well, the navmap's layer on it (`withNavmap`).
  */
 import { readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
@@ -36,6 +37,8 @@ const args: ViewArgs = {
   sunEffect: 1,
   // `VIEW_ORTHO=<half-width>`: straight down from `eye`, a plan frame's parallel view; `target` unread.
   ...(process.env['VIEW_ORTHO'] && { ortho: Number(process.env['VIEW_ORTHO']) }),
+  // `VIEW_NAVMAP=1`, with `VIEW_ORTHO`: the navmap's layer on it, at the zoom the half-width shows.
+  ...(process.env['VIEW_NAVMAP'] && { navmap: true }),
 }
 const browser = await launch()
 

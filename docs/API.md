@@ -539,6 +539,48 @@ the cockpit. No distance from the eye cuts anything, as a host stands its eye ab
 the camera's own `near` and `far` are the planes, and `farClip` is not read. Everything drains in
 one list, back to front by view depth. `asteroidCubes` reports none drawn.
 
+### Navmap layers
+
+`collectNavmapLayer(scene: NavmapScene) → NavmapLayer` draws the game's navmap (`NeuroNetNavMap`)
+on a plan frame's plane, y = 0: its grid quad, terrain, nebula and exclusion fills, trade lanes and
+object icons. `withNavmap(frame, layer)` lays it on: `under` before the frame's draws, `over` after
+them, `begin` first and `end` last, so what a host draws at `end` lies over the whole map. Every
+draw tests and writes no depth, culls nothing, blends by alpha and is lit by white ambient alone, as
+the game draws the map with depth off and in painter's order. The extension's
+`docs/system/NAVMAP.md` is the reading of the binary this follows.
+
+**World units.** The game projects a nav position `(x·s, z·s)` onto 0.468 plane units for `±E`,
+`E = 112 000`, `s` the system's `NavMapScale`; straight down through a parallel camera, that is the
+world. So a plane unit at zoom 1 is `navmapUnit(s)` metres, and the game's sizes come out as world
+sizes: an icon is `60 × solar_radius` across at any zoom, a lane narrows as the map zooms in.
+
+| `NavmapScene` field | Is |
+| ------------------- | -- |
+| `camera`, `aspect`  | The plan frame's |
+| `grids`             | `{ model, alpha }[]`: copies of `zoomedmap_liberty.3db`, each placed by `navmapGridWorld` |
+| `fills`             | `{ batch, texture }[]`, in `navmapFillOrder`: each `navmapFill`'s batch and its `navmaptextures.txm` shape |
+| `lanes`             | `{ batch, texture }[]`: each `navmapLane`, with `navmapLaneTexture(time)` |
+| `icons`             | `{ model, alpha }[]`, in file order: each `shape_name` model placed by `navmapIconWorld` |
+| `time`, `limits`    | As in `Scene` |
+
+A model's `alpha` fades all its draws, an opaque material's included, so a host can cross-fade the
+grid's two copies and the icons with zoom. The meshes of every model are the host's to give: the
+grid quad and the icons take theirs from `INTERFACE/interface.generic.vms`, the icons their
+materials from `SPACEOBJECTS/spaceobjects.mat`.
+
+| Export | Does |
+| ------ | ---- |
+| `NAVMAP_HALF_EXTENT`, `NAVMAP_VISIBLE`, `NAVMAP_ZOOM_IN` | `E`, 112 000; the ±135 384 nav units the navmap shows; its zoom-in's 0.116279 |
+| `navmapUnit`, `navmapZoom` | `(s) → metres` a plane unit is; `(half, s) → zoom` a view showing `half` metres either side is at |
+| `navmapGridWorld` | `('system' \| 'zoomed', s) → Matrix4`: the system copy's 8 cells fill the map, the zoomed copy's are a tenth |
+| `navmapIconWorld`, `navmapIconShown` | `(icon, s) → Matrix4`, pinned to `±E/s`, a planet's or moon's +X toward the origin; `(icon, s, zoomedIn)`: under 550 nav units is left out of the system view |
+| `navmapFillTexture`, `navmapFillOrder`, `navmapFillAlpha` | The shape a zone's `property_flags` fill with; nebulae, terrain by flag value, exclusions; 255 at zoom 1 down to 86 at 8.6 |
+| `navmapFill` | `({ zone, flags, fogColor }, s, alpha) → { texture, batch }`: a sphere's or ellipsoid's 32-point fan, ragged along X but for an exclusion, its UVs repeating every 0.09 plane units |
+| `navmapLane`, `navmapLaneTexture` | `(from, to, s, zoom) → batch`: a strip opaque on its centre line, clear at its edges; `(time) → TLRanimated_01 … _16` at 15 a second |
+
+`npm run view` takes `VIEW_NAVMAP=1` with `VIEW_ORTHO` to lay a retail system's layer on its plan
+frame, at the zoom the half-width shows (`src/reference/navmap-load.ts`).
+
 ## Room frames
 
 `collectRoomFrame(scene: RoomScene) → RoomFrame` draws a base room: objects by sort layer, each lit by

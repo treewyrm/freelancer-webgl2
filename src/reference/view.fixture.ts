@@ -4,6 +4,8 @@ import type { Fixture } from '#/harness.js'
 import { fieldCubes } from '#/scene/asteroids.js'
 import { createRenderer } from '#/scene/render.js'
 import { collectSpaceFrame } from '#/scene/space.js'
+import { withNavmap } from '#/scene/navmap.js'
+import { loadNavmap } from './navmap-load.js'
 import { lookAt, type Triple } from './look.js'
 import { readRetailSystem } from './retail-system.js'
 import { loadSystem } from './space-load.js'
@@ -20,6 +22,8 @@ export interface ViewArgs {
   sunEffect: number
   /** A parallel view's half-width, looking straight down from `eye`, +X right and −Z up. */
   ortho?: number
+  /** With `ortho`, the navmap's layer laid on the plan frame. */
+  navmap?: boolean
 }
 
 // Rows: local +X is world +X, local +Y world −Z, local −Z world −Y.
@@ -33,10 +37,12 @@ export interface ViewReport {
   /** Cubes of asteroids drawn, by field. */
   cubes: number[]
   error: number
+  /** With `navmap`: its `NavMapScale`, the zoom the view shows it at, and the layer's draws. */
+  navmap?: { scale: number; zoom: number; under: number; over: number }
 }
 
 export default (async (gl, { args, read }) => {
-  const { path, eye, target, fovh, seconds, sunEffect, ortho } = args as ViewArgs
+  const { path, eye, target, fovh, seconds, sunEffect, ortho, navmap } = args as ViewArgs
   const player = { ship: 'li_elite', equipment: [], position: eye, rotate: [0, 0, 0] as Triple }
   const { system, skipped } = await readRetailSystem(read, path, player)
   const position: Vector3 = { x: eye[0], y: eye[1], z: eye[2] }
@@ -75,6 +81,12 @@ export default (async (gl, { args, read }) => {
     })
   }
 
+  const laid =
+    ortho && navmap
+      ? await loadNavmap(read, path, system, { camera, aspect: width / height, time: seconds })
+      : undefined
+  if (laid) frame = withNavmap(frame, laid.layer)
+
   gl.viewport(0, 0, width, height)
   createRenderer(gl).render(frame)
   return {
@@ -84,5 +96,13 @@ export default (async (gl, { args, read }) => {
     unsupported: frame.unsupported,
     cubes: (scene.asteroids ?? []).map((field) => fieldCubes(field, camera, width / height).length),
     error: gl.getError(),
+    ...(laid && {
+      navmap: {
+        scale: laid.scale,
+        zoom: laid.zoom,
+        under: laid.layer.under.length,
+        over: laid.layer.over.length,
+      },
+    }),
   }
 }) satisfies Fixture<ViewReport>

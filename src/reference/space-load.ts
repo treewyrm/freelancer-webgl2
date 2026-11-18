@@ -1183,7 +1183,7 @@ const objectWorld = ({ position, rotate = [0, 0, 0] }: ReferenceSystem['objects'
   Matrix4.fromRotationTranslation(Matrix3.fromQuaternion(eulerTurn(rotate)), vector(position))
 
 /** A system's zone as the scene's code reads one, and its `edge_fraction`. */
-const zoneFor = (
+export const zoneFor = (
   system: ReferenceSystem,
   nickname: string,
 ): { zone: Zone; edgeFraction: number } => {
