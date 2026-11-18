@@ -740,12 +740,15 @@ const collectGameFrame = ({
   // how far past their radius, far ones by distance. Retail makes eight pieces of every ring, so its
   // one-piece branch, keyed by the zone's surface, is never reached and isn't built. In a core,
   // neither rings nor bands are listed (`0x51c352`).
+  // The test is at the far list's plane: `GameCamera::render` sets the camera's far to it before
+  // listing rings and bands (`0x51c373`) and the draw range only after (`0x51c3b8`), so a piece past
+  // the draw range is kept for the far list rather than cut by the main list's plane.
   const ringReach = Math.fround((range - ringFarMargin) * (range - ringFarMargin))
 
   for (const ring of inCore ? [] : rings)
     for (const piece of ring.pieces) {
       const center = Matrix4.transformPoint(piece.center, view)
-      if (classifySphere(center, piece.radius, camera, aspect) < 3) continue
+      if (classifySphere(center, piece.radius, farCamera, aspect) < 3) continue
 
       const dx = piece.center.x - eye.x
       const dy = piece.center.y - eye.y
@@ -809,7 +812,9 @@ const collectGameFrame = ({
       piece: { center, radius },
       at,
     } of numbered) {
-      if (classifySphere(Matrix4.transformPoint(center, view), radius, camera, aspect) < 3) continue
+      // At the far list's plane, as the rings' (`0x51c373`, before `0x51ba20`).
+      if (classifySphere(Matrix4.transformPoint(center, view), radius, farCamera, aspect) < 3)
+        continue
 
       const dx = center.x - eye.x
       const dy = center.y - eye.y

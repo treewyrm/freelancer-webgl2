@@ -390,6 +390,13 @@ test("a ring's pieces join the lists: near ones keyed past their radius, far one
   assert.equal(far.draws.length, 8)
   assert.ok(far.draws.every((draw) => draw.depthFunc === 'always' && draw.projection))
 
+  // Past the draw range too: the sphere test is at the far list's plane (`0x51c373`), not the
+  // draw range's, so a ring 40000 off still draws whole.
+  const farther = frame(ringAt(40000, 200))
+
+  assert.equal(farther.draws.length, 8)
+  assert.ok(farther.draws.every((draw) => draw.depthFunc === 'always' && draw.projection))
+
   const near = frame(ringAt(1000, 200))
 
   assert.ok(near.draws.every((draw) => draw.depthFunc === 'lequal' && !draw.projection))
