@@ -79,6 +79,26 @@ differences remain. The lab's `Freelancer.exe` is the unpacked exe the corpus ke
 `Freelancer-original.exe`, and the lab's `freelancer.ini` skips the intro movies. The game can't be
 started from the Mac.
 
+### Period hardware (planned, not yet capturing)
+
+A native D3D8 driver on 2003 hardware, to decide pixels where the translator can't. It must agree with
+the Parallels rig on state; where their pictures differ, it wins.
+
+| Part | Choice | Notes |
+| ---- | ------ | ----- |
+| Board | Gigabyte GA-6BXDS rev 1.8 (440BX) | 100 MHz bus, AGP 2x at 3.3 V. One CPU goes in slot CPU2. Fallback: Intel SE440BX |
+| CPU | Pentium III 600E, `SL43E` (Coppermine, 1.65 V) | Needs a BIOS that knows Coppermine; check the voltage reads 1.65 V. Fallback: Pentium III 500 `SL35E` (Katmai), which any BX board runs. The CPU doesn't change pixels |
+| GPU | Asus V8420, GeForce4 Ti 4200 (NV25) | Named in retail's `flconfigdatabase.txt` (`0x0253`, no flags) |
+| Driver | NVIDIA 40.72 to mid-40s, from around March 2003 | Retail flags anything older than 40.72 as unsupported. Record the exact version |
+| OS | Windows XP SP3 | The proxy needs NT and an msvcrt build or the VC++ 14.27 runtime |
+| Game | The lab's `C:\Games\Freelancer`, copied as is | 1024×768, 32-bit; AA and anisotropic off in the driver |
+
+**The GeForce FX 5900 XT is a second driver for state, not a witness for pixels.** It is likely a 1.5 V
+AGP card, which these boards can't take. NV35 likely runs fixed-function blending in floating point
+rather than the NV2x combiners' fixed point (reported, not confirmed at the source), and its drivers
+force a bilinear-trilinear mix with no off switch. So an FX that differs from the Ti 4200 is expected;
+one that matches Parallels where the Ti 4200 doesn't points at float arithmetic, not the translator.
+
 ## Reading a capture correctly
 
 - **D3D matrices are row-major and apply to row vectors**: `p * M`, translation in the last row.
