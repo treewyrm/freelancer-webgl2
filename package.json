@@ -1,6 +1,6 @@
 {
   "name": "@treewyrm/freelancer-webgl2",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "WebGL2 renderer faithfully reproducing Freelancer (Digital Anvil, 2003), built on @treewyrm/freelancer.",
   "keywords": [
     "freelancer",
